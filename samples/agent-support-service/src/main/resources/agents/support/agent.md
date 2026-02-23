@@ -33,6 +33,12 @@ tools:
       properties:
         query:
           type: string
+  - name: support.mcp
+    description: Optional MCP support service seed (runtime discovers concrete MCP tools via tools/list)
+    endpointUri: mcp:http://localhost:3001/mcp
+    inputSchemaInline:
+      type: object
+      properties: {}
 ```
 
 ## JSON Route Templates

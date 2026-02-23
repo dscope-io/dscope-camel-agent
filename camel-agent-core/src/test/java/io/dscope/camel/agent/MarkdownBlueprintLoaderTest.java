@@ -15,5 +15,17 @@ class MarkdownBlueprintLoaderTest {
         Assertions.assertEquals("0.1.0", blueprint.version());
         Assertions.assertEquals(1, blueprint.tools().size());
         Assertions.assertEquals("kb.search", blueprint.tools().getFirst().name());
+        Assertions.assertTrue(blueprint.jsonRouteTemplates().isEmpty());
+    }
+
+    @Test
+    void shouldParseJsonRouteTemplatesAndExposeAsTools() {
+        MarkdownBlueprintLoader loader = new MarkdownBlueprintLoader();
+        var blueprint = loader.load("classpath:agents/valid-agent-with-json-template.md");
+
+        Assertions.assertEquals(1, blueprint.jsonRouteTemplates().size());
+        Assertions.assertEquals("http.request", blueprint.jsonRouteTemplates().getFirst().id());
+        Assertions.assertEquals("route.template.http.request", blueprint.jsonRouteTemplates().getFirst().toolName());
+        Assertions.assertTrue(blueprint.tools().stream().anyMatch(t -> "route.template.http.request".equals(t.name())));
     }
 }

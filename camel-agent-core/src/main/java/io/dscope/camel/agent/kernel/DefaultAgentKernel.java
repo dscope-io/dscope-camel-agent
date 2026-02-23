@@ -128,7 +128,8 @@ public class DefaultAgentKernel implements AgentKernel {
             return new AgentResponse(conversationId, "Dynamic route started: " + routeId, emitted, finished);
         }
 
-        List<AgentEvent> history = persistenceFacade.loadConversation(conversationId, 20);
+        List<AgentEvent> history = new ArrayList<>(persistenceFacade.loadConversation(conversationId, 20));
+        emitMcpToolsDiscoveredIfNeeded(conversationId, history, emitted);
         StringBuilder streamed = new StringBuilder();
 
         ModelResponse modelResponse = aiModelClient.generate(
@@ -159,6 +160,7 @@ public class DefaultAgentKernel implements AgentKernel {
                 new ExecutionContext(conversationId, null, UUID.randomUUID().toString())
             );
             schemaValidator.validate(toolSpec.outputSchema(), toolResult.data(), "tool output " + toolCall.name());
+            persistDynamicRouteIfPresent(conversationId, toolResult.data());
 
             AgentEvent resultEvent = event(conversationId, null, "tool.result", objectMapper.valueToTree(toolResult));
             persist(resultEvent);
@@ -266,5 +268,63 @@ public class DefaultAgentKernel implements AgentKernel {
             .put("conversationId", routeState.conversationId())
             .put("createdAt", routeState.createdAt() == null ? null : routeState.createdAt().toString())
             .put("expiresAt", routeState.expiresAt() == null ? null : routeState.expiresAt().toString());
+    }
+
+    private void persistDynamicRouteIfPresent(String conversationId, com.fasterxml.jackson.databind.JsonNode toolData) {
+        if (toolData == null || toolData.isNull()) {
+            return;
+        }
+        com.fasterxml.jackson.databind.JsonNode dynamicRoute = toolData.path("dynamicRoute");
+        if (!dynamicRoute.isObject()) {
+            return;
+        }
+        String routeInstanceId = dynamicRoute.path("routeInstanceId").asText(null);
+        String templateId = dynamicRoute.path("templateId").asText(null);
+        String routeId = dynamicRoute.path("routeId").asText(null);
+        if (routeInstanceId == null || templateId == null || routeId == null) {
+            return;
+        }
+        String status = dynamicRoute.path("status").asText("STARTED");
+        String persistedConversationId = dynamicRoute.path("conversationId").asText(conversationId);
+        Instant createdAt = parseInstant(dynamicRoute.path("createdAt").asText(null), Instant.now());
+        Instant expiresAt = parseInstant(dynamicRoute.path("expiresAt").asText(null), Instant.now().plus(1, ChronoUnit.HOURS));
+
+        persistenceFacade.saveDynamicRoute(new DynamicRouteState(
+            routeInstanceId,
+            templateId,
+            routeId,
+            status,
+            persistedConversationId,
+            createdAt,
+            expiresAt
+        ));
+    }
+
+    private Instant parseInstant(String value, Instant fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        try {
+            return Instant.parse(value);
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private void emitMcpToolsDiscoveredIfNeeded(String conversationId, List<AgentEvent> history, List<AgentEvent> emitted) {
+        if (blueprint.mcpToolCatalogs() == null || blueprint.mcpToolCatalogs().isEmpty()) {
+            return;
+        }
+        boolean alreadyEmitted = history.stream().anyMatch(event -> "mcp.tools.discovered".equals(event.type()));
+        if (alreadyEmitted) {
+            return;
+        }
+
+        com.fasterxml.jackson.databind.node.ObjectNode payload = objectMapper.createObjectNode();
+        payload.set("services", objectMapper.valueToTree(blueprint.mcpToolCatalogs()));
+        AgentEvent event = event(conversationId, null, "mcp.tools.discovered", payload);
+        persist(event);
+        emitted.add(event);
+        history.add(event);
     }
 }

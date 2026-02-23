@@ -51,9 +51,8 @@
     <module>camel-agent-core</module>
     <module>camel-agent-persistence-dscope</module>
     <module>camel-agent-spring-ai</module>
-    <module>camel-agent-agui</module>
     <module>camel-agent-starter</module>
-    <module>samples/agent-yaml-service</module>
+    <module>samples/agent-support-service</module>
   </modules>
 
   <build>

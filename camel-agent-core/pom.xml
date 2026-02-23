@@ -41,6 +41,11 @@
       <groupId>com.fasterxml.jackson.dataformat</groupId>
       <artifactId>jackson-dataformat-yaml</artifactId>
     </dependency>
+    <dependency>
+      <groupId>io.dscope.camel</groupId>
+      <artifactId>camel-mcp</artifactId>
+      <version>1.4.0</version>
+    </dependency>
 
     <dependency>
       <groupId>org.junit.jupiter</groupId>

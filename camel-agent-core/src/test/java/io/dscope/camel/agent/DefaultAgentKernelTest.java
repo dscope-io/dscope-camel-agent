@@ -18,10 +18,18 @@ import org.junit.jupiter.api.Test;
 
 class DefaultAgentKernelTest {
 
+    private AgentBlueprint blueprint(ToolSpec toolSpec) {
+        return new AgentBlueprint("demo", "0.1", "system", List.of(toolSpec), List.of());
+    }
+
+    private AgentBlueprint blueprint(ToolSpec toolSpec, List<com.fasterxml.jackson.databind.JsonNode> mcpCatalogs) {
+        return new AgentBlueprint("demo", "0.1", "system", List.of(toolSpec), List.of(), mcpCatalogs);
+    }
+
     @Test
     void shouldReturnAssistantResponseWithoutToolCall() {
         ToolSpec toolSpec = new ToolSpec("echo", "echo", "echo", null, null, null, new ToolPolicy(false, 0, 1000));
-        AgentBlueprint blueprint = new AgentBlueprint("demo", "0.1", "system", List.of(toolSpec));
+        AgentBlueprint blueprint = blueprint(toolSpec);
         ToolExecutor noOpExecutor = (tool, args, ctx) -> new ToolResult("ok", new ObjectMapper().createObjectNode(), List.of());
 
         DefaultAgentKernel kernel = new DefaultAgentKernel(
@@ -43,7 +51,7 @@ class DefaultAgentKernelTest {
     @Test
     void shouldTransitionTaskToWaitingAndResume() {
         ToolSpec toolSpec = new ToolSpec("echo", "echo", "echo", null, null, null, new ToolPolicy(false, 0, 1000));
-        AgentBlueprint blueprint = new AgentBlueprint("demo", "0.1", "system", List.of(toolSpec));
+        AgentBlueprint blueprint = blueprint(toolSpec);
         ToolExecutor noOpExecutor = (tool, args, ctx) -> new ToolResult("ok", new ObjectMapper().createObjectNode(), List.of());
         InMemoryPersistenceFacade persistence = new InMemoryPersistenceFacade();
 
@@ -69,7 +77,7 @@ class DefaultAgentKernelTest {
     @Test
     void shouldPersistDynamicRouteLifecycle() {
         ToolSpec toolSpec = new ToolSpec("echo", "echo", "echo", null, null, null, new ToolPolicy(false, 0, 1000));
-        AgentBlueprint blueprint = new AgentBlueprint("demo", "0.1", "system", List.of(toolSpec));
+        AgentBlueprint blueprint = blueprint(toolSpec);
         ToolExecutor noOpExecutor = (tool, args, ctx) -> new ToolResult("ok", new ObjectMapper().createObjectNode(), List.of());
         InMemoryPersistenceFacade persistence = new InMemoryPersistenceFacade();
 
@@ -92,7 +100,7 @@ class DefaultAgentKernelTest {
     @Test
     void shouldPreventResumeWhenTaskOwnedByAnotherNode() {
         ToolSpec toolSpec = new ToolSpec("echo", "echo", "echo", null, null, null, new ToolPolicy(false, 0, 1000));
-        AgentBlueprint blueprint = new AgentBlueprint("demo", "0.1", "system", List.of(toolSpec));
+        AgentBlueprint blueprint = blueprint(toolSpec);
         ToolExecutor noOpExecutor = (tool, args, ctx) -> new ToolResult("ok", new ObjectMapper().createObjectNode(), List.of());
         InMemoryPersistenceFacade persistence = new InMemoryPersistenceFacade();
 
@@ -125,5 +133,72 @@ class DefaultAgentKernelTest {
         var response = nodeB.resumeTask(waiting.taskState().taskId());
         Assertions.assertEquals("Task is currently owned by another node", response.message());
         Assertions.assertTrue(response.events().stream().anyMatch(e -> "task.locked".equals(e.type())));
+    }
+
+    @Test
+    void shouldPersistDynamicRouteFromToolResultPayload() {
+        ToolSpec toolSpec = new ToolSpec("route.template.http", "dynamic", null, null, null, null, new ToolPolicy(false, 0, 1000));
+        AgentBlueprint blueprint = blueprint(toolSpec);
+        ObjectMapper mapper = new ObjectMapper();
+        ToolExecutor dynamicExecutor = (tool, args, ctx) -> {
+            var payload = mapper.createObjectNode();
+            var dynamic = mapper.createObjectNode()
+                .put("routeInstanceId", "ri-1")
+                .put("templateId", "http.request")
+                .put("routeId", "agent.dynamic.http.request.001")
+                .put("status", "STARTED")
+                .put("conversationId", ctx.conversationId())
+                .put("createdAt", java.time.Instant.now().toString())
+                .put("expiresAt", java.time.Instant.now().plusSeconds(300).toString());
+            payload.set("dynamicRoute", dynamic);
+            return new ToolResult("ok", payload, List.of());
+        };
+        InMemoryPersistenceFacade persistence = new InMemoryPersistenceFacade();
+
+        DefaultAgentKernel kernel = new DefaultAgentKernel(
+            blueprint,
+            new DefaultToolRegistry(blueprint.tools()),
+            dynamicExecutor,
+            (systemPrompt, history, tools, options, callback) -> new io.dscope.camel.agent.model.ModelResponse("", List.of(new io.dscope.camel.agent.model.AiToolCall("route.template.http", mapper.createObjectNode())), true),
+            persistence,
+            new SchemaValidator(),
+            mapper
+        );
+
+        kernel.handleUserMessage("c-dyn", "create route");
+        var saved = persistence.loadDynamicRoute("ri-1");
+        Assertions.assertTrue(saved.isPresent());
+        Assertions.assertEquals("STARTED", saved.get().status());
+    }
+
+    @Test
+    void shouldEmitMcpDiscoveryEventOncePerConversation() {
+        ObjectMapper mapper = new ObjectMapper();
+        ToolSpec toolSpec = new ToolSpec("echo", "echo", "echo", null, null, null, new ToolPolicy(false, 0, 1000));
+        var catalog = mapper.createObjectNode()
+            .put("serviceTool", "support.mcp")
+            .put("endpointUri", "mcp:http://localhost:3001")
+            .set("result", mapper.createObjectNode().putArray("tools"));
+        AgentBlueprint blueprint = blueprint(toolSpec, List.of(catalog));
+        ToolExecutor noOpExecutor = (tool, args, ctx) -> new ToolResult("ok", mapper.createObjectNode(), List.of());
+        InMemoryPersistenceFacade persistence = new InMemoryPersistenceFacade();
+
+        DefaultAgentKernel kernel = new DefaultAgentKernel(
+            blueprint,
+            new DefaultToolRegistry(blueprint.tools()),
+            noOpExecutor,
+            new StaticAiModelClient(),
+            persistence,
+            new SchemaValidator(),
+            mapper
+        );
+
+        kernel.handleUserMessage("c-mcp", "hello");
+        kernel.handleUserMessage("c-mcp", "hello again");
+
+        long discoveryEvents = persistence.loadConversation("c-mcp", 100).stream()
+            .filter(event -> "mcp.tools.discovered".equals(event.type()))
+            .count();
+        Assertions.assertEquals(1, discoveryEvents);
     }
 }

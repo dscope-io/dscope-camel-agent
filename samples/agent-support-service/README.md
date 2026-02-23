@@ -98,6 +98,63 @@ curl https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"
 
 - `kb.search` -> `direct:kb-search` (`routes/kb-search.camel.yaml`)
 - `support.ticket.open` -> `direct:support-ticket-open` (`routes/kb-search-json.camel.xml`)
+- `support.mcp` -> `mcp:http://localhost:3001/mcp` (optional MCP seed; runtime discovers concrete MCP tools via `tools/list`)
+
+## MCP Quick Start (Local)
+
+1. Start an MCP server that exposes `tools/list` and `tools/call` on `http://localhost:3001/mcp`.
+2. Keep `support.mcp` in `agents/support/agent.md` enabled.
+3. Run the sample and send a request (UI or curl):
+
+```bash
+curl -N -X POST http://localhost:8080/agui/agent \
+   -H 'Content-Type: application/json' \
+   -d '{
+      "threadId":"mcp-demo-1",
+      "sessionId":"mcp-demo-1",
+      "messages":[{"role":"user","content":"Use MCP tools to help me diagnose login failures."}]
+   }'
+```
+
+Expected debug-audit behavior:
+
+- an `mcp.tools.discovered` event is persisted once per conversation
+- event payload includes `services[]` entries with:
+   - `serviceTool` (for example `support.mcp`)
+   - `endpointUri` (for example `mcp:http://localhost:3001/mcp`)
+   - `result.tools[]` from MCP `tools/list` (or `error` when discovery fails)
+
+Example event payload shape:
+
+```json
+{
+   "type": "mcp.tools.discovered",
+   "payload": {
+      "services": [
+         {
+            "serviceTool": "support.mcp",
+            "endpointUri": "mcp:http://localhost:3001/mcp",
+            "result": {
+               "tools": [
+                  {
+                     "name": "kb.lookup",
+                     "description": "Lookup support knowledge base",
+                     "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                           "query": {
+                              "type": "string"
+                           }
+                        }
+                     }
+                  }
+               ]
+            }
+         }
+      ]
+   }
+}
+```
 
 ## AGUI Endpoints
 

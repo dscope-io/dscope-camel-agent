@@ -49,12 +49,21 @@ Algorithm:
 
 ## AGUI Integration
 
-`camel-agent-agui` publishes kernel events through:
+Sample AGUI integration uses `camel-ag-ui-component` runtime routes/processors directly.
 
-- `AgUiToolEventBridge` for `tool.start` and `tool.result`
-- `AgUiTaskEventBridge` for other lifecycle events
+Frontend transport in `samples/agent-support-service`:
 
-and uses `AgUiCorrelationRegistry` for `conversationId <-> runId/sessionId` mapping.
+- browser UI is served from `GET /agui/ui`
+- frontend sends AGUI envelope to `POST /agui/agent`
+- backend returns an SSE event stream in the same POST response (POST+SSE bridge)
+- frontend renders assistant text from AGUI message content events
+
+Correlation between agent conversations and transport identifiers is handled in core via `CorrelationRegistry`:
+
+- source key: `agent.conversationId`
+- correlation keys: `agui.sessionId`, `agui.runId`, `agui.threadId`
+
+Debug audit trail includes available correlation metadata in payload (`payload._correlation`).
 
 ## Spring AI ChatMemory Integration
 

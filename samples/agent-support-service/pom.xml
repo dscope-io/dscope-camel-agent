@@ -10,8 +10,8 @@
     <relativePath>../../pom.xml</relativePath>
   </parent>
 
-  <artifactId>agent-yaml-service</artifactId>
-  <name>Camel Agent YAML Sample Service</name>
+  <artifactId>agent-support-service</artifactId>
+  <name>Camel Agent Support Sample Service</name>
 
   <dependencies>
     <dependency>
@@ -26,8 +26,8 @@
     </dependency>
     <dependency>
       <groupId>io.dscope.camel</groupId>
-      <artifactId>camel-agent-agui</artifactId>
-      <version>${project.version}</version>
+      <artifactId>camel-ag-ui-component</artifactId>
+      <version>1.1.0</version>
     </dependency>
     <dependency>
       <groupId>org.apache.camel</groupId>

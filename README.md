@@ -235,6 +235,26 @@ See sample blueprint template in:
 
 - `samples/agent-support-service/src/main/resources/agents/support/agent.md`
 
+## MCP Tools in Blueprint
+
+Blueprint `tools` entries with `endpointUri` starting with `mcp:` are treated as MCP service definitions.
+
+Runtime behavior:
+
+- on agent startup, runtime calls MCP `tools/list` for each configured `mcp:` endpoint
+- discovered MCP tools are merged into the runtime tool registry used for LLM evaluation
+- MCP tool execution uses MCP `tools/call` with `{ name, arguments }`
+- MCP discovery payload is written to audit as `mcp.tools.discovered` (full payload available in `debug` granularity)
+
+Example seed tool in `agent.md`:
+
+```yaml
+tools:
+  - name: support.mcp
+    description: MCP support backend
+    endpointUri: mcp:http://localhost:3001/mcp
+```
+
 ## AGUI Frontend (Sample)
 
 `samples/agent-support-service` uses AGUI component runtime routes and a built-in UI page:

@@ -1,6 +1,7 @@
 package io.dscope.camel.agent.component;
 
 import io.dscope.camel.agent.api.AgentKernel;
+import io.dscope.camel.agent.registry.CorrelationRegistry;
 import org.apache.camel.Category;
 import org.apache.camel.Consumer;
 import org.apache.camel.Processor;
@@ -41,6 +42,7 @@ public class AgentEndpoint extends DefaultEndpoint {
     @Metadata(description = "Enable streaming token/event delivery.")
     private boolean streaming = true;
     private AgentKernel agentKernel;
+    private CorrelationRegistry correlationRegistry;
 
     public AgentEndpoint(String endpointUri, AgentComponent component) {
         super(endpointUri, component);
@@ -48,7 +50,7 @@ public class AgentEndpoint extends DefaultEndpoint {
 
     @Override
     public Producer createProducer() {
-        return new AgentProducer(this, agentKernel);
+        return new AgentProducer(this, agentKernel, correlationRegistry);
     }
 
     @Override
@@ -115,5 +117,13 @@ public class AgentEndpoint extends DefaultEndpoint {
 
     public void setAgentKernel(AgentKernel agentKernel) {
         this.agentKernel = agentKernel;
+    }
+
+    public CorrelationRegistry getCorrelationRegistry() {
+        return correlationRegistry;
+    }
+
+    public void setCorrelationRegistry(CorrelationRegistry correlationRegistry) {
+        this.correlationRegistry = correlationRegistry;
     }
 }

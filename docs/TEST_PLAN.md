@@ -21,14 +21,12 @@
    - serializes/deserializes Spring AI messages including tool calls/responses
 7. `DscopeChatMemoryRepositoryTest`
    - save/find/delete conversation memory with DScope persistence contract
-8. `AgUiAgentEventPublisherTest`
-   - maps tool lifecycle to AGUI bridges
-9. `AgentAutoConfigurationTest`
+8. `AgentAutoConfigurationTest`
    - starter properties/auto-config basic loading
 
-10. `DefaultAgentKernelTest`
+9. `DefaultAgentKernelTest`
    - lock conflict path when another node owns a task lease
-11. `MultiProviderSpringAiChatGatewayTest`
+10. `MultiProviderSpringAiChatGatewayTest`
    - OpenAI tool-name normalization for API-compatible function names
    - tool-call name remap back to original tool names for kernel dispatch
 
@@ -46,3 +44,4 @@
 2. End-to-end route execution with `agent:` endpoint and `direct:kb-search`
 3. `redis_jdbc` fallback behavior with Redis miss and JDBC success
 4. Restart rehydration scenario for unfinished task
+5. AGUI sample transport flow (`/agui/ui` -> `POST /agui/agent` POST+SSE)

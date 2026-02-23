@@ -7,7 +7,9 @@ import io.dscope.camel.agent.config.AgentHeaders;
 import io.dscope.camel.agent.model.ExecutionContext;
 import io.dscope.camel.agent.model.ToolResult;
 import io.dscope.camel.agent.model.ToolSpec;
+import io.dscope.camel.mcp.McpClient;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.camel.ProducerTemplate;
@@ -31,7 +33,15 @@ public class CamelToolExecutor implements ToolExecutor {
         headers.put(AgentHeaders.TOOL_NAME, toolSpec.name());
         headers.put(AgentHeaders.TRACE_ID, context.traceId());
 
-        Object response = producerTemplate.requestBodyAndHeaders(target, requestBody(arguments), headers);
+        Object response;
+        if (isMcpTarget(target)) {
+            Map<String, Object> params = new LinkedHashMap<>();
+            params.put("name", toolSpec.name());
+            params.put("arguments", requestBody(arguments));
+            response = McpClient.callResultJson(producerTemplate, target, "tools/call", params);
+        } else {
+            response = producerTemplate.requestBodyAndHeaders(target, requestBody(arguments), headers);
+        }
         JsonNode data = objectMapper.valueToTree(response);
         String content = data.isValueNode() ? data.asText() : data.toPrettyString();
         return new ToolResult(content, data, List.of());
@@ -55,5 +65,9 @@ public class CamelToolExecutor implements ToolExecutor {
             return toolSpec.endpointUri();
         }
         throw new IllegalArgumentException("Tool must define routeId or endpointUri: " + toolSpec.name());
+    }
+
+    private boolean isMcpTarget(String target) {
+        return target != null && target.startsWith("mcp:");
     }
 }

@@ -1,0 +1,106 @@
+- route:
+    id: agui-health
+    from:
+      id: fromd461
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.health.port:8080}}/health
+      steps:
+        - process:
+            id: process08df
+            ref: agUiHealthProcessor
+- route:
+    id: agui-diagnostics
+    from:
+      id: fromf595
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.health.port:8080}}/diagnostics
+      steps:
+        - process:
+            id: process975a
+            ref: agUiDiagnosticsProcessor
+- route:
+    id: agui-agent-post-sse
+    from:
+      id: from3256
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/agui/agent?httpMethodRestrict=POST
+      steps:
+        - doTry:
+            id: doTryd769
+            doCatch:
+              - id: doCatche196
+                exception:
+                  - java.lang.Exception
+                steps:
+                  - process:
+                      id: processb3f9
+                      ref: agUiErrorProcessor
+            steps:
+              - process:
+                  id: process2f2d
+                  ref: agUiAgentEnvelopeProcessor
+              - process:
+                  id: process29ec
+                  ref: agUiAgentRequestProcessor
+              - process:
+                  id: processdde0
+                  ref: agUiPostSseBridgeProcessor
+              - process:
+                  id: process373e
+                  ref: agUiSseProcessor
+- route:
+    id: agui-backend-tool-rendering-post-sse
+    from:
+      id: from9a70
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/agui/backend_tool_rendering?httpMethodRestrict=POST
+      steps:
+        - doTry:
+            id: doTry5623
+            doCatch:
+              - id: doCatch2335
+                exception:
+                  - java.lang.Exception
+                steps:
+                  - process:
+                      id: process75df
+                      ref: agUiErrorProcessor
+            steps:
+              - process:
+                  id: process911e
+                  ref: agUiAgentEnvelopeProcessor
+              - process:
+                  id: process5ae3
+                  ref: agUiAgentRequestProcessor
+              - process:
+                  id: processf7a0
+                  ref: agUiPostSseBridgeProcessor
+              - process:
+                  id: process7bce
+                  ref: agUiSseProcessor
+- route:
+    id: agui-stream
+    from:
+      id: from56a1
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/agui/stream/{runId}?httpMethodRestrict=GET
+      steps:
+        - process:
+            id: process0f61
+            ref: agUiSseProcessor
+- route:
+    id: agui-ui
+    from:
+      id: from67ef
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/agui/ui?httpMethodRestrict=GET
+      steps:
+        - process:
+            id: processca01
+            ref: agUiUiPageProcessor

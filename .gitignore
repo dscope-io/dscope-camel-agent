@@ -4,3 +4,4 @@ camel-agent-agui/target/camel-agent-agui-0.1.0-SNAPSHOT.jar
 **/target/
 **/derby.log
 .vscode/
+camel-agent-agui/

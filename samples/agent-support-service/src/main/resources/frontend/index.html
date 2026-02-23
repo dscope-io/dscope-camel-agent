@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Support Copilot (AGUI Sample)</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0b1020; color: #e8ecff; }
+    .app { max-width: 900px; margin: 24px auto; padding: 0 16px; }
+    .title { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+    .subtitle { opacity: .8; margin-bottom: 16px; }
+    .panel { background: #131b34; border: 1px solid #2a335d; border-radius: 12px; padding: 14px; }
+    .messages { min-height: 280px; max-height: 420px; overflow: auto; display: grid; gap: 10px; margin-bottom: 12px; }
+    .msg { border-radius: 10px; padding: 10px 12px; line-height: 1.35; }
+    .msg.user { background: #233365; justify-self: end; max-width: 80%; }
+    .msg.agent { background: #1b2546; max-width: 90%; }
+    .ticket { margin-top: 8px; border: 1px solid #3b4f93; background: #172548; border-radius: 10px; padding: 10px; }
+    .ticket h4 { margin: 0 0 8px 0; font-size: 14px; }
+    .ticket-row { font-size: 13px; margin: 4px 0; }
+    form { display: grid; gap: 8px; }
+    textarea { width: 100%; min-height: 84px; resize: vertical; border-radius: 10px; border: 1px solid #314074; background: #0f1731; color: #ecf1ff; padding: 10px; }
+    button { width: max-content; border: 0; border-radius: 9px; background: #4b72ff; color: white; padding: 8px 14px; font-weight: 600; cursor: pointer; }
+    .hint { font-size: 12px; opacity: .75; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="title">Support Copilot (AGUI Protocol Sample)</div>
+    <div class="subtitle">AGUI POST+SSE over <code>/agui/agent</code> with ticket widget rendering.</div>
+
+    <div class="panel">
+      <div id="messages" class="messages"></div>
+      <form id="chat-form">
+        <textarea id="prompt" placeholder="Ask a support question or request ticket creation..."></textarea>
+        <button type="submit">Send</button>
+      </form>
+      <div class="hint">Tip: “My login is failing, please open a support ticket”.</div>
+    </div>
+  </div>
+
+  <script>
+    const messagesEl = document.getElementById('messages');
+    const formEl = document.getElementById('chat-form');
+    const promptEl = document.getElementById('prompt');
+    let sessionId = `session-${Date.now()}`;
+
+    function addMessage(role, text, widget) {
+      const el = document.createElement('div');
+      el.className = `msg ${role}`;
+      el.textContent = text;
+      if (widget && widget.template === 'ticket-card' && widget.data) {
+        el.appendChild(renderTicketWidget(widget.data));
+      }
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function renderTicketWidget(data) {
+      const card = document.createElement('div');
+      card.className = 'ticket';
+      card.innerHTML = `
+        <h4>Ticket Created</h4>
+        <div class="ticket-row"><strong>ID:</strong> ${data.ticketId ?? 'N/A'}</div>
+        <div class="ticket-row"><strong>Status:</strong> ${data.status ?? 'OPEN'}</div>
+        <div class="ticket-row"><strong>Queue:</strong> ${data.assignedQueue ?? 'L1-SUPPORT'}</div>
+        <div class="ticket-row"><strong>Summary:</strong> ${data.summary ?? ''}</div>
+        <div class="ticket-row">${data.message ?? ''}</div>
+      `;
+      return card;
+    }
+
+    function parseSseEvents(payload) {
+      const blocks = payload.split(/\n\n+/).map((chunk) => chunk.trim()).filter(Boolean);
+      const events = [];
+      for (const block of blocks) {
+        const lines = block.split(/\n/);
+        let eventType = '';
+        let data = '';
+        for (const line of lines) {
+          if (line.startsWith('event:')) {
+            eventType = line.slice('event:'.length).trim();
+          } else if (line.startsWith('data:')) {
+            data += line.slice('data:'.length).trim();
+          }
+        }
+        if (!data) continue;
+        try {
+          events.push({ eventType, data: JSON.parse(data) });
+        } catch (_) {
+          events.push({ eventType, data: { raw: data } });
+        }
+      }
+      return events;
+    }
+
+    function extractAssistantText(events) {
+      const parts = [];
+      for (const event of events) {
+        const type = event.eventType || event.data?.type || '';
+        if (type === 'TEXT_MESSAGE_CONTENT') {
+          parts.push(event.data?.delta ?? '');
+        }
+      }
+      return parts.join('') || '(no response)';
+    }
+
+    function parseTicketWidgetFromText(text) {
+      const start = text.indexOf('{');
+      const end = text.lastIndexOf('}');
+      if (start < 0 || end <= start) {
+        return null;
+      }
+      try {
+        const data = JSON.parse(text.slice(start, end + 1));
+        if (!data.ticketId) {
+          return null;
+        }
+        return {
+          template: 'ticket-card',
+          data: {
+            ticketId: data.ticketId,
+            status: data.status,
+            summary: data.summary,
+            assignedQueue: data.assignedQueue,
+            message: data.message
+          }
+        };
+      } catch (_) {
+        return null;
+      }
+    }
+
+    async function sendPrompt(prompt) {
+      const request = {
+        threadId: sessionId,
+        sessionId,
+        messages: [{ role: 'user', content: prompt }]
+      };
+
+      const response = await fetch('/agui/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request)
+      });
+
+      const payload = await response.text();
+      const events = parseSseEvents(payload);
+      const outputText = extractAssistantText(events);
+      const widget = parseTicketWidgetFromText(outputText);
+
+      if (!events.length) {
+        throw new Error('No AGUI events received');
+      }
+      return { outputText, widget };
+    }
+
+    formEl.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const prompt = promptEl.value.trim();
+      if (!prompt) {
+        return;
+      }
+      addMessage('user', prompt);
+      promptEl.value = '';
+
+      try {
+        const result = await sendPrompt(prompt);
+        addMessage('agent', result.outputText || '(no response)', result.widget || null);
+      } catch (error) {
+        addMessage('agent', `Error: ${error.message}`);
+      }
+    });
+  </script>
+</body>
+</html>

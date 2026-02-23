@@ -9,7 +9,7 @@ Initial bootstrap release:
 - Blueprint parser for `agent.md` with YAML tool block support.
 - DScope persistence adapter (`redis_jdbc` default).
 - Spring AI adapter module abstraction.
-- AGUI bridge adapter for tool/task lifecycle events.
+- AGUI-enabled sample frontend using `camel-ag-ui-component` runtime routes/processors.
 
 Recent updates:
 
@@ -17,4 +17,5 @@ Recent updates:
 - Provider execution moved to Spring AI clients for OpenAI, Anthropic, and Vertex Gemini.
 - Manual/custom HTTP provider gateway code removed from runtime gateway implementation.
 - Sample now uses Camel XML DSL route loading plus YAML route loading via `agent.runtime.routes-include-pattern`.
-- Sample secrets loading moved from Java code to shell runner (`samples/agent-yaml-service/run-sample.sh`).
+- Sample secrets loading moved from Java code to shell runner (`samples/agent-support-service/run-sample.sh`).
+- Sample frontend flow uses `POST /agui/agent` (single POST request with SSE event stream response) as the primary AGUI transport path.

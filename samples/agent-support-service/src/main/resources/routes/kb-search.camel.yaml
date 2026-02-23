@@ -1,0 +1,14 @@
+- route:
+    id: kb-search
+    from:
+      id: from2c2c
+      uri: direct
+      parameters:
+        name: kb-search
+      steps:
+        - setBody:
+            id: setBody3d26
+            expression:
+              simple:
+                id: simplecd03
+                expression: "{\"answer\":\"Knowledge base result for ${body[query]}\"}"
