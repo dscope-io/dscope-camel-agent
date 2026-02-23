@@ -1,11 +1,15 @@
 package io.dscope.camel.agent.persistence.dscope;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.dscope.camel.agent.config.CorrelationKeys;
 import io.dscope.camel.agent.model.AgentEvent;
 import io.dscope.camel.agent.model.AuditGranularity;
 import io.dscope.camel.agent.model.DynamicRouteState;
 import io.dscope.camel.agent.model.TaskState;
 import io.dscope.camel.agent.model.TaskStatus;
+import io.dscope.camel.agent.registry.CorrelationRegistry;
+import io.dscope.camel.agent.service.AuditTrailService;
 import io.dscope.camel.persistence.core.AppendResult;
 import io.dscope.camel.persistence.core.FlowStateStore;
 import io.dscope.camel.persistence.core.PersistedEvent;
@@ -132,6 +136,82 @@ class DscopePersistenceFacadeTest {
 
         Assertions.assertTrue(loaded.isPresent());
         Assertions.assertEquals("http.request", loaded.orElseThrow().templateId());
+    }
+
+    @Test
+    void shouldIncludeGeneratedJsonRoutePayloadInDebugAuditTrailAndPrintIt() throws Exception {
+        TestFlowStateStore store = new TestFlowStateStore();
+        ObjectMapper mapper = new ObjectMapper();
+        DscopePersistenceFacade facade = new DscopePersistenceFacade(store, mapper, AuditGranularity.DEBUG);
+
+        var payload = mapper.createObjectNode();
+        payload.putObject("dynamicRoute")
+            .put("routeInstanceId", "ri-a1")
+            .put("templateId", "http.request")
+            .put("routeId", "agent.dynamic.http.request.a1")
+            .put("status", "STARTED");
+        payload.putObject("renderedRoute")
+            .putObject("route")
+            .put("id", "agent.dynamic.http.request.a1")
+            .putObject("from")
+            .put("uri", "direct:dynamic-http-start");
+
+        AgentEvent event = new AgentEvent("conv-debug-json", null, "tool.result", payload, Instant.now());
+        facade.appendEvent(event, "k-json-debug");
+
+        AuditTrailService auditTrailService = new AuditTrailService(facade, mapper);
+        String trail = auditTrailService.loadTrail("conv-debug-json", "200");
+        System.out.println("AUDIT_TRAIL_DEBUG_JSON=" + trail);
+
+        var root = mapper.readTree(trail);
+        Assertions.assertTrue(root.isArray());
+        Assertions.assertEquals(1, root.size());
+        var firstPayload = root.get(0).path("payload");
+        Assertions.assertEquals("tool.result", root.get(0).path("type").asText());
+        Assertions.assertEquals("http.request", firstPayload.path("dynamicRoute").path("templateId").asText());
+        Assertions.assertEquals("direct:dynamic-http-start", firstPayload.path("renderedRoute").path("route").path("from").path("uri").asText());
+    }
+
+    @Test
+    void shouldIncludeCorrelationMetadataInDebugAuditTrailWhenAvailable() throws Exception {
+        TestFlowStateStore store = new TestFlowStateStore();
+        ObjectMapper mapper = new ObjectMapper();
+        DscopePersistenceFacade facade = new DscopePersistenceFacade(store, mapper, AuditGranularity.DEBUG);
+
+        CorrelationRegistry.global().bind("conv-corr", CorrelationKeys.AGUI_SESSION_ID, "session-123");
+        CorrelationRegistry.global().bind("conv-corr", CorrelationKeys.AGUI_RUN_ID, "run-456");
+        CorrelationRegistry.global().bind("conv-corr", CorrelationKeys.AGUI_THREAD_ID, "thread-789");
+
+        AgentEvent event = new AgentEvent("conv-corr", null, "assistant.message",
+            mapper.createObjectNode().put("text", "hello"), Instant.now());
+        facade.appendEvent(event, "k-corr");
+
+        String trail = new AuditTrailService(facade, mapper).loadTrail("conv-corr", "50");
+        JsonNode root = mapper.readTree(trail);
+        JsonNode correlation = root.get(0).path("payload").path("_correlation");
+
+        Assertions.assertEquals("session-123", correlation.path("aguiSessionId").asText());
+        Assertions.assertEquals("run-456", correlation.path("aguiRunId").asText());
+        Assertions.assertEquals("thread-789", correlation.path("aguiThreadId").asText());
+
+        CorrelationRegistry.global().clear("conv-corr");
+    }
+
+    @Test
+    void shouldWriteAuditTrailToDedicatedStoreWhenProvided() {
+        TestFlowStateStore primaryStore = new TestFlowStateStore();
+        TestFlowStateStore auditStore = new TestFlowStateStore();
+        DscopePersistenceFacade facade = new DscopePersistenceFacade(primaryStore, auditStore, new ObjectMapper(), AuditGranularity.DEBUG);
+
+        AgentEvent event = new AgentEvent("conv-audit-dedicated", null, "assistant.message",
+            new ObjectMapper().createObjectNode().put("text", "hello"), Instant.now());
+        facade.appendEvent(event, "k-audit");
+
+        facade.saveTask(new TaskState("task-audit-dedicated", "conv-audit-dedicated", TaskStatus.STARTED, "cp", null, 0, null));
+
+        Assertions.assertTrue(primaryStore.eventsFor("agent.conversation", "conv-audit-dedicated").isEmpty());
+        Assertions.assertEquals(1, auditStore.eventsFor("agent.conversation", "conv-audit-dedicated").size());
+        Assertions.assertTrue(facade.loadTask("task-audit-dedicated").isPresent());
     }
 
     private static final class TestFlowStateStore implements FlowStateStore {

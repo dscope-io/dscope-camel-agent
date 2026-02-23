@@ -11,6 +11,11 @@ public class AgentStarterProperties {
     private long timeoutMs = 30_000L;
     private boolean streaming = true;
     private String auditGranularity = "info";
+    private String auditPersistenceBackend;
+    private String auditJdbcUrl;
+    private String auditJdbcUsername;
+    private String auditJdbcPassword;
+    private String auditJdbcDriverClassName;
     private boolean chatMemoryEnabled = true;
     private int chatMemoryWindow = 100;
     private String taskClaimOwnerId;
@@ -62,6 +67,46 @@ public class AgentStarterProperties {
 
     public void setAuditGranularity(String auditGranularity) {
         this.auditGranularity = auditGranularity;
+    }
+
+    public String getAuditPersistenceBackend() {
+        return auditPersistenceBackend;
+    }
+
+    public void setAuditPersistenceBackend(String auditPersistenceBackend) {
+        this.auditPersistenceBackend = auditPersistenceBackend;
+    }
+
+    public String getAuditJdbcUrl() {
+        return auditJdbcUrl;
+    }
+
+    public void setAuditJdbcUrl(String auditJdbcUrl) {
+        this.auditJdbcUrl = auditJdbcUrl;
+    }
+
+    public String getAuditJdbcUsername() {
+        return auditJdbcUsername;
+    }
+
+    public void setAuditJdbcUsername(String auditJdbcUsername) {
+        this.auditJdbcUsername = auditJdbcUsername;
+    }
+
+    public String getAuditJdbcPassword() {
+        return auditJdbcPassword;
+    }
+
+    public void setAuditJdbcPassword(String auditJdbcPassword) {
+        this.auditJdbcPassword = auditJdbcPassword;
+    }
+
+    public String getAuditJdbcDriverClassName() {
+        return auditJdbcDriverClassName;
+    }
+
+    public void setAuditJdbcDriverClassName(String auditJdbcDriverClassName) {
+        this.auditJdbcDriverClassName = auditJdbcDriverClassName;
     }
 
     public boolean isChatMemoryEnabled() {

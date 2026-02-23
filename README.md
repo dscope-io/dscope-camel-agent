@@ -7,9 +7,8 @@
 - `camel-agent-core`: `agent:` Camel component, kernel, blueprint parser, tool registry, schema checks.
 - `camel-agent-persistence-dscope`: persistence adapter using `dscope-camel-persistence` (`redis`, `jdbc`, `redis_jdbc`).
 - `camel-agent-spring-ai`: Spring AI multi-provider gateway (`openai`, `anthropic`, `vertex gemini`).
-- `camel-agent-agui`: AGUI bridge mapping agent events to AGUI tool/task event bridges.
 - `camel-agent-starter`: Spring Boot auto-configuration.
-- `samples/agent-yaml-service`: runnable Camel Main YAML sample.
+- `samples/agent-support-service`: runnable Camel Main support sample.
 
 ## Compatibility Matrix
 
@@ -35,7 +34,7 @@ Install local AGUI and persistence artifacts, then run this project with local p
 ./scripts/bootstrap-local-dscope-deps.sh
 ```
 
-This activates `-Pdscope-local`, which enables the real `camel-ag-ui-component` dependency in `camel-agent-agui`.
+This activates `-Pdscope-local` for local DScope dependency alignment used by runtime modules and samples.
 
 ## Core URI
 
@@ -71,6 +70,34 @@ Set `agent.audit-granularity` (default: `info`) to control persistence verbosity
 - `error`: persist process steps and include error payload data for error events.
 - `debug`: persist process steps with full payloads and metadata.
 
+## Optional Audit JDBC Split
+
+By default, audit trail uses the same persistence store as context/state.
+
+To store audit trail in a separate JDBC backend, configure either:
+
+```yaml
+agent:
+  audit:
+    backend: jdbc
+    jdbc:
+      url: jdbc:postgresql://localhost:5432/agent_audit
+      username: agent_audit_user
+      password: ${AGENT_AUDIT_DB_PASSWORD}
+      driver-class-name: org.postgresql.Driver
+```
+
+Or namespaced equivalent:
+
+```yaml
+agent:
+  audit:
+    persistence:
+      backend: jdbc
+      jdbc:
+        url: jdbc:postgresql://localhost:5432/agent_audit
+```
+
 ## Load-Balanced Task Ownership (redis_jdbc)
 
 Distributed task ownership is implemented via persistence-backed lease locks (`flowType=agent.task.lock`):
@@ -87,22 +114,22 @@ Starter properties:
 ## Sample
 
 ```bash
-mvn -f samples/agent-yaml-service/pom.xml -DskipTests compile exec:java
+mvn -f samples/agent-support-service/pom.xml -DskipTests compile exec:java
 ```
 
-Or run with local hidden secrets file (`samples/agent-yaml-service/.agent-secrets.properties`):
+Or run with local hidden secrets file (`samples/agent-support-service/.agent-secrets.properties`):
 
 ```bash
-samples/agent-yaml-service/run-sample.sh
+samples/agent-support-service/run-sample.sh
 ```
 
 See sample-specific usage and test guidance in:
 
-- `samples/agent-yaml-service/README.md`
+- `samples/agent-support-service/README.md`
 
 ## Spring AI Runtime Config (Sample)
 
-`samples/agent-yaml-service/src/main/resources/application.yaml` configures runtime provider routing:
+`samples/agent-support-service/src/main/resources/application.yaml` configures runtime provider routing:
 
 ```yaml
 spring:
@@ -153,7 +180,7 @@ curl https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"
 
 For detailed sample troubleshooting and commands, see:
 
-- `samples/agent-yaml-service/README.md`
+- `samples/agent-support-service/README.md`
 
 ## Security Remediation
 
@@ -189,8 +216,35 @@ Sample integration tests verify route selection and context carry-over behavior:
 Run:
 
 ```bash
-mvn -f samples/agent-yaml-service/pom.xml -Dtest=SpringAiAuditTrailIntegrationTest test
+mvn -f samples/agent-support-service/pom.xml -Dtest=SpringAiAuditTrailIntegrationTest test
 ```
+
+## JSON Route Templates (Agent-Generated)
+
+`agent.md` now supports a `jsonRouteTemplates` section for safe dynamic route generation.
+
+Runtime behavior:
+
+- templates are parsed from blueprint YAML blocks
+- each template is exposed as a callable tool (via `toolName`)
+- LLM returns only template parameters
+- runtime expands placeholders into Camel JSON DSL, validates it, dynamically loads route, and executes it
+- dynamic route metadata is persisted through existing `DynamicRouteState` persistence
+
+See sample blueprint template in:
+
+- `samples/agent-support-service/src/main/resources/agents/support/agent.md`
+
+## AGUI Frontend (Sample)
+
+`samples/agent-support-service` uses AGUI component runtime routes and a built-in UI page:
+
+- open `http://localhost:8080/agui/ui`
+- frontend sends `POST /agui/agent` with AGUI request envelope
+- backend responds with an SSE event stream (same POST response); frontend renders assistant output from AGUI message content events
+- `/agui/stream/{runId}` is available for split-transport clients
+
+For run commands and endpoint examples, see `samples/agent-support-service/README.md`.
 
 ## Phase-2 Runtime Commands
 

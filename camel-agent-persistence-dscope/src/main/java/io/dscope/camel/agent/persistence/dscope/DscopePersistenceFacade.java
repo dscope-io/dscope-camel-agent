@@ -9,6 +9,8 @@ import io.dscope.camel.agent.model.AuditGranularity;
 import io.dscope.camel.agent.model.DynamicRouteState;
 import io.dscope.camel.agent.model.TaskState;
 import io.dscope.camel.agent.model.TaskStatus;
+import io.dscope.camel.agent.config.CorrelationKeys;
+import io.dscope.camel.agent.registry.CorrelationRegistry;
 import io.dscope.camel.persistence.core.FlowStateStore;
 import io.dscope.camel.persistence.core.PersistedEvent;
 import io.dscope.camel.persistence.core.exception.OptimisticConflictException;
@@ -27,15 +29,24 @@ public class DscopePersistenceFacade implements PersistenceFacade {
     public static final String FLOW_TASK_LOCK = "agent.task.lock";
 
     private final FlowStateStore flowStateStore;
+    private final FlowStateStore auditFlowStateStore;
     private final ObjectMapper objectMapper;
     private final AuditGranularity auditGranularity;
 
     public DscopePersistenceFacade(FlowStateStore flowStateStore, ObjectMapper objectMapper) {
-        this(flowStateStore, objectMapper, AuditGranularity.INFO);
+        this(flowStateStore, flowStateStore, objectMapper, AuditGranularity.INFO);
     }
 
     public DscopePersistenceFacade(FlowStateStore flowStateStore, ObjectMapper objectMapper, AuditGranularity auditGranularity) {
+        this(flowStateStore, flowStateStore, objectMapper, auditGranularity);
+    }
+
+    public DscopePersistenceFacade(FlowStateStore flowStateStore,
+                                   FlowStateStore auditFlowStateStore,
+                                   ObjectMapper objectMapper,
+                                   AuditGranularity auditGranularity) {
         this.flowStateStore = flowStateStore;
+        this.auditFlowStateStore = auditFlowStateStore == null ? flowStateStore : auditFlowStateStore;
         this.objectMapper = objectMapper;
         this.auditGranularity = auditGranularity == null ? AuditGranularity.INFO : auditGranularity;
     }
@@ -59,7 +70,7 @@ public class DscopePersistenceFacade implements PersistenceFacade {
                 idempotencyKey
             );
             try {
-                flowStateStore.appendEvents(FLOW_CONVERSATION, event.conversationId(), expectedVersion, List.of(persistedEvent), idempotencyKey);
+                auditFlowStateStore.appendEvents(FLOW_CONVERSATION, event.conversationId(), expectedVersion, List.of(persistedEvent), idempotencyKey);
                 return;
             } catch (OptimisticConflictException ex) {
                 if (attempt == maxAttempts) {
@@ -71,7 +82,7 @@ public class DscopePersistenceFacade implements PersistenceFacade {
 
     @Override
     public List<AgentEvent> loadConversation(String conversationId, int limit) {
-        List<PersistedEvent> events = flowStateStore.readEvents(FLOW_CONVERSATION, conversationId, 0L, limit);
+        List<PersistedEvent> events = auditFlowStateStore.readEvents(FLOW_CONVERSATION, conversationId, 0L, limit);
         List<AgentEvent> result = new ArrayList<>();
         for (PersistedEvent event : events) {
             JsonNode payload = unwrapPayload(event.payload());
@@ -265,13 +276,60 @@ public class DscopePersistenceFacade implements PersistenceFacade {
                     .put("taskId", event.taskId())
                     .put("timestamp", event.timestamp().toString())
                     .put("idempotencyKey", idempotencyKey);
+                ObjectNode correlation = correlationMetadata(event.conversationId());
+                if (correlation != null) {
+                    metadata.set("correlation", correlation);
+                }
                 ObjectNode node = objectMapper.createObjectNode()
                     .put("step", event.type());
-                node.set("payload", event.payload());
+                node.set("payload", payloadWithCorrelation(event.payload(), event.conversationId()));
                 node.set("metadata", metadata);
                 yield node;
             }
         };
+    }
+
+    private JsonNode payloadWithCorrelation(JsonNode payload, String conversationId) {
+        ObjectNode correlation = correlationMetadata(conversationId);
+        if (correlation == null) {
+            return payload;
+        }
+        if (payload != null && payload.isObject()) {
+            ObjectNode copy = payload.deepCopy();
+            copy.set("_correlation", correlation);
+            return copy;
+        }
+        ObjectNode wrapped = objectMapper.createObjectNode();
+        wrapped.set("value", payload == null ? objectMapper.nullNode() : payload);
+        wrapped.set("_correlation", correlation);
+        return wrapped;
+    }
+
+    private ObjectNode correlationMetadata(String conversationId) {
+        CorrelationRegistry registry = CorrelationRegistry.global();
+        String aguiSessionId = registry.resolve(conversationId, CorrelationKeys.AGUI_SESSION_ID, null);
+        String aguiRunId = registry.resolve(conversationId, CorrelationKeys.AGUI_RUN_ID, null);
+        String aguiThreadId = registry.resolve(conversationId, CorrelationKeys.AGUI_THREAD_ID, null);
+
+        if (isBlank(aguiSessionId) && isBlank(aguiRunId) && isBlank(aguiThreadId)) {
+            return null;
+        }
+
+        ObjectNode correlation = objectMapper.createObjectNode();
+        if (!isBlank(aguiSessionId)) {
+            correlation.put("aguiSessionId", aguiSessionId);
+        }
+        if (!isBlank(aguiRunId)) {
+            correlation.put("aguiRunId", aguiRunId);
+        }
+        if (!isBlank(aguiThreadId)) {
+            correlation.put("aguiThreadId", aguiThreadId);
+        }
+        return correlation;
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private TaskLockState resolveTaskLock(String taskId) {
@@ -295,9 +353,9 @@ public class DscopePersistenceFacade implements PersistenceFacade {
     }
 
     private long resolveConversationVersion(String conversationId) {
-        var rehydrated = flowStateStore.rehydrate(FLOW_CONVERSATION, conversationId);
+        var rehydrated = auditFlowStateStore.rehydrate(FLOW_CONVERSATION, conversationId);
         long envelopeVersion = rehydrated.envelope() == null ? 0L : rehydrated.envelope().version();
-        long eventVersion = flowStateStore.readEvents(FLOW_CONVERSATION, conversationId, 0L, 10_000).size();
+        long eventVersion = auditFlowStateStore.readEvents(FLOW_CONVERSATION, conversationId, 0L, 10_000).size();
         return Math.max(envelopeVersion, eventVersion);
     }
 
