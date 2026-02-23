@@ -1,0 +1,93 @@
+# Architecture
+
+## Runtime
+
+1. `agent.md` is loaded by `MarkdownBlueprintLoader`.
+2. Tool declarations are converted to `ToolSpec` and registered in `DefaultToolRegistry`.
+3. `DefaultAgentKernel` handles message loop:
+   - append `user.message`
+   - invoke model client
+   - enforce tool allow-list
+   - validate input/output schema
+   - execute tool route through Camel
+   - append `assistant.message` and `snapshot.written`
+4. Events are persisted via `PersistenceFacade` implementation.
+
+## Persistence Mapping
+
+- `agent.conversation` => conversation event stream
+- `agent.task` => task snapshots
+- `agent.dynamicRoute` => dynamic route metadata snapshots
+
+`camel-agent-persistence-dscope` maps these flows to `FlowStateStore` operations.
+
+## Phase-2 Orchestration Behavior
+
+- Async waiting path:
+  - `handleUserMessage(..., "task.async <checkpoint>")` creates persisted `TaskState` with `WAITING`.
+  - emits `task.waiting`.
+- Resume path:
+  - `resumeTask(taskId)` transitions task `RESUMED -> FINISHED`.
+  - emits `task.resumed` and final `assistant.message`.
+- Dynamic route lifecycle:
+  - `handleUserMessage(..., "route.instantiate <templateId>")` persists `DynamicRouteState` transitions `CREATED -> STARTED`.
+
+## Distributed Claim/Lock Strategy
+
+For load-balanced resume safety, task ownership is persisted as lease locks:
+
+- Lock flow type: `agent.task.lock`
+- Claim event: `task.lock.claim` (`ownerId`, `leaseUntil`)
+- Release event: `task.lock.release`
+
+Algorithm:
+
+1. Read current lock state.
+2. If active lease exists for another owner, deny claim.
+3. Append claim event with optimistic expected version.
+4. On optimistic conflict, claim fails (another node won).
+
+## AGUI Integration
+
+`camel-agent-agui` publishes kernel events through:
+
+- `AgUiToolEventBridge` for `tool.start` and `tool.result`
+- `AgUiTaskEventBridge` for other lifecycle events
+
+and uses `AgUiCorrelationRegistry` for `conversationId <-> runId/sessionId` mapping.
+
+## Spring AI ChatMemory Integration
+
+- `DscopeChatMemoryRepository` (`camel-agent-spring-ai`) implements Spring AI `ChatMemoryRepository`.
+- Memory is stored in DScope persistence as snapshots:
+  - `flowType=agent.chat.memory`, `flowId=<conversationId>`
+  - conversation index: `flowType=agent.chat.memory.index`, `flowId=all`
+- `SpringAiMessageSerde` performs message serialization/deserialization for:
+  - `UserMessage`
+  - `SystemMessage`
+  - `AssistantMessage` (with tool calls)
+  - `ToolResponseMessage`
+
+## Spring AI Provider Gateway
+
+`MultiProviderSpringAiChatGateway` (`camel-agent-spring-ai`) is the default runtime gateway when:
+
+- `agent.runtime.ai.mode=spring-ai`
+- no explicit gateway override is configured
+
+Provider mapping:
+
+- `openai` -> Spring AI `OpenAiChatModel` (Chat Completions)
+- `claude`/`anthropic` -> Spring AI `AnthropicChatModel`
+- `gemini` -> Spring AI `VertexAiGeminiChatModel`
+
+Tool calls are exposed to the kernel through Spring AI `AssistantMessage.ToolCall` mapping into internal `AiToolCall`.
+
+## Audit Trail Granularity
+
+Persistence adapter supports `agent.audit.granularity`:
+
+- `none`: no audit event persistence
+- `info`: process step persistence
+- `error`: process step persistence + error data payload for error events
+- `debug`: process step persistence + full payloads and metadata

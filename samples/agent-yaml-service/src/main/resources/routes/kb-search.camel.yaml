@@ -1,0 +1,7 @@
+- route:
+    id: kb-search
+    from:
+      uri: "direct:kb-search"
+      steps:
+        - setBody:
+            simple: '{"answer":"Knowledge base result for ${body[query]}"}'

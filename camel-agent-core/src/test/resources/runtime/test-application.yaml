@@ -1,0 +1,10 @@
+camel:
+  persistence:
+    jdbc:
+      url: jdbc:derby:memory:test;create=true
+agent:
+  blueprint: classpath:agents/support/agent.md
+  audit:
+    granularity: debug
+    api:
+      port: 8080

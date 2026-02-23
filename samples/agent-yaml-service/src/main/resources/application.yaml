@@ -1,0 +1,56 @@
+camel:
+  main:
+    name: agent-yaml-service
+    duration-max-idle-seconds: 3
+  persistence:
+    enabled: true
+    backend: jdbc
+    jdbc:
+      url: jdbc:derby:memory:agent;create=true
+
+spring:
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      base-url: https://api.openai.com
+
+agent:
+  runtime:
+    routes-include-pattern: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml
+    agent-routes-enabled: true
+    ai:
+      mode: spring-ai
+    spring-ai:
+      provider: openai
+      # OpenAI mode in this Spring AI gateway: chat
+      api-mode: chat
+      model: gpt-4o-mini
+      temperature: 0.2
+      max-tokens: 800
+      openai:
+        base-url: https://api.openai.com
+        api-key-system-property: openai.api.key
+        organization-system-property: openai.organization
+        project-system-property: openai.project
+      gemini:
+        # Spring AI Gemini uses Vertex AI client in this module.
+        model: gemini-2.5-flash
+        vertex:
+          project-id: ${GOOGLE_CLOUD_PROJECT}
+          location: us-central1
+      claude:
+        base-url: https://api.anthropic.com/v1/messages
+        model: claude-3-5-sonnet-20241022
+        api-key-system-property: anthropic.api.key
+        anthropic-version: "2023-06-01"
+  blueprint: classpath:agents/support/agent.md
+  sample:
+    prompt: My login is failing, please open a support ticket
+  audit:
+    granularity: debug
+    trail:
+      limit: 200
+    api:
+      enabled: false
+      host: 0.0.0.0
+      port: 8080

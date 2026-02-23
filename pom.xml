@@ -1,0 +1,90 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.dscope.camel</groupId>
+  <artifactId>camel-agent</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+
+  <name>Camel Agent</name>
+  <description>Blueprint-driven Camel AI agent component</description>
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <camel.version>4.15.0</camel.version>
+    <jackson.version>2.20.0</jackson.version>
+    <junit.jupiter.version>5.10.2</junit.jupiter.version>
+    <persistence.version>1.1.0</persistence.version>
+    <spring.ai.version>1.0.3</spring.ai.version>
+    <spring.boot.version>3.3.2</spring.boot.version>
+    <spring.framework.version>6.1.21</spring.framework.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.apache.camel</groupId>
+        <artifactId>camel-bom</artifactId>
+        <version>${camel.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>${jackson.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-core</artifactId>
+        <version>${spring.framework.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <modules>
+    <module>camel-agent-core</module>
+    <module>camel-agent-persistence-dscope</module>
+    <module>camel-agent-spring-ai</module>
+    <module>camel-agent-agui</module>
+    <module>camel-agent-starter</module>
+    <module>samples/agent-yaml-service</module>
+  </modules>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.11.0</version>
+          <configuration>
+            <release>${maven.compiler.release}</release>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>3.2.5</version>
+          <configuration>
+            <useModulePath>false</useModulePath>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+
+  <profiles>
+    <profile>
+      <id>ci</id>
+      <properties>
+        <maven.test.skip>false</maven.test.skip>
+      </properties>
+    </profile>
+  </profiles>
+</project>
