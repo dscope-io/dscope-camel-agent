@@ -1,0 +1,19 @@
+- route:
+    id: realtime-session-token-test
+    from:
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agent.runtime.test-port:18081}}/realtime/session/{conversationId}/token?httpMethodRestrict=POST
+      steps:
+        - process:
+            ref: supportRealtimeTokenProcessor
+
+- route:
+    id: realtime-session-init-test
+    from:
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agent.runtime.test-port:18081}}/realtime/session/{conversationId}/init?httpMethodRestrict=POST
+      steps:
+        - process:
+            ref: supportRealtimeSessionInitProcessor

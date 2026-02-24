@@ -65,6 +65,19 @@ Correlation between agent conversations and transport identifiers is handled in 
 
 Debug audit trail includes available correlation metadata in payload (`payload._correlation`).
 
+### Realtime Voice Frontend Behavior (Sample)
+
+`samples/agent-support-service` `/agui/ui` voice behavior:
+
+- single toggle control manages start/stop state (`idle`, `live`, `busy`)
+- pause profile drives VAD silence timeout for both relay and WebRTC session setup:
+  - `fast` -> `800ms`
+  - `normal` -> `1200ms`
+  - `patient` -> `1800ms`
+- UI displays current pause timeout in label and listening status text
+- WebRTC transcript log captures input/output transcript events for diagnostics
+- output transcript processing is de-duplicated at `response.output_audio_transcript.done` handling to prevent duplicate assistant transcript display
+
 ## Spring AI ChatMemory Integration
 
 - `DscopeChatMemoryRepository` (`camel-agent-spring-ai`) implements Spring AI `ChatMemoryRepository`.

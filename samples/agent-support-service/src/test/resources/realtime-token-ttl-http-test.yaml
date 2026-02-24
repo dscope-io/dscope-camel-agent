@@ -1,0 +1,10 @@
+agent:
+  runtime:
+    routes-include-pattern: classpath:routes/realtime-token-http-test.camel.yaml
+    agent-routes-enabled: false
+    realtime:
+      bind-relay: false
+      bind-processor: false
+      bind-token-processor: true
+      browser-session-ttl-ms: 40
+      require-init-session: true

@@ -101,6 +101,57 @@
       parameters:
         httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/agui/ui?httpMethodRestrict=GET
       steps:
+        - setHeader:
+            id: setHeaderUiContentType
+            name: Content-Type
+            constant: text/html; charset=UTF-8
+        - setHeader:
+            id: setHeaderUiCacheControl
+            name: Cache-Control
+            constant: no-store, no-cache, must-revalidate, max-age=0
+        - setHeader:
+            id: setHeaderUiPragma
+            name: Pragma
+            constant: no-cache
+        - setHeader:
+            id: setHeaderUiExpires
+            name: Expires
+            constant: 0
         - process:
-            id: processca01
-            ref: agUiUiPageProcessor
+            id: processUiResource
+            ref: supportUiPageProcessor
+- route:
+    id: realtime-session-event
+    from:
+      id: from9f01
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/realtime/session/{conversationId}/event?httpMethodRestrict=POST
+      steps:
+        - process:
+            id: processf201
+            ref: supportRealtimeEventProcessor
+
+- route:
+    id: realtime-session-token
+    from:
+      id: fromRealtimeToken
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/realtime/session/{conversationId}/token?httpMethodRestrict=POST
+      steps:
+        - process:
+            id: processRealtimeToken
+            ref: supportRealtimeTokenProcessor
+
+- route:
+    id: realtime-session-init
+    from:
+      id: fromRealtimeInit
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/realtime/session/{conversationId}/init?httpMethodRestrict=POST
+      steps:
+        - process:
+            id: processRealtimeInit
+            ref: supportRealtimeSessionInitProcessor

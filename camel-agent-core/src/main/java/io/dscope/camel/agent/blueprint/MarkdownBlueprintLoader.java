@@ -4,8 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.dscope.camel.agent.api.BlueprintLoader;
+import io.dscope.camel.agent.model.AgUiPreRunSpec;
 import io.dscope.camel.agent.model.AgentBlueprint;
 import io.dscope.camel.agent.model.JsonRouteTemplateSpec;
+import io.dscope.camel.agent.model.RealtimeSpec;
 import io.dscope.camel.agent.model.ToolPolicy;
 import io.dscope.camel.agent.model.ToolSpec;
 import java.io.IOException;
@@ -36,6 +38,8 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
         JsonNode config = mergedYamlConfig(markdown);
         List<ToolSpec> tools = parseTools(config);
         List<JsonRouteTemplateSpec> jsonRouteTemplates = parseJsonRouteTemplates(config);
+        RealtimeSpec realtime = parseRealtime(config);
+        AgUiPreRunSpec agUiPreRun = parseAgUiPreRun(config);
         tools.addAll(toolsFromTemplates(jsonRouteTemplates));
 
         if (tools.isEmpty()) {
@@ -46,7 +50,75 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
             version == null ? "0.0.1" : version,
             systemInstruction == null ? "You are a helpful agent." : systemInstruction,
             tools,
-            jsonRouteTemplates
+            jsonRouteTemplates,
+            realtime,
+            agUiPreRun
+        );
+    }
+
+    private AgUiPreRunSpec parseAgUiPreRun(JsonNode root) {
+        if (root == null || root.isMissingNode()) {
+            return null;
+        }
+        JsonNode node = root.path("aguiPreRun");
+        if (!node.isObject()) {
+            node = root.path("agui").path("preRun");
+        }
+        if (!node.isObject()) {
+            return null;
+        }
+
+        JsonNode fallback = node.path("fallback");
+        String agentEndpointUri = text(node, "agentEndpointUri", "agent-endpoint-uri");
+        Boolean fallbackEnabled = bool(node, "fallbackEnabled", "fallback-enabled");
+        String kbToolName = text(fallback, "kbToolName", "kb-tool-name");
+        String ticketToolName = text(fallback, "ticketToolName", "ticket-tool-name");
+        String kbUri = text(fallback, "kbUri", "kb-uri");
+        String ticketUri = text(fallback, "ticketUri", "ticket-uri");
+        List<String> ticketKeywords = strings(fallback, "ticketKeywords", "ticket-keywords");
+        List<String> fallbackErrorMarkers = strings(fallback, "errorMarkers", "error-markers");
+
+        if (allBlank(agentEndpointUri, kbToolName, ticketToolName, kbUri, ticketUri)
+            && fallbackEnabled == null
+            && ticketKeywords.isEmpty()
+            && fallbackErrorMarkers.isEmpty()) {
+            return null;
+        }
+
+        return new AgUiPreRunSpec(
+            agentEndpointUri,
+            fallbackEnabled,
+            kbToolName,
+            ticketToolName,
+            kbUri,
+            ticketUri,
+            ticketKeywords,
+            fallbackErrorMarkers
+        );
+    }
+
+    private RealtimeSpec parseRealtime(JsonNode root) {
+        if (root == null || root.isMissingNode()) {
+            return null;
+        }
+        JsonNode node = root.path("realtime");
+        if (!node.isObject()) {
+            return null;
+        }
+        JsonNode reconnect = node.path("reconnect");
+        return new RealtimeSpec(
+            text(node, "provider") == null ? "openai" : text(node, "provider"),
+            text(node, "model"),
+            text(node, "voice"),
+            text(node, "transport") == null ? "server-relay" : text(node, "transport"),
+            text(node, "endpointUri"),
+            text(node, "inputAudioFormat"),
+            text(node, "outputAudioFormat"),
+            text(node, "retentionPolicy") == null ? "metadata_transcript" : text(node, "retentionPolicy"),
+            integer(reconnect, "maxSendRetries", "max-send-retries"),
+            integer(reconnect, "maxReconnects", "max-reconnects"),
+            longValue(reconnect, "initialBackoffMs", "initial-backoff-ms"),
+            longValue(reconnect, "maxBackoffMs", "max-backoff-ms")
         );
     }
 
@@ -143,6 +215,127 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
     private String text(JsonNode node, String field) {
         JsonNode value = node.path(field);
         return value.isMissingNode() || value.isNull() ? null : value.asText();
+    }
+
+    private String text(JsonNode node, String... fields) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        for (String field : fields) {
+            String value = text(node, field);
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private Boolean bool(JsonNode node, String... fields) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        for (String field : fields) {
+            JsonNode value = node.path(field);
+            if (!value.isMissingNode() && !value.isNull()) {
+                if (value.isBoolean()) {
+                    return value.booleanValue();
+                }
+                String text = value.asText(null);
+                if (text != null && !text.isBlank()) {
+                    return Boolean.parseBoolean(text.trim());
+                }
+            }
+        }
+        return null;
+    }
+
+    private List<String> strings(JsonNode node, String... fields) {
+        List<String> values = new ArrayList<>();
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return values;
+        }
+        for (String field : fields) {
+            JsonNode value = node.path(field);
+            if (value.isArray()) {
+                for (JsonNode item : value) {
+                    if (item != null && !item.isNull()) {
+                        String text = item.asText("").trim();
+                        if (!text.isBlank()) {
+                            values.add(text);
+                        }
+                    }
+                }
+                if (!values.isEmpty()) {
+                    return values;
+                }
+            } else if (!value.isMissingNode() && !value.isNull()) {
+                String text = value.asText("").trim();
+                if (!text.isBlank()) {
+                    for (String part : text.split(",")) {
+                        if (part != null && !part.isBlank()) {
+                            values.add(part.trim());
+                        }
+                    }
+                    if (!values.isEmpty()) {
+                        return values;
+                    }
+                }
+            }
+        }
+        return values;
+    }
+
+    private boolean allBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private Integer integer(JsonNode node, String... fields) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        for (String field : fields) {
+            JsonNode value = node.path(field);
+            if (!value.isMissingNode() && !value.isNull()) {
+                if (value.isInt() || value.isLong()) {
+                    return value.intValue();
+                }
+                String text = value.asText(null);
+                if (text != null && !text.isBlank()) {
+                    try {
+                        return Integer.parseInt(text.trim());
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private Long longValue(JsonNode node, String... fields) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        for (String field : fields) {
+            JsonNode value = node.path(field);
+            if (!value.isMissingNode() && !value.isNull()) {
+                if (value.isLong() || value.isInt()) {
+                    return value.longValue();
+                }
+                String text = value.asText(null);
+                if (text != null && !text.isBlank()) {
+                    try {
+                        return Long.parseLong(text.trim());
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     private String readHeading(String markdown, String prefix) {

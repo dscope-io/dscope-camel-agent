@@ -24,8 +24,12 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class DefaultAgentKernel implements AgentKernel {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(DefaultAgentKernel.class);
 
     private final AgentBlueprint blueprint;
     private final ToolRegistry toolRegistry;
@@ -70,6 +74,9 @@ public class DefaultAgentKernel implements AgentKernel {
 
     @Override
     public AgentResponse handleUserMessage(String conversationId, String userMessage) {
+        LOGGER.info("Kernel handleUserMessage started: conversationId={}, chars={}",
+            conversationId,
+            userMessage == null ? 0 : userMessage.length());
         List<AgentEvent> emitted = new ArrayList<>();
         AgentEvent userEvent = event(conversationId, null, "user.message", objectMapper.valueToTree(userMessage));
         persist(userEvent);
@@ -131,6 +138,7 @@ public class DefaultAgentKernel implements AgentKernel {
         List<AgentEvent> history = new ArrayList<>(persistenceFacade.loadConversation(conversationId, 20));
         emitMcpToolsDiscoveredIfNeeded(conversationId, history, emitted);
         StringBuilder streamed = new StringBuilder();
+        String lastToolResultFallback = "";
 
         ModelResponse modelResponse = aiModelClient.generate(
             blueprint.systemInstruction(),
@@ -144,8 +152,16 @@ public class DefaultAgentKernel implements AgentKernel {
                 emitted.add(delta);
             }
         );
+        LOGGER.debug("Kernel model response received: conversationId={}, toolCalls={}, assistantMessageChars={}, streamedChars={}",
+            conversationId,
+            modelResponse.toolCalls() == null ? 0 : modelResponse.toolCalls().size(),
+            modelResponse.assistantMessage() == null ? 0 : modelResponse.assistantMessage().length(),
+            streamed.length());
 
         for (AiToolCall toolCall : modelResponse.toolCalls()) {
+            LOGGER.info("Kernel tool execution started: conversationId={}, tool={}",
+                conversationId,
+                toolCall == null ? "" : toolCall.name());
             ToolSpec toolSpec = toolRegistry.getTool(toolCall.name())
                 .orElseThrow(() -> new IllegalArgumentException("Tool not allowed: " + toolCall.name()));
 
@@ -159,18 +175,45 @@ public class DefaultAgentKernel implements AgentKernel {
                 toolCall.arguments(),
                 new ExecutionContext(conversationId, null, UUID.randomUUID().toString())
             );
+            LOGGER.info("Kernel tool execution completed: conversationId={}, tool={}, contentChars={}, hasData={}",
+                conversationId,
+                toolCall.name(),
+                toolResult.content() == null ? 0 : toolResult.content().length(),
+                toolResult.data() != null && !toolResult.data().isNull());
             schemaValidator.validate(toolSpec.outputSchema(), toolResult.data(), "tool output " + toolCall.name());
             persistDynamicRouteIfPresent(conversationId, toolResult.data());
 
             AgentEvent resultEvent = event(conversationId, null, "tool.result", objectMapper.valueToTree(toolResult));
             persist(resultEvent);
             emitted.add(resultEvent);
+
+            String toolFallback = toolResult.content();
+            if ((toolFallback == null || toolFallback.isBlank()) && toolResult.data() != null && !toolResult.data().isNull()) {
+                toolFallback = toolResult.data().toString();
+            }
+            if (toolFallback != null && !toolFallback.isBlank()) {
+                lastToolResultFallback = toolFallback;
+                LOGGER.debug("Kernel tool fallback captured: conversationId={}, tool={}, chars={}",
+                    conversationId,
+                    toolCall.name(),
+                    toolFallback.length());
+            }
         }
 
         String finalMessage = modelResponse.assistantMessage();
         if (finalMessage == null || finalMessage.isBlank()) {
             finalMessage = streamed.toString().trim();
         }
+        if ((finalMessage == null || finalMessage.isBlank()) && !lastToolResultFallback.isBlank()) {
+            finalMessage = lastToolResultFallback;
+            LOGGER.debug("Kernel assistant fallback used from tool result: conversationId={}, chars={}",
+                conversationId,
+                finalMessage.length());
+        }
+
+        LOGGER.info("Kernel final assistant message ready: conversationId={}, chars={}",
+            conversationId,
+            finalMessage == null ? 0 : finalMessage.length());
 
         AgentEvent assistant = event(conversationId, null, "assistant.message", objectMapper.valueToTree(finalMessage));
         persist(assistant);
@@ -191,14 +234,20 @@ public class DefaultAgentKernel implements AgentKernel {
         );
         persistenceFacade.saveTask(taskState);
 
+        LOGGER.info("Kernel handleUserMessage completed: conversationId={}, emittedEvents={}",
+            conversationId,
+            emitted.size());
+
         return new AgentResponse(conversationId, finalMessage, emitted, taskState);
     }
 
     @Override
     public AgentResponse resumeTask(String taskId) {
+        LOGGER.info("Kernel resumeTask requested: taskId={}, owner={}", taskId, nodeOwnerId);
         TaskState task = persistenceFacade.loadTask(taskId)
             .orElse(new TaskState(taskId, "unknown", TaskStatus.WAITING, "missing", null, 0, null));
         if (!persistenceFacade.tryClaimTask(taskId, nodeOwnerId, taskClaimLeaseSeconds)) {
+            LOGGER.warn("Kernel resumeTask lock conflict: taskId={}, owner={}", taskId, nodeOwnerId);
             AgentEvent lockConflict = event(task.conversationId(), task.taskId(), "task.locked",
                 objectMapper.createObjectNode().put("taskId", taskId).put("owner", nodeOwnerId));
             persist(lockConflict);
@@ -236,8 +285,56 @@ public class DefaultAgentKernel implements AgentKernel {
         } finally {
             if (persistenceFacade.isTaskClaimedBy(taskId, nodeOwnerId)) {
                 persistenceFacade.releaseTaskClaim(taskId, nodeOwnerId);
+                LOGGER.debug("Kernel resumeTask claim released: taskId={}, owner={}", taskId, nodeOwnerId);
             }
         }
+    }
+
+    @Override
+    public AgentResponse handleRealtimeEvent(String conversationId, String eventType, com.fasterxml.jackson.databind.JsonNode payload) {
+        String safeConversationId = (conversationId == null || conversationId.isBlank()) ? UUID.randomUUID().toString() : conversationId;
+        String safeEventType = (eventType == null || eventType.isBlank()) ? "unknown" : eventType;
+        com.fasterxml.jackson.databind.JsonNode safePayload = payload == null ? objectMapper.nullNode() : payload;
+
+        LOGGER.info("Kernel realtime event received: conversationId={}, eventType={}", safeConversationId, safeEventType);
+
+        List<AgentEvent> emitted = new ArrayList<>();
+        AgentEvent realtimeEvent = event(
+            safeConversationId,
+            null,
+            "realtime." + safeEventType,
+            safePayload
+        );
+        persist(realtimeEvent);
+        emitted.add(realtimeEvent);
+
+        String transcript = extractTranscript(safePayload);
+        if ("transcript.final".equals(safeEventType) && transcript != null && !transcript.isBlank()) {
+            LOGGER.info("Kernel realtime transcript routing: conversationId={}, chars={}", safeConversationId, transcript.length());
+            AgentResponse response = handleUserMessage(safeConversationId, transcript);
+            emitted.addAll(response.events());
+            return new AgentResponse(
+                response.conversationId(),
+                response.message(),
+                emitted,
+                response.taskState()
+            );
+        }
+
+        TaskState state = new TaskState(
+            UUID.randomUUID().toString(),
+            safeConversationId,
+            TaskStatus.FINISHED,
+            "realtime",
+            null,
+            0,
+            "Realtime event accepted"
+        );
+        persistenceFacade.saveTask(state);
+        LOGGER.debug("Kernel realtime event accepted without transcript routing: conversationId={}, eventType={}",
+            safeConversationId,
+            safeEventType);
+        return new AgentResponse(safeConversationId, "Realtime event accepted", emitted, state);
     }
 
     private AgentEvent event(String conversationId, String taskId, String type, com.fasterxml.jackson.databind.JsonNode payload) {
@@ -298,6 +395,11 @@ public class DefaultAgentKernel implements AgentKernel {
             createdAt,
             expiresAt
         ));
+        LOGGER.info("Kernel dynamic route persisted: conversationId={}, routeInstanceId={}, routeId={}, status={}",
+            persistedConversationId,
+            routeInstanceId,
+            routeId,
+            status);
     }
 
     private Instant parseInstant(String value, Instant fallback) {
@@ -326,5 +428,23 @@ public class DefaultAgentKernel implements AgentKernel {
         persist(event);
         emitted.add(event);
         history.add(event);
+    }
+
+    private String extractTranscript(com.fasterxml.jackson.databind.JsonNode payload) {
+        if (payload == null || payload.isNull()) {
+            return null;
+        }
+        if (payload.isTextual()) {
+            return payload.asText();
+        }
+        String text = payload.path("text").asText(null);
+        if (text != null && !text.isBlank()) {
+            return text;
+        }
+        text = payload.path("transcript").asText(null);
+        if (text != null && !text.isBlank()) {
+            return text;
+        }
+        return null;
     }
 }

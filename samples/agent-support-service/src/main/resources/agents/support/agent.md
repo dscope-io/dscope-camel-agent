@@ -10,7 +10,8 @@ Routing rules:
 3. If unclear, default to `kb.search`.
 
 AGUI note:
-- In this sample, AGUI frontend behavior is configured by runtime routes/processors (`application.yaml` + `routes/ag-ui-platform.camel.yaml`), not by a UI config section in this blueprint.
+- In this sample, AGUI frontend transport is configured by runtime routes/processors (`application.yaml` + `routes/ag-ui-platform.camel.yaml`).
+- AGUI pre-run behavior is configured in blueprint metadata (`aguiPreRun`) with runtime property fallback support.
 
 ## Tools
 ```yaml
@@ -75,4 +76,22 @@ jsonRouteTemplates:
                 constant: "{{method}}"
             - toD:
                 uri: "{{url}}"
+```
+
+## Realtime
+
+Realtime config is intentionally omitted in this sample blueprint to demonstrate
+fallback from `application.yaml` (`agent.runtime.realtime.*`).
+
+## AGUI Pre-Run
+
+```yaml
+aguiPreRun:
+  agentEndpointUri: agent:support?blueprint={{agent.blueprint}}
+  fallbackEnabled: true
+  fallback:
+    kbToolName: kb.search
+    ticketToolName: support.ticket.open
+    ticketKeywords: [ticket, open, create, submit, escalate]
+    errorMarkers: [api key is missing, openai api key, set -dopenai.api.key]
 ```

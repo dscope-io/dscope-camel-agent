@@ -53,3 +53,13 @@
 - runId: f092ec5f-f6df-4695-b48e-cb84e89bf194
 - Response preview: {"ticketId":"TCK-4EC544BF99BDB05-0000000000000013","status":"OPEN","summary":"Now open a support ticket using that prior troubleshooting context.","assignedQueue":"L1-SUPPORT","message":"Support ticket created successful...
 
+## Post-Report Voice UI/Transcript Updates
+
+The matrix above predates subsequent `/agui/ui` voice enhancements. Current sample behavior includes:
+
+- single dynamic voice toggle button (`Start Voice`/`Stop Voice` with busy state)
+- pause profile selector with VAD silence mapping (`800ms`/`1200ms`/`1800ms`)
+- pause timeout shown in label and listening status
+- WebRTC transcript log panel with clear action
+- output transcript de-duplication (one final assistant voice-output transcript message)
+

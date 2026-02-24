@@ -14,16 +14,19 @@ import io.dscope.camel.agent.kernel.DefaultAgentKernel;
 import io.dscope.camel.agent.kernel.InMemoryPersistenceFacade;
 import io.dscope.camel.agent.kernel.StaticAiModelClient;
 import io.dscope.camel.agent.model.AgentBlueprint;
+import io.dscope.camel.agent.model.RealtimeSpec;
 import io.dscope.camel.agent.model.ToolPolicy;
 import io.dscope.camel.agent.model.ToolSpec;
 import io.dscope.camel.agent.registry.CorrelationRegistry;
 import io.dscope.camel.agent.registry.DefaultToolRegistry;
+import io.dscope.camel.agent.runtime.RealtimeConfigResolver;
 import io.dscope.camel.agent.validation.SchemaValidator;
 import io.dscope.camel.mcp.McpClient;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.camel.Endpoint;
@@ -41,7 +44,7 @@ public class AgentComponent extends DefaultComponent {
         setProperties(endpoint, parameters);
 
         BlueprintLoader blueprintLoader = new MarkdownBlueprintLoader();
-        AgentBlueprint loadedBlueprint = blueprintLoader.load(endpoint.getBlueprint());
+        AgentBlueprint loadedBlueprint = applyRealtimeFallback(blueprintLoader.load(endpoint.getBlueprint()));
 
         ObjectMapper mapper = findRegistry(ObjectMapper.class).orElseGet(ObjectMapper::new);
         ProducerTemplate producerTemplate = getCamelContext().createProducerTemplate();
@@ -123,7 +126,9 @@ public class AgentComponent extends DefaultComponent {
             blueprint.systemInstruction(),
             List.copyOf(resolvedTools),
             blueprint.jsonRouteTemplates(),
-            List.copyOf(catalogs)
+            List.copyOf(catalogs),
+            blueprint.realtime(),
+            blueprint.aguiPreRun()
         );
     }
 
@@ -173,5 +178,41 @@ public class AgentComponent extends DefaultComponent {
 
     private boolean isMcpEndpoint(String endpointUri) {
         return endpointUri != null && endpointUri.startsWith("mcp:");
+    }
+
+    private AgentBlueprint applyRealtimeFallback(AgentBlueprint blueprint) {
+        RealtimeSpec resolvedRealtime = RealtimeConfigResolver.resolve(blueprint.realtime(), this::runtimeProperty);
+        if (Objects.equals(resolvedRealtime, blueprint.realtime())) {
+            return blueprint;
+        }
+        return new AgentBlueprint(
+            blueprint.name(),
+            blueprint.version(),
+            blueprint.systemInstruction(),
+            blueprint.tools(),
+            blueprint.jsonRouteTemplates(),
+            blueprint.mcpToolCatalogs(),
+            resolvedRealtime,
+            blueprint.aguiPreRun()
+        );
+    }
+
+    private String runtimeProperty(String key) {
+        if (key == null || key.isBlank()) {
+            return null;
+        }
+        try {
+            String value = getCamelContext().resolvePropertyPlaceholders("{{" + key + ":}}"
+            );
+            if (value == null || value.isBlank()) {
+                return null;
+            }
+            if (value.contains("{{") && value.contains("}}")) {
+                return null;
+            }
+            return value.trim();
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 }

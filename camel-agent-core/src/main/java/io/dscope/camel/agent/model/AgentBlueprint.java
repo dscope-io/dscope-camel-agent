@@ -9,7 +9,9 @@ public record AgentBlueprint(
     String systemInstruction,
     List<ToolSpec> tools,
     List<JsonRouteTemplateSpec> jsonRouteTemplates,
-    List<JsonNode> mcpToolCatalogs
+    List<JsonNode> mcpToolCatalogs,
+    RealtimeSpec realtime,
+    AgUiPreRunSpec aguiPreRun
 ) {
 
     public AgentBlueprint(
@@ -19,6 +21,52 @@ public record AgentBlueprint(
         List<ToolSpec> tools,
         List<JsonRouteTemplateSpec> jsonRouteTemplates
     ) {
-        this(name, version, systemInstruction, tools, jsonRouteTemplates, List.of());
+        this(name, version, systemInstruction, tools, jsonRouteTemplates, List.of(), null, null);
+    }
+
+    public AgentBlueprint(
+        String name,
+        String version,
+        String systemInstruction,
+        List<ToolSpec> tools,
+        List<JsonRouteTemplateSpec> jsonRouteTemplates,
+        List<JsonNode> mcpToolCatalogs
+    ) {
+        this(name, version, systemInstruction, tools, jsonRouteTemplates, mcpToolCatalogs, null, null);
+    }
+
+    public AgentBlueprint(
+        String name,
+        String version,
+        String systemInstruction,
+        List<ToolSpec> tools,
+        List<JsonRouteTemplateSpec> jsonRouteTemplates,
+        RealtimeSpec realtime
+    ) {
+        this(name, version, systemInstruction, tools, jsonRouteTemplates, List.of(), realtime, null);
+    }
+
+    public AgentBlueprint(
+        String name,
+        String version,
+        String systemInstruction,
+        List<ToolSpec> tools,
+        List<JsonRouteTemplateSpec> jsonRouteTemplates,
+        RealtimeSpec realtime,
+        AgUiPreRunSpec aguiPreRun
+    ) {
+        this(name, version, systemInstruction, tools, jsonRouteTemplates, List.of(), realtime, aguiPreRun);
+    }
+
+    public AgentBlueprint(
+        String name,
+        String version,
+        String systemInstruction,
+        List<ToolSpec> tools,
+        List<JsonRouteTemplateSpec> jsonRouteTemplates,
+        List<JsonNode> mcpToolCatalogs,
+        RealtimeSpec realtime
+    ) {
+        this(name, version, systemInstruction, tools, jsonRouteTemplates, mcpToolCatalogs, realtime, null);
     }
 }

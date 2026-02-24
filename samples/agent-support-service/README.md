@@ -38,6 +38,12 @@ mvn -f samples/agent-support-service/pom.xml \
   -Daudit.api.enabled=false \
   clean compile exec:java
 ```
+If port `8080` is already in use, launcher auto-selects the next free port (scan window: `8080..8100` by default) and prints it.
+
+Optional environment overrides:
+
+- `AGENT_PORT` (default `8080`)
+- `AGENT_PORT_SCAN_MAX` (default `20`)
 
 Or use the helper script (auto-loads `.agent-secrets.properties`):
 
@@ -48,6 +54,52 @@ samples/agent-support-service/run-sample.sh
 Then open:
 
 - `http://localhost:8080/agui/ui` for the frontend
+- Use the single voice toggle button in the UI to start/stop mic streaming to realtime.
+
+## Manual Verification Checklist (Web + Realtime)
+
+1. Start the sample:
+
+```bash
+samples/agent-support-service/run-sample.sh
+```
+
+2. Confirm service is listening:
+
+```bash
+lsof -nP -iTCP:8080 -sTCP:LISTEN | cat
+```
+
+3. Open UI in browser:
+
+- `http://localhost:8080/agui/ui`
+
+4. Web chat check:
+
+- Send: `My login is failing, please open a support ticket`.
+- Expect assistant response and ticket JSON/widget behavior.
+
+5. Realtime voice check (browser):
+
+- Keep `Pause` profile on `Normal` (or choose `Fast`/`Patient` based on preference).
+- Click `Start Voice`, allow microphone access.
+- Speak a short ticket request (for example: `Please open and escalate a ticket for repeated login failures`).
+- Click `Stop Voice`.
+- Expect transcription routed to agent flow and assistant response (plus audio playback when realtime audio deltas are produced).
+- In transcript log, expect one `voice output transcript` assistant message per response (no duplicate compressed variant).
+
+6. Optional API-level realtime sanity check:
+
+```bash
+curl -s -X POST http://localhost:8080/realtime/session/voice-check-1/event \
+   -H 'Content-Type: application/json' \
+   -d '{"type":"session.state"}'
+```
+
+7. Expected fallback behavior without valid OpenAI credentials:
+
+- AGUI pre-run falls back to deterministic local routing.
+- Ticket-like prompts route to `support.ticket.open`; non-ticket prompts route to `kb.search`.
 
 Or call the same AGUI endpoint used by the frontend directly (POST+SSE stream response):
 
@@ -78,6 +130,14 @@ Current UI transport model in this sample:
 2. Backend returns an SSE event stream in the same POST response (POST+SSE bridge).
 3. Frontend parses AGUI events (especially `TEXT_MESSAGE_CONTENT`) and renders assistant text.
 4. If assistant text contains ticket JSON, frontend renders a `ticket-card` widget.
+
+Voice/transcript UX in `/agui/ui`:
+
+- Single dynamic voice toggle button with idle/live/busy visual states.
+- Pause selector controls realtime VAD silence timeout (`Fast=800ms`, `Normal=1200ms`, `Patient=1800ms`).
+- Current pause milliseconds are shown in the pause label and voice listening status text.
+- WebRTC transcript log panel records input and output transcript events with a clear-log button.
+- Voice output transcript rendering is de-duplicated so only one final assistant transcript line is shown.
 
 Notes:
 
@@ -162,6 +222,96 @@ Example event payload shape:
 - `GET /agui/stream/{runId}` -> optional event stream endpoint for split transport mode
 - `GET /agui/ui` -> simple Copilot-like frontend with ticket widget rendering
 
+### AGUI Pre-Run Fallback Quick Check
+
+This sample blueprint now includes `aguiPreRun` metadata. You can verify deterministic fallback routing (without valid OpenAI credentials) by calling `POST /agui/agent` with a ticket-oriented prompt:
+
+```bash
+curl -N -X POST http://localhost:8080/agui/agent \
+   -H 'Content-Type: application/json' \
+   -d '{
+      "threadId":"agui-prerun-demo-1",
+      "sessionId":"agui-prerun-demo-1",
+      "messages":[{"role":"user","content":"Please escalate and open a support ticket for repeated login failures"}]
+   }'
+```
+
+Expected result:
+
+- AGUI pre-run processor invokes the normal agent endpoint first.
+- If response indicates key/auth failure (or is empty), fallback selects ticket route based on blueprint `aguiPreRun.fallback.ticketKeywords` and tool metadata (`support.ticket.open` -> `direct:support-ticket-open`).
+- SSE output contains assistant text with ticket payload that the sample UI renders as a `ticket-card` widget.
+
+## Realtime Relay Endpoint (Foundation)
+
+For voice-agent foundation wiring, sample exposes:
+
+- `POST /realtime/session/{conversationId}/event`
+
+Current behavior:
+
+- accepts JSON event payloads with at least `type`
+- when `type = transcript.final` and text is provided (`text` or `payload.text`), forwards transcript into the same `agent:` blueprint/tool flow
+- returns JSON acknowledgment with `assistantMessage` when routed
+- supports OpenAI Realtime WebSocket relay session lifecycle:
+   - `session.start` (connects to OpenAI Realtime endpoint and optional `session.update`)
+   - relay events such as `input_audio_buffer.append`, `input_audio_buffer.commit`, `response.create`
+   - `session.state` (returns connection + buffered relay events)
+   - `session.close` / `session.stop` (closes relay session)
+- route-to-session context update:
+   - when `transcript.final` is routed to Camel agent/tool routes, route output can include a session-context patch
+   - accepted patch sources (first match wins):
+      - exchange header: `realtimeSessionUpdate` (or aliases `realtime.session.update`, `sessionUpdate`)
+      - exchange property: `realtimeSessionUpdate` (or aliases `realtime.session.update`, `sessionUpdate`)
+      - assistant JSON body fields: `realtimeSessionUpdate`, `realtimeSession`, `sessionUpdate`
+   - patch is deep-merged into the in-memory realtime browser session context for the same `conversationId`
+   - token endpoint (`/realtime/session/{conversationId}/token`) then uses the merged context on next mint
+   - response now includes `sessionContextUpdated: true|false`
+- Browser UI behavior:
+   - voice toggle start sends `session.start`, captures mic, streams `input_audio_buffer.append` chunks
+   - voice toggle stop sends `input_audio_buffer.commit`, `response.create`, and `session.close`
+   - finalized transcription events are forwarded as `transcript.final` into the same blueprint/tool flow
+   - realtime assistant audio deltas (for example `response.audio.delta`) are decoded as PCM16 and played in-browser
+   - output transcript finalization prefers completed transcript payloads and avoids duplicate transcript message emission
+
+Example route patch (YAML):
+
+```yaml
+- route:
+    id: support-ticket-open
+    from:
+      uri: direct:support-ticket-open
+      steps:
+        - setHeader:
+            name: realtimeSessionUpdate
+            constant: '{"metadata":{"lastTool":"support.ticket.open"},"audio":{"output":{"voice":"alloy"}}}'
+        - setBody:
+            simple: '{"ticketId":"TCK-${exchangeId}","status":"OPEN","summary":"${body[query]}"}'
+```
+
+Example start call:
+
+```bash
+curl -s -X POST http://localhost:8080/realtime/session/voice-1/event \
+   -H 'Content-Type: application/json' \
+   -d '{
+      "type":"session.start",
+      "session":{
+         "voice":"alloy",
+         "input_audio_format":"pcm16",
+         "output_audio_format":"pcm16"
+      }
+   }'
+```
+
+Example transcript-to-agent call:
+
+```bash
+curl -s -X POST http://localhost:8080/realtime/session/voice-1/event \
+   -H 'Content-Type: application/json' \
+   -d '{"type":"transcript.final","text":"Please open a support ticket for repeated login failures"}'
+```
+
 ## Test Scenarios
 
 Run sample integration tests:
@@ -191,6 +341,38 @@ Notable keys:
 - `agent.runtime.spring-ai.provider=openai`
 - `agent.runtime.spring-ai.openai.api-mode=chat`
 - `agent.runtime.spring-ai.model=gpt-4o-mini`
+- `agent.runtime.ai.mode=realtime` is now recognized for realtime relay foundation bootstrap (you can override `aiModelClient` bean for custom realtime adapter)
+- shared bootstrap now binds AGUI defaults, AGUI pre-run processor, realtime relay client, and realtime event processor (if missing)
+- `agent.runtime.realtime.processor-bean-name=supportRealtimeEventProcessor`
+- `agent.runtime.realtime.agent-endpoint-uri=agent:support?blueprint={{agent.blueprint}}`
+- relay reconnect policy is configurable via `agent.runtime.realtime.reconnect.*`:
+   - `max-send-retries` (default `3`)
+   - `max-reconnects` (default `8`)
+   - `initial-backoff-ms` (default `150`)
+   - `max-backoff-ms` (default `2000`)
+- AGUI pre-run processor is now shared from core (`AgentAgUiPreRunTextProcessor`) and can be configured via `agent.runtime.agui.pre-run.*` (or alias `agent.agui.pre-run.*`):
+   - `agent-endpoint-uri`
+   - `fallback-enabled`
+   - `fallback.kb-tool-name`, `fallback.ticket-tool-name`
+   - `fallback.kb-uri`, `fallback.ticket-uri` (optional explicit overrides)
+   - `fallback.ticket-keywords`
+   - `fallback.error-markers`
+   - sample blueprint also demonstrates this via `aguiPreRun` in `agents/support/agent.md`
+
+Blueprint support added (foundation phase):
+
+- `agents/support/agent.md` supports a top-level `realtime` section.
+- If `realtime` is absent (or fields are missing) in blueprint, runtime falls back to `application.yaml` properties under:
+   - `agent.runtime.realtime.*` (primary)
+   - `agent.realtime.*` (alias)
+- Sample currently demonstrates fallback by defining realtime defaults in `application.yaml`.
+- Reconnect policy can be configured from either source:
+   - blueprint `realtime.reconnect.{maxSendRetries,maxReconnects,initialBackoffMs,maxBackoffMs}`
+   - or `application.yaml` as `agent.runtime.realtime.reconnect.*` / `agent.realtime.reconnect.*`
+- AGUI pre-run fallback routes can be derived from blueprint tool metadata when explicit URIs are not set:
+   - uses `tools[].endpointUri` first
+   - else derives `direct:<tools[].routeId>`
+- AGUI pre-run config precedence is: blueprint `aguiPreRun` -> `application.yaml` (`agent.runtime.agui.pre-run.*`) -> alias (`agent.agui.pre-run.*`) -> defaults.
 
 ### Optional: Separate JDBC for Audit Trail
 
@@ -237,6 +419,45 @@ agent:
    - local Maven snapshots may be stale.
    - rebuild/install from repo root:
    - `mvn -f pom.xml -pl camel-agent-core,camel-agent-spring-ai,camel-agent-persistence-dscope,samples/agent-support-service -am -DskipTests clean install`
+
+### Troubleshooting Grep Cookbook
+
+Use these against your live file (for example `/tmp/agent-support-live.log`) to isolate each stage quickly.
+
+- Realtime relay lifecycle (`OpenAiRealtimeRelayClient`):
+   ```bash
+   grep -nE "Realtime relay connected|Realtime relay event sent|Realtime relay send failed|Realtime relay reconnecting|Realtime relay reconnected|Realtime relay closed|Realtime websocket (opened|closed|error)" /tmp/agent-support-live.log
+   ```
+
+- Realtime ingress + routing (`RealtimeEventProcessor`):
+   ```bash
+   grep -nE "Realtime event received|Realtime session\.start connected|Realtime relay event forwarded|Realtime transcript received|Realtime transcript routed|Realtime event not routed to agent|Realtime config resolved" /tmp/agent-support-live.log
+   ```
+
+- Kernel model/tool execution (`DefaultAgentKernel`):
+   ```bash
+   grep -nE "Kernel handleUserMessage started|Kernel model response received|Kernel tool execution (started|completed)|Kernel tool fallback captured|Kernel assistant fallback used from tool result|Kernel final assistant message ready|Kernel handleUserMessage completed" /tmp/agent-support-live.log
+   ```
+
+- AGUI pre-run decisions (`AgentAgUiPreRunTextProcessor`):
+   ```bash
+   grep -nE "AGUI pre-run started|AGUI pre-run primary agent response|AGUI pre-run fallback triggered|AGUI pre-run primary agent failed|AGUI pre-run deterministic fallback route|AGUI pre-run completed" /tmp/agent-support-live.log
+   ```
+
+- Runtime bootstrap bindings (`AgentRuntimeBootstrap`):
+   ```bash
+   grep -nE "Agent runtime bootstrap started|Agent runtime persistence selected|Agent runtime AI model client bound|Agent runtime AGUI|Agent runtime realtime|Agent runtime bootstrap completed" /tmp/agent-support-live.log
+   ```
+
+- End-to-end voice transcript -> ticket triage view:
+   ```bash
+   grep -nE "Realtime transcript received|Realtime transcript routed|Kernel realtime transcript routing|Kernel tool execution started:.*support\.ticket\.open|Kernel tool execution completed:.*support\.ticket\.open|Kernel final assistant message ready" /tmp/agent-support-live.log
+   ```
+
+- Follow only new troubleshooting lines live (low-noise tail):
+   ```bash
+   tail -f /tmp/agent-support-live.log | grep -E "Realtime relay|Realtime transcript|Kernel |AGUI pre-run|Agent runtime bootstrap"
+   ```
 
 - Tests unexpectedly skipped
    - check if `maven.test.skip=true` is set in env/system properties.

@@ -6,6 +6,8 @@ import io.dscope.camel.agent.kernel.DefaultAgentKernel;
 import io.dscope.camel.agent.kernel.InMemoryPersistenceFacade;
 import io.dscope.camel.agent.kernel.StaticAiModelClient;
 import io.dscope.camel.agent.model.AgentBlueprint;
+import io.dscope.camel.agent.model.AiToolCall;
+import io.dscope.camel.agent.model.ModelResponse;
 import io.dscope.camel.agent.model.TaskStatus;
 import io.dscope.camel.agent.model.ToolPolicy;
 import io.dscope.camel.agent.model.ToolResult;
@@ -200,5 +202,63 @@ class DefaultAgentKernelTest {
             .filter(event -> "mcp.tools.discovered".equals(event.type()))
             .count();
         Assertions.assertEquals(1, discoveryEvents);
+    }
+
+    @Test
+    void shouldRouteRealtimeTranscriptFinalIntoUserMessageFlow() {
+        ObjectMapper mapper = new ObjectMapper();
+        ToolSpec toolSpec = new ToolSpec("echo", "echo", "echo", null, null, null, new ToolPolicy(false, 0, 1000));
+        AgentBlueprint blueprint = blueprint(toolSpec);
+        ToolExecutor noOpExecutor = (tool, args, ctx) -> new ToolResult("ok", mapper.createObjectNode(), List.of());
+        InMemoryPersistenceFacade persistence = new InMemoryPersistenceFacade();
+
+        DefaultAgentKernel kernel = new DefaultAgentKernel(
+            blueprint,
+            new DefaultToolRegistry(blueprint.tools()),
+            noOpExecutor,
+            new StaticAiModelClient(),
+            persistence,
+            new SchemaValidator(),
+            mapper
+        );
+
+        var realtimePayload = mapper.createObjectNode().put("text", "voice transcript hello");
+        var response = kernel.handleRealtimeEvent("c-voice", "transcript.final", realtimePayload);
+
+        Assertions.assertEquals("c-voice", response.conversationId());
+        Assertions.assertTrue(response.events().stream().anyMatch(e -> "realtime.transcript.final".equals(e.type())));
+        Assertions.assertTrue(response.events().stream().anyMatch(e -> "assistant.message".equals(e.type())));
+    }
+
+    @Test
+    void shouldFallbackAssistantMessageToToolResultWhenModelMessageBlank() {
+        ObjectMapper mapper = new ObjectMapper();
+        ToolSpec toolSpec = new ToolSpec("support.ticket.open", "ticket", null, null, null, null, new ToolPolicy(false, 0, 1000));
+        AgentBlueprint blueprint = blueprint(toolSpec);
+        ToolExecutor toolExecutor = (tool, args, ctx) -> {
+            var data = mapper.createObjectNode()
+                .put("ticketId", "TCK-123")
+                .put("status", "OPEN");
+            return new ToolResult("", data, List.of());
+        };
+        InMemoryPersistenceFacade persistence = new InMemoryPersistenceFacade();
+
+        DefaultAgentKernel kernel = new DefaultAgentKernel(
+            blueprint,
+            new DefaultToolRegistry(blueprint.tools()),
+            toolExecutor,
+            (systemPrompt, history, tools, options, callback) -> new ModelResponse(
+                "",
+                List.of(new AiToolCall("support.ticket.open", mapper.createObjectNode())),
+                true
+            ),
+            persistence,
+            new SchemaValidator(),
+            mapper
+        );
+
+        var response = kernel.handleUserMessage("c-tool-fallback", "open ticket");
+        Assertions.assertFalse(response.message().isBlank());
+        Assertions.assertTrue(response.message().contains("ticketId"));
     }
 }

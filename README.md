@@ -19,6 +19,10 @@
 - DScope persistence: `1.1.0`
 - DScope AGUI: `1.1.0`
 
+## Release Notes
+
+- Changelog: `docs/CHANGELOG.md`
+
 ## Build
 
 ```bash
@@ -265,6 +269,21 @@ tools:
 - `/agui/stream/{runId}` is available for split-transport clients
 
 For run commands and endpoint examples, see `samples/agent-support-service/README.md`.
+
+Realtime note:
+
+- `POST /realtime/session/{conversationId}/event` supports route-driven session-context updates after `transcript.final` routing.
+- Agent/tool routes can return a patch via exchange header/property (`realtimeSessionUpdate`, aliases: `realtime.session.update`, `sessionUpdate`) or assistant JSON body (`realtimeSessionUpdate`, `realtimeSession`, `sessionUpdate`).
+- Patch is deep-merged into browser session context for the same `conversationId`; next `/realtime/session/{conversationId}/token` uses merged context.
+
+Voice UX and transcript updates (sample frontend):
+
+- Single dynamic voice toggle button (`Start Voice`/`Stop Voice`) with idle/live/busy states.
+- Runtime-selectable pause profiles for VAD (`Fast=800ms`, `Normal=1200ms`, `Patient=1800ms`) applied to relay and WebRTC session config.
+- Pause milliseconds shown in both listening status text and the pause label (`Pause (<ms>ms)`).
+- Mobile behavior uses icon-only voice button while preserving dynamic `title` and `aria-label` text.
+- WebRTC transcript log panel includes input/output transcript lines and clear-log action.
+- Voice output transcript de-duplication ensures one final assistant transcript entry per completed output (with spacing preserved).
 
 ## Phase-2 Runtime Commands
 

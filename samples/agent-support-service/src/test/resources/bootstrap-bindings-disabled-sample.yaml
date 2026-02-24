@@ -1,0 +1,9 @@
+agent:
+  runtime:
+    agent-routes-enabled: false
+    agui:
+      bind-default-beans: false
+      bind-pre-run-processor: false
+    realtime:
+      bind-relay: false
+      bind-processor: false

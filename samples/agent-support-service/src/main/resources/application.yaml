@@ -14,12 +14,46 @@ spring:
       api-key: ${OPENAI_API_KEY}
       base-url: https://api.openai.com
 
+openai:
+  api:
+    key: ${OPENAI_API_KEY}
+
 agent:
   runtime:
     routes-include-pattern: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ag-ui-platform.camel.yaml
     agent-routes-enabled: true
     ai:
       mode: spring-ai
+    realtime:
+      processor-bean-name: supportRealtimeEventProcessor
+      agent-endpoint-uri: agent:support?blueprint={{agent.blueprint}}
+      # Server-side TTL for browser WebRTC init context (conversationId -> session template)
+      browser-session-ttl-ms: 600000
+      prefer-core-token-processor: true
+      require-init-session: true
+      provider: openai
+      model: gpt-4o-realtime-preview
+      language: en
+      voice: alloy
+      transport: server-relay
+      endpoint-uri: wss://api.openai.com/v1/realtime
+      input-audio-format: pcm16
+      output-audio-format: pcm16
+      retention-policy: metadata_transcript
+      reconnect:
+        max-send-retries: 3
+        max-reconnects: 8
+        initial-backoff-ms: 150
+        max-backoff-ms: 2000
+    agui:
+      pre-run:
+        agent-endpoint-uri: agent:support?blueprint={{agent.blueprint}}
+        fallback-enabled: true
+        fallback:
+          kb-tool-name: kb.search
+          ticket-tool-name: support.ticket.open
+          ticket-keywords: ticket,open,create,submit,escalate
+          error-markers: api key is missing,openai api key,set -dopenai.api.key
     spring-ai:
       provider: openai
       # OpenAI mode in this Spring AI gateway: chat

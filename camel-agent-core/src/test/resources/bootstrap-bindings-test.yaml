@@ -1,0 +1,11 @@
+agent:
+  runtime:
+    agent-routes-enabled: false
+    agui:
+      bind-default-beans: true
+      bind-pre-run-processor: true
+    realtime:
+      bind-relay: true
+      bind-processor: true
+      processor-bean-name: supportRealtimeEventProcessor
+      agent-endpoint-uri: agent:test?blueprint={{agent.blueprint}}
