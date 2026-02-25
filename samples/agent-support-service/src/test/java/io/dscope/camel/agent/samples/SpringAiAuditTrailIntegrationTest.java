@@ -1,8 +1,26 @@
 package io.dscope.camel.agent.samples;
 
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
+
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 import io.dscope.camel.agent.api.PersistenceFacade;
 import io.dscope.camel.agent.blueprint.MarkdownBlueprintLoader;
 import io.dscope.camel.agent.kernel.DefaultAgentKernel;
@@ -17,21 +35,6 @@ import io.dscope.camel.agent.springai.MultiProviderSpringAiChatGateway;
 import io.dscope.camel.agent.springai.SpringAiChatGateway;
 import io.dscope.camel.agent.springai.SpringAiModelClient;
 import io.dscope.camel.agent.validation.SchemaValidator;
-import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Assumptions;
-import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.memory.ChatMemoryRepository;
-import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.messages.Message;
-import org.springframework.ai.chat.messages.UserMessage;
 
 class SpringAiAuditTrailIntegrationTest {
 
@@ -103,8 +106,8 @@ class SpringAiAuditTrailIntegrationTest {
         AgentResponse first = kernel.handleUserMessage(conversationId, firstPrompt);
         AgentResponse second = kernel.handleUserMessage(conversationId, secondPrompt);
 
-        Assertions.assertEquals("", first.message());
-        Assertions.assertEquals("", second.message());
+        Assertions.assertEquals("Knowledge base result for " + firstPrompt, first.message());
+        Assertions.assertEquals("Support ticket created successfully", second.message());
         Assertions.assertEquals("kb.search", toolName(first.events()));
         Assertions.assertEquals("support.ticket.open", toolName(second.events()));
         Assertions.assertTrue(gateway.sawKnowledgeBaseInSecondTurn(), "Second turn should include first-turn KB result in evaluation context");
@@ -157,7 +160,7 @@ class SpringAiAuditTrailIntegrationTest {
         String prompt = "Please file a support ticket for my login issue";
         AgentResponse response = kernel.handleUserMessage(conversationId, prompt);
 
-        Assertions.assertEquals("", response.message());
+        Assertions.assertEquals("Support ticket created successfully", response.message());
         Assertions.assertEquals("support.ticket.open", toolName(response.events()));
         Assertions.assertFalse(gateway.sawKnowledgeBaseInSecondTurn(),
             "Gateway should not detect KB context when no KB turn happened before ticket request");

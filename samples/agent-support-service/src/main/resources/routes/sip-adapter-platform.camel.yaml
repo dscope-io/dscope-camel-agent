@@ -1,0 +1,41 @@
+- route:
+    id: sip-adapter-v1-call-start
+    from:
+      id: fromSipAdapterCallStart
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/sip/adapter/v1/session/{conversationId}/start?httpMethodRestrict=POST
+      steps:
+        - process:
+            id: processSipAdapterCallStartEnvelope
+            ref: supportSipSessionInitEnvelopeProcessor
+        - process:
+            id: processSipAdapterCallStartInit
+            ref: supportRealtimeSessionInitProcessor
+
+- route:
+    id: sip-adapter-v1-transcript-final
+    from:
+      id: fromSipAdapterTranscriptFinal
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/sip/adapter/v1/session/{conversationId}/turn?httpMethodRestrict=POST
+      steps:
+        - process:
+            id: processSipAdapterTranscriptEnvelope
+            ref: supportSipTranscriptFinalProcessor
+        - process:
+            id: processSipAdapterTranscriptEvent
+            ref: supportRealtimeEventProcessorCore
+
+- route:
+    id: sip-adapter-v1-call-end
+    from:
+      id: fromSipAdapterCallEnd
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/sip/adapter/v1/session/{conversationId}/end?httpMethodRestrict=POST
+      steps:
+        - process:
+            id: processSipAdapterCallEnd
+            ref: supportSipCallEndProcessor

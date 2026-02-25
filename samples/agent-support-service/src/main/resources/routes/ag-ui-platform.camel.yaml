@@ -94,6 +94,38 @@
             id: process0f61
             ref: agUiSseProcessor
 - route:
+    id: agui-agent-rpc-websocket
+    from:
+      id: fromAguiRpcWebsocket
+      uri: undertow:ws://0.0.0.0:{{agui.rpc.port:8080}}/agui/rpc
+      steps:
+        - doTry:
+            id: doTryAguiRpcWebsocket
+            doCatch:
+              - id: doCatchAguiRpcWebsocket
+                exception:
+                  - java.lang.Exception
+                steps:
+                  - process:
+                      id: processAguiRpcWebsocketError
+                      ref: agUiErrorProcessor
+            steps:
+              - process:
+                  id: processAguiRpcWebsocketEnvelope
+                  ref: agUiAgentEnvelopeProcessor
+              - process:
+                  id: processAguiRpcWebsocketRequest
+                  ref: agUiAgentRequestProcessor
+              - process:
+                  id: processAguiRpcWebsocketBridge
+                  ref: agUiPostSseBridgeProcessor
+              - process:
+                  id: processAguiRpcWebsocketSse
+                  ref: agUiSseProcessor
+              - to:
+                  id: toAguiRpcWebsocketReply
+                  uri: undertow:ws://0.0.0.0:{{agui.rpc.port:8080}}/agui/rpc?sendToAll=true
+- route:
     id: agui-ui
     from:
       id: from67ef
@@ -130,7 +162,7 @@
       steps:
         - process:
             id: processf201
-            ref: supportRealtimeEventProcessor
+            ref: supportRealtimeEventProcessorCore
 
 - route:
     id: realtime-session-token

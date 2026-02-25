@@ -359,8 +359,30 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
         if (idx < 0 || idx + 1 >= lines.length) {
             return null;
         }
-        String next = lines[idx + 1].trim();
-        return next.isEmpty() ? null : next;
+
+        int start = idx + 1;
+        while (start < lines.length && lines[start].trim().isEmpty()) {
+            start++;
+        }
+        if (start >= lines.length) {
+            return null;
+        }
+
+        StringBuilder out = new StringBuilder();
+        for (int i = start; i < lines.length; i++) {
+            String current = lines[i];
+            String trimmed = current.trim();
+            if (trimmed.startsWith("## ")) {
+                break;
+            }
+            if (out.length() > 0) {
+                out.append('\n');
+            }
+            out.append(trimmed);
+        }
+
+        String instruction = out.toString().trim();
+        return instruction.isEmpty() ? null : instruction;
     }
 
     private JsonNode mergedYamlConfig(String markdown) {

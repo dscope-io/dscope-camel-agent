@@ -20,13 +20,14 @@ openai:
 
 agent:
   runtime:
-    routes-include-pattern: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ag-ui-platform.camel.yaml
+    routes-include-pattern: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/sip-adapter-platform.camel.yaml
     agent-routes-enabled: true
     ai:
       mode: spring-ai
     realtime:
-      processor-bean-name: supportRealtimeEventProcessor
+      processor-bean-name: supportRealtimeEventProcessorCore
       agent-endpoint-uri: agent:support?blueprint={{agent.blueprint}}
+      agent-profile-purpose-max-chars: 0
       # Server-side TTL for browser WebRTC init context (conversationId -> session template)
       browser-session-ttl-ms: 600000
       prefer-core-token-processor: true
@@ -56,8 +57,11 @@ agent:
           error-markers: api key is missing,openai api key,set -dopenai.api.key
     spring-ai:
       provider: openai
-      # OpenAI mode in this Spring AI gateway: chat
-      api-mode: chat
+      # OpenAI api-mode:
+      # - chat (default) -> Spring AI Chat Completions
+      # - responses-http -> reserved (not yet implemented)
+      # - responses-ws -> delegated to a pluggable OpenAiResponsesGateway
+      api-mode: ${AGENT_OPENAI_API_MODE:chat}
       model: gpt-4o-mini
       temperature: 0.2
       max-tokens: 800
@@ -66,6 +70,16 @@ agent:
         api-key-system-property: openai.api.key
         organization-system-property: openai.organization
         project-system-property: openai.project
+        responses-ws:
+          # Enable by switching api-mode to responses-ws.
+          endpoint-uri: wss://api.openai.com/v1/realtime
+          model: gpt-realtime
+          request-timeout-ms: 30000
+          poll-interval-ms: 50
+          max-send-retries: 3
+          max-reconnects: 8
+          initial-backoff-ms: 150
+          max-backoff-ms: 2000
       gemini:
         # Spring AI Gemini uses Vertex AI client in this module.
         model: gemini-2.5-flash

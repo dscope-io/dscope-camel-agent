@@ -50,12 +50,19 @@
 <body>
   <div class="app">
     <div class="title">Support Copilot (AGUI Protocol Sample)</div>
-    <div class="subtitle">AGUI POST+SSE over <code>/agui/agent</code> with ticket widget rendering.</div>
+    <div class="subtitle">AGUI transport switch: POST+SSE (<code>/agui/agent</code>) or WebSocket (<code>/agui/rpc</code>) with ticket widget rendering.</div>
 
     <div class="panel">
       <div id="messages" class="messages"></div>
       <form id="chat-form">
         <textarea id="prompt" placeholder="Ask a support question or request ticket creation..."></textarea>
+        <div class="controls">
+          <label for="agui-transport-mode" class="status">AGUI</label>
+          <select id="agui-transport-mode">
+            <option value="post" selected>POST + SSE</option>
+            <option value="ws">WebSocket</option>
+          </select>
+        </div>
         <button type="submit">Send</button>
       </form>
       <div class="controls">
@@ -76,9 +83,26 @@
           <option value="normal" selected>Normal</option>
           <option value="patient">Patient</option>
         </select>
+        <label for="voice-setting" class="status">Voice</label>
+        <select id="voice-setting">
+          <option value="alloy" selected>Alloy</option>
+          <option value="ash">Ash</option>
+          <option value="ballad">Ballad</option>
+          <option value="coral">Coral</option>
+          <option value="cedar">Cedar</option>
+          <option value="echo">Echo</option>
+          <option value="marin">Marin</option>
+          <option value="sage">Sage</option>
+          <option value="shimmer">Shimmer</option>
+          <option value="verse">Verse</option>
+        </select>
         <span id="voice-status" class="status">Voice idle</span>
         <span id="tts-status" class="status">TTS unknown</span>
       </div>
+      <details id="instruction-debug" class="transcript-log-wrap">
+        <summary>Instruction seed (debug)</summary>
+        <div id="instruction-debug-text" class="hint" style="padding: 8px 10px; border-top: 1px solid #314074;">Instruction seed: waiting for realtime init context…</div>
+      </details>
       <details class="transcript-log-wrap">
         <summary>WebRTC transcript log</summary>
         <pre id="webrtc-transcript-log" class="transcript-log"></pre>
@@ -94,13 +118,17 @@
     const messagesEl = document.getElementById('messages');
     const formEl = document.getElementById('chat-form');
     const promptEl = document.getElementById('prompt');
+    const aguiTransportModeEl = document.getElementById('agui-transport-mode');
     const voiceToggleEl = document.getElementById('voice-toggle');
     const transportModeEl = document.getElementById('transport-mode');
     const duplexModeEl = document.getElementById('duplex-mode');
     const vadPauseLabelEl = document.getElementById('vad-pause-label');
     const vadPauseEl = document.getElementById('vad-pause');
+    const voiceSettingEl = document.getElementById('voice-setting');
     const voiceStatusEl = document.getElementById('voice-status');
     const ttsStatusEl = document.getElementById('tts-status');
+    const instructionDebugPanelEl = document.getElementById('instruction-debug');
+    const instructionDebugEl = document.getElementById('instruction-debug-text');
     const webRtcTranscriptLogEl = document.getElementById('webrtc-transcript-log');
     const webRtcTranscriptClearEl = document.getElementById('webrtc-transcript-clear');
     let sessionId = `session-${Date.now()}`;
@@ -126,10 +154,12 @@
     let voiceActive = false;
     let voiceToggleBusy = false;
     let voiceToggleAction = 'start';
+    let aguiTransportMode = (aguiTransportModeEl?.value || 'post').toLowerCase();
     let transportMode = (transportModeEl?.value || 'relay').toLowerCase();
     let duplexMode = (duplexModeEl?.value || 'half').toLowerCase();
     let vadPauseProfile = (vadPauseEl?.value || 'normal').toLowerCase();
-    const browserTtsEnabled = false;
+    let selectedVoice = (voiceSettingEl?.value || 'alloy').toLowerCase();
+    const browserTtsEnabled = true;
     let webRtcPeerConnection = null;
     let webRtcDataChannel = null;
     let webRtcRemoteAudioEl = null;
@@ -185,8 +215,9 @@
     }
 
     function buildRealtimeSessionConfig() {
+      const voice = getSelectedVoice();
       const session = {
-        voice: 'alloy',
+        voice,
         input_audio_format: 'pcm16',
         output_audio_format: 'pcm16',
         input_audio_transcription: {
@@ -205,14 +236,18 @@
       return session;
     }
 
-    function buildWebRtcSessionConfig() {
+    function buildWebRtcSessionConfig(existingSession) {
+      const voice = getSelectedVoice();
+      const contextualInstructions = buildWebRtcInstructions(existingSession);
       return {
         type: 'realtime',
         model: 'gpt-realtime',
+        instructions: contextualInstructions,
         audio: {
           input: {
             transcription: {
-              model: 'gpt-4o-mini-transcribe'
+              model: 'gpt-4o-mini-transcribe',
+              language: 'en'
             },
             turn_detection: {
               type: 'server_vad',
@@ -222,7 +257,132 @@
             }
           },
           output: {
-            voice: 'alloy'
+            voice
+          }
+        }
+      };
+    }
+
+    function buildWebRtcInstructions(existingSession) {
+      const base = 'Respond in English only. Keep responses concise and do not switch languages unless the user explicitly asks for another language.';
+      const metadata = existingSession?.metadata?.camelAgent || {};
+      const context = metadata?.context || {};
+      const agentProfile = metadata?.agentProfile || {};
+      const seededPurpose = normalizeDisplayText(String(agentProfile?.purpose || context?.agentPurpose || '')).trim();
+      const seededFocusHint = normalizeDisplayText(String(context?.agentFocusHint || '')).trim();
+      const seededTools = Array.isArray(agentProfile?.tools)
+        ? agentProfile.tools
+            .map((toolName) => normalizeDisplayText(String(toolName || '')).trim())
+            .filter(Boolean)
+            .slice(0, 12)
+        : [];
+      const lastTranscript = normalizeDisplayText(String(metadata?.lastTranscript || '')).trim();
+      const lastAssistantMessage = normalizeDisplayText(String(metadata?.lastAssistantMessage || '')).trim();
+      let contextLines = [];
+      if (seededPurpose) {
+        contextLines.push(`Agent purpose: ${seededPurpose}`);
+      }
+      if (seededTools.length) {
+        contextLines.push(`Allowed tools: ${seededTools.join(', ')}`);
+      } else {
+        contextLines.push('Tool scope fallback: stay within support troubleshooting and ticket workflows only.');
+      }
+      if (seededFocusHint) {
+        contextLines.push(`Focus hint: ${seededFocusHint}`);
+      }
+      if (lastTranscript) {
+        contextLines.push(`Last user transcript: ${lastTranscript}`);
+      }
+      if (lastAssistantMessage) {
+        contextLines.push(`Last assistant output: ${lastAssistantMessage}`);
+      }
+
+      const recentTurns = Array.isArray(context?.recentTurns)
+        ? context.recentTurns
+            .slice(-10)
+            .map((entry) => {
+              const role = normalizeDisplayText(String(entry?.role || 'unknown')).trim();
+              const text = normalizeDisplayText(String(entry?.text || '')).trim();
+              if (!text) {
+                return '';
+              }
+              return `${role || 'unknown'}: ${text}`;
+            })
+            .filter(Boolean)
+        : [];
+      if (recentTurns.length) {
+        contextLines.push(`Recent conversation:\n${recentTurns.join('\n')}`);
+      }
+
+      if (!contextLines.length) {
+        updateInstructionDebug('Instruction seed: base only (no runtime context available yet).');
+        return base;
+      }
+
+      updateInstructionDebug(`Instruction seed: ${contextLines.join(' | ')}`);
+
+      return `${base}\n\nContinue from this existing support conversation context. Do not restart or ask unrelated generic questions.\n${contextLines.join('\n')}`;
+    }
+
+    function updateInstructionDebug(text) {
+      if (!instructionDebugEl) {
+        return;
+      }
+      const normalized = normalizeDisplayText(String(text || '')).trim();
+      if (!normalized) {
+        instructionDebugEl.textContent = 'Instruction seed: unavailable';
+        return;
+      }
+      instructionDebugEl.textContent = normalized;
+    }
+
+    function openInstructionDebugForWebRtc() {
+      if (!instructionDebugPanelEl) {
+        return;
+      }
+      if (transportMode === 'webrtc') {
+        instructionDebugPanelEl.open = true;
+      }
+    }
+
+    function getSelectedVoice() {
+      const value = (voiceSettingEl?.value || selectedVoice || 'alloy').trim().toLowerCase();
+      return value || 'alloy';
+    }
+
+    function setSelectedVoice(voice) {
+      if (!voice || typeof voice !== 'string') {
+        return;
+      }
+      const normalized = voice.trim().toLowerCase();
+      if (!normalized) {
+        return;
+      }
+      selectedVoice = normalized;
+      if (voiceSettingEl) {
+        const hasOption = Array.from(voiceSettingEl.options).some((option) => option.value === normalized);
+        if (hasOption) {
+          voiceSettingEl.value = normalized;
+        }
+      }
+    }
+
+    function extractVoiceFromSession(session) {
+      if (!session || typeof session !== 'object') {
+        return '';
+      }
+      return firstNonEmptyString([
+        session.voice,
+        session.audio?.output?.voice
+      ]).toLowerCase();
+    }
+
+    function buildVoiceSessionPatch() {
+      const voice = getSelectedVoice();
+      return {
+        audio: {
+          output: {
+            voice
           }
         }
       };
@@ -412,6 +572,103 @@
         }
       }
       return events;
+    }
+
+    function normalizeAguiEventLike(raw) {
+      if (!raw || typeof raw !== 'object') {
+        return null;
+      }
+      const eventType = raw.eventType || raw.event || raw.type || '';
+      const data = raw.data && typeof raw.data === 'object' ? raw.data : raw;
+      return { eventType, data };
+    }
+
+    function parseAguiEventsFromWebSocketPayload(payload) {
+      const text = (payload || '').trim();
+      if (!text) {
+        return [];
+      }
+
+      if (text.includes('event:') && text.includes('data:')) {
+        return parseSseEvents(text);
+      }
+
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) {
+          return parsed.map(normalizeAguiEventLike).filter(Boolean);
+        }
+        const normalized = normalizeAguiEventLike(parsed);
+        return normalized ? [normalized] : [];
+      } catch (_) {
+        return [];
+      }
+    }
+
+    async function sendPromptViaWebSocket(request) {
+      return new Promise((resolve, reject) => {
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const socket = new WebSocket(`${protocol}://${window.location.host}/agui/rpc`);
+        const events = [];
+        let finished = false;
+
+        const finish = (error, result) => {
+          if (finished) {
+            return;
+          }
+          finished = true;
+          try {
+            socket.close();
+          } catch (_) {
+          }
+          if (error) {
+            reject(error);
+          } else {
+            resolve(result);
+          }
+        };
+
+        const timeout = setTimeout(() => {
+          if (events.length) {
+            finish(null, events);
+          } else {
+            finish(new Error('AGUI WebSocket timeout waiting for events'));
+          }
+        }, 15000);
+
+        socket.addEventListener('open', () => {
+          socket.send(JSON.stringify(request));
+        });
+
+        socket.addEventListener('message', (message) => {
+          const parsed = parseAguiEventsFromWebSocketPayload(String(message.data || ''));
+          if (parsed.length) {
+            events.push(...parsed);
+          }
+          const runFinished = parsed.some((event) => {
+            const type = event.eventType || event.data?.type || '';
+            return type === 'RUN_FINISHED' || type === 'RUN_ERROR';
+          });
+          if (runFinished) {
+            clearTimeout(timeout);
+            finish(null, events);
+          }
+        });
+
+        socket.addEventListener('error', () => {
+          clearTimeout(timeout);
+          finish(new Error('AGUI WebSocket connection failed'));
+        });
+
+        socket.addEventListener('close', () => {
+          clearTimeout(timeout);
+          if (events.length) {
+            finish(null, events);
+          } else {
+            finish(new Error('AGUI WebSocket closed without events'));
+          }
+        });
+      });
     }
 
     function extractAssistantText(events) {
@@ -745,7 +1002,13 @@
           }
         });
         const responseRequested = sendWebRtcEvent({
-          type: 'response.create'
+          type: 'response.create',
+          response: {
+            modalities: ['audio', 'text'],
+            voice: 'alloy',
+            output_audio_format: 'pcm16',
+            instructions: 'Respond in English only. Confirm ticket actions briefly and avoid changing language unless user explicitly requests it.'
+          }
         });
         console.info(`[WebRTC Transcript][response-recovery]${scopeSuffix} itemCreated=${itemCreated} responseRequested=${responseRequested}`);
       }, 2200);
@@ -759,7 +1022,13 @@
         return false;
       }
       const requestEvent = {
-        type: 'response.create'
+        type: 'response.create',
+        response: {
+          modalities: ['audio', 'text'],
+          voice: 'alloy',
+          output_audio_format: 'pcm16',
+          instructions: 'Respond in English only. Confirm ticket actions briefly and avoid changing language unless user explicitly requests it.'
+        }
       };
       const sent = sendWebRtcEvent(requestEvent);
       if (sent) {
@@ -999,14 +1268,19 @@
         messages: [{ role: 'user', content: prompt }]
       };
 
-      const response = await fetch('/agui/agent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(request)
-      });
+      let events = [];
+      if (aguiTransportMode === 'ws') {
+        events = await sendPromptViaWebSocket(request);
+      } else {
+        const response = await fetch('/agui/agent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(request)
+        });
 
-      const payload = await response.text();
-      const events = parseSseEvents(payload);
+        const payload = await response.text();
+        events = parseSseEvents(payload);
+      }
       const outputText = extractAssistantText(events);
       const widget = parseTicketWidgetFromText(outputText);
 
@@ -1047,15 +1321,25 @@
     }
 
     async function initializeWebRtcSessionContext() {
+      const existing = await initializeRealtimeSessionContext(buildVoiceSessionPatch());
+      const contextAwareConfig = buildWebRtcSessionConfig(existing?.session || null);
+      return initializeRealtimeSessionContext(contextAwareConfig);
+    }
+
+    async function initializeRealtimeSessionContext(sessionPayload) {
       const response = await fetch(`/realtime/session/${encodeURIComponent(sessionId)}/init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session: buildWebRtcSessionConfig() })
+        body: JSON.stringify({ session: sessionPayload || buildVoiceSessionPatch() })
       });
       const payload = await response.json();
       if (!response.ok) {
         const err = payload?.error || `HTTP ${response.status}`;
         throw new Error(`Realtime init endpoint failed: ${err}`);
+      }
+      const resolvedVoice = extractVoiceFromSession(payload?.session);
+      if (resolvedVoice) {
+        setSelectedVoice(resolvedVoice);
       }
       return payload;
     }
@@ -1257,12 +1541,19 @@
         if (isInputTranscriptEvent && transcriptFinal && !isLikelyTranscriptFragment(transcriptFinal)) {
           const eventScope = event.item_id || event.response_id || event.id || type;
           logWebRtcTranscript('input', transcriptFinal, type, eventScope);
-          const requested = requestWebRtcResponse(type, eventScope);
-          if (requested) {
-            scheduleWebRtcResponseRecovery(transcriptFinal, eventScope);
-          }
           const key = `input:${eventScope}:${normalizeTranscriptKey(transcriptFinal)}`;
-          await routeTranscriptToRules(transcriptFinal, key, { eventScope });
+          const routed = await routeTranscriptToRules(transcriptFinal, key, { eventScope });
+
+          const shouldRequestWebRtcResponse =
+            !isWebRtcMode()
+            || routed?.realtimeVoiceBranchStarted !== false;
+
+          if (shouldRequestWebRtcResponse) {
+            const requested = requestWebRtcResponse(type, eventScope);
+            if (requested) {
+              scheduleWebRtcResponseRecovery(transcriptFinal, eventScope);
+            }
+          }
           continue;
         }
 
@@ -1273,12 +1564,14 @@
           const eventScope = event.item_id || event.response_id || event.id || '';
           logWebRtcTranscript('output', transcriptFinal, type, eventScope);
 
-          const parsedOutputJson = parseJsonPayload(transcriptFinal);
-          const inferredInputTranscript = extractIntentTranscriptFromJsonPayload(parsedOutputJson);
-          if (inferredInputTranscript && !isLikelyTranscriptFragment(inferredInputTranscript)) {
-            logWebRtcTranscript('input-inferred', inferredInputTranscript, type, eventScope);
-            const inferredKey = `input:${eventScope}:${normalizeTranscriptKey(inferredInputTranscript)}`;
-            await routeTranscriptToRules(inferredInputTranscript, inferredKey, { eventScope });
+          if (!isWebRtcMode()) {
+            const parsedOutputJson = parseJsonPayload(transcriptFinal);
+            const inferredInputTranscript = extractIntentTranscriptFromJsonPayload(parsedOutputJson);
+            if (inferredInputTranscript && !isLikelyTranscriptFragment(inferredInputTranscript)) {
+              logWebRtcTranscript('input-inferred', inferredInputTranscript, type, eventScope);
+              const inferredKey = `input:${eventScope}:${normalizeTranscriptKey(inferredInputTranscript)}`;
+              await routeTranscriptToRules(inferredInputTranscript, inferredKey, { eventScope });
+            }
           }
 
           const key = `output:${eventScope}:${normalizeTranscriptKey(transcriptFinal)}`;
@@ -1375,8 +1668,18 @@
 
         webRtcRemoteAudioEl = document.createElement('audio');
         webRtcRemoteAudioEl.autoplay = true;
+        webRtcRemoteAudioEl.playsInline = true;
+        webRtcRemoteAudioEl.muted = false;
         pc.ontrack = (event) => {
+          console.info('[WebRTC Event] remote audio track received');
           webRtcRemoteAudioEl.srcObject = event.streams[0];
+          realtimeAudioSinceResponseCreate = true;
+          clearFallbackSpeakTimer();
+          setTtsStatus('Realtime voice active', 'ok');
+          setVoiceStatus('Voice playing response...');
+          webRtcRemoteAudioEl.play().catch((error) => {
+            console.info(`[WebRTC Event] remote audio play blocked :: ${error?.message || error}`);
+          });
         };
 
         for (const track of mediaStream.getTracks()) {
@@ -1486,6 +1789,7 @@
         realtimeAudioSinceResponseCreate = false;
         clearFallbackSpeakTimer();
         setVoiceStatus('Connecting realtime session...');
+        await initializeRealtimeSessionContext(buildVoiceSessionPatch());
         await enqueueRealtimeEvent({
           type: 'session.start',
           session: buildRealtimeSessionConfig()
@@ -1672,6 +1976,7 @@
       } else {
         duplexModeEl.disabled = false;
       }
+      openInstructionDebugForWebRtc();
       if (!captureNode && !audioContext && !webRtcPeerConnection) {
         setVoiceStatus(transportMode === 'webrtc' ? 'Voice idle (WebRTC direct)' : 'Voice idle');
       }
@@ -1687,6 +1992,45 @@
       }
     });
 
+    voiceSettingEl?.addEventListener('change', async () => {
+      setSelectedVoice(voiceSettingEl.value || 'alloy');
+      try {
+        await initializeRealtimeSessionContext(buildVoiceSessionPatch());
+        if (voiceActive) {
+          if (isWebRtcMode() && webRtcDataChannel?.readyState === 'open') {
+            sendWebRtcEvent({
+              type: 'session.update',
+              session: {
+                audio: {
+                  output: {
+                    voice: getSelectedVoice()
+                  }
+                }
+              }
+            });
+          } else {
+            await enqueueRealtimeEvent({
+              type: 'session.update',
+              session: {
+                voice: getSelectedVoice()
+              }
+            });
+          }
+        }
+        setVoiceStatus(`Voice profile saved: ${getSelectedVoice()}`);
+      } catch (error) {
+        setVoiceStatus(`Voice profile save failed: ${error.message}`);
+      }
+    });
+
+      aguiTransportModeEl?.addEventListener('change', () => {
+        aguiTransportMode = (aguiTransportModeEl.value || 'post').toLowerCase();
+      });
+
+    initializeRealtimeSessionContext(buildVoiceSessionPatch()).catch(() => {
+    });
+
+    openInstructionDebugForWebRtc();
     updateVadPauseLabel();
     updateVoiceToggleButton();
 

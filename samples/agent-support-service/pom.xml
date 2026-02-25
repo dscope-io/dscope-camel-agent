@@ -13,6 +13,10 @@
   <artifactId>agent-support-service</artifactId>
   <name>Camel Agent Support Sample Service</name>
 
+  <properties>
+    <agent.openai.api.mode>chat</agent.openai.api.mode>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>io.dscope.camel</groupId>
@@ -89,6 +93,16 @@
           <classpathScope>runtime</classpathScope>
           <includeProjectDependencies>true</includeProjectDependencies>
           <includePluginDependencies>false</includePluginDependencies>
+          <systemProperties>
+            <systemProperty>
+              <key>AGENT_OPENAI_API_MODE</key>
+              <value>${agent.openai.api.mode}</value>
+            </systemProperty>
+            <systemProperty>
+              <key>agent.runtime.spring-ai.openai.api-mode</key>
+              <value>${agent.openai.api.mode}</value>
+            </systemProperty>
+          </systemProperties>
         </configuration>
       </plugin>
       <plugin>
@@ -97,4 +111,19 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <id>responses-ws</id>
+      <properties>
+        <agent.openai.api.mode>responses-ws</agent.openai.api.mode>
+      </properties>
+    </profile>
+    <profile>
+      <id>chat</id>
+      <properties>
+        <agent.openai.api.mode>chat</agent.openai.api.mode>
+      </properties>
+    </profile>
+  </profiles>
 </project>

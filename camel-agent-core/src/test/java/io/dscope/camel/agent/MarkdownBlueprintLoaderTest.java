@@ -64,4 +64,15 @@ class MarkdownBlueprintLoaderTest {
         Assertions.assertEquals(1, blueprint.aguiPreRun().fallbackErrorMarkers().size());
         Assertions.assertEquals("api key is missing", blueprint.aguiPreRun().fallbackErrorMarkers().getFirst());
     }
+
+    @Test
+    void shouldParseMultiLineSystemInstructionWithBlankLineAfterHeading() {
+        MarkdownBlueprintLoader loader = new MarkdownBlueprintLoader();
+        var blueprint = loader.load("classpath:agents/valid-agent-with-system-block.md");
+
+        Assertions.assertEquals(
+            "You are a support agent focused on login and ticket workflows.\nKeep the conversation concise and action-oriented.",
+            blueprint.systemInstruction()
+        );
+    }
 }

@@ -1,21 +1,28 @@
 package io.dscope.camel.agent.realtime;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.dscope.camel.agent.blueprint.MarkdownBlueprintLoader;
-import io.dscope.camel.agent.config.AgentHeaders;
-import io.dscope.camel.agent.model.AgentBlueprint;
-import io.dscope.camel.agent.model.RealtimeSpec;
-import io.dscope.camel.agent.runtime.RealtimeConfigResolver;
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.ProducerTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import io.dscope.camel.agent.api.PersistenceFacade;
+import io.dscope.camel.agent.blueprint.MarkdownBlueprintLoader;
+import io.dscope.camel.agent.config.AgentHeaders;
+import io.dscope.camel.agent.model.AgentBlueprint;
+import io.dscope.camel.agent.model.AgentEvent;
+import io.dscope.camel.agent.model.RealtimeSpec;
+import io.dscope.camel.agent.runtime.RealtimeConfigResolver;
 
 public class RealtimeEventProcessor implements Processor {
 
@@ -24,6 +31,8 @@ public class RealtimeEventProcessor implements Processor {
     private static final String DEFAULT_MODEL = "gpt-4o-realtime-preview";
     private static final String DEFAULT_ENDPOINT = "wss://api.openai.com/v1/realtime";
     private static final String SESSION_REGISTRY_BEAN = "supportRealtimeSessionRegistry";
+    private static final String PERSISTENCE_FACADE_BEAN = "persistenceFacade";
+    private static final int MAX_RECENT_TURNS = 16;
 
     private final RealtimeRelayClient realtimeRelayClient;
     private final String defaultAgentEndpointUri;
@@ -68,6 +77,7 @@ public class RealtimeEventProcessor implements Processor {
             .put("accepted", true);
 
         ResolvedRealtimeConfig config = resolveRealtimeConfig(exchange);
+        persistRealtimeIngressEvent(exchange, conversationId, eventType, root);
 
         if ("session.start".equals(eventType)) {
             try {
@@ -86,10 +96,10 @@ public class RealtimeEventProcessor implements Processor {
                 writeJson(exchange, response);
                 return;
             }
-            var sessionPayload = root.path("session").isObject()
-                ? root.path("session").deepCopy()
+            ObjectNode incomingSession = root.path("session").isObject()
+                ? (ObjectNode) root.path("session").deepCopy()
                 : objectMapper.createObjectNode();
-            applyConfiguredSessionDefaults(sessionPayload, config);
+            ObjectNode sessionPayload = restoreSessionStartPayload(exchange, conversationId, incomingSession, config);
             if (sessionPayload.isObject() && !sessionPayload.isEmpty()) {
                 var sessionUpdate = objectMapper.createObjectNode();
                 sessionUpdate.put("type", "session.update");
@@ -157,13 +167,30 @@ public class RealtimeEventProcessor implements Processor {
 
         if ("transcript.final".equals(eventType) && !transcript.isBlank()) {
             LOGGER.info("Realtime transcript received: conversationId={}, chars={}", conversationId, transcript.length());
-            boolean realtimeVoiceBranchStarted = maybeStartRealtimeVoiceBranch(conversationId);
-            response.put("realtimeVoiceBranchStarted", realtimeVoiceBranchStarted);
             ProducerTemplate template = exchange.getContext().createProducerTemplate();
             RouteAssistantResult routeResult = routeTranscriptToAssistant(exchange, template, conversationId, transcript);
             String assistant = routeResult.assistantMessage();
             response.put("assistantMessage", assistant == null ? "" : assistant);
-            response.put("sessionContextUpdated", applyRouteSessionUpdate(exchange, conversationId, routeResult.sessionUpdate()));
+            ObjectNode realtimeSessionUpdate = composeRealtimeSessionUpdate(routeResult.sessionUpdate(), transcript, assistant);
+            LOGGER.info("Realtime context update composed: conversationId={}, routePatchPresent={}, keys={}, transcriptChars={}, assistantChars={}",
+                conversationId,
+                routeResult.sessionUpdate() != null && !routeResult.sessionUpdate().isEmpty(),
+                summarizeObjectKeys(realtimeSessionUpdate),
+                transcript.length(),
+                assistant == null ? 0 : assistant.length());
+            boolean sessionContextUpdated = applyRouteSessionUpdate(exchange, conversationId, realtimeSessionUpdate);
+            response.put("sessionContextUpdated", sessionContextUpdated);
+            LOGGER.info("Realtime context update apply result: conversationId={}, updated={}",
+                conversationId,
+                sessionContextUpdated);
+            boolean realtimeVoiceBranchStarted = false;
+            if (sessionContextUpdated) {
+                realtimeVoiceBranchStarted = maybeStartRealtimeVoiceBranch(conversationId);
+            } else {
+                LOGGER.info("Realtime voice branch skipped because session context update was not applied: conversationId={}",
+                    conversationId);
+            }
+            response.put("realtimeVoiceBranchStarted", realtimeVoiceBranchStarted);
             var aguiMessages = objectMapper.createArrayNode();
             var transcriptMessage = objectMapper.createObjectNode()
                 .put("role", "user")
@@ -283,15 +310,207 @@ public class RealtimeEventProcessor implements Processor {
             return false;
         }
         sessionRegistry.mergeSession(conversationId, sessionUpdate);
-        LOGGER.debug("Realtime route session update applied: conversationId={}, fields={}",
+        LOGGER.info("Realtime route session update applied: conversationId={}, keys={}",
             conversationId,
-            sessionUpdate.fieldNames().hasNext());
+            summarizeObjectKeys(sessionUpdate));
         return true;
     }
 
-    private RealtimeBrowserSessionRegistry lookupSessionRegistry(Exchange exchange) {
+    private ObjectNode composeRealtimeSessionUpdate(ObjectNode routeSessionUpdate, String transcript, String assistant) {
+        ObjectNode update = routeSessionUpdate == null
+            ? objectMapper.createObjectNode()
+            : routeSessionUpdate.deepCopy();
+        ObjectNode metadata = ensureObject(update, "metadata");
+        ObjectNode camelAgent = ensureObject(metadata, "camelAgent");
+        ObjectNode context = ensureObject(camelAgent, "context");
+        camelAgent.put("routeTriggered", true);
+        camelAgent.put("lastTranscript", transcript == null ? "" : transcript);
+        camelAgent.put("lastAssistantMessage", assistant == null ? "" : assistant);
+        camelAgent.put("updatedAt", Instant.now().toString());
+        ArrayNode recentTurns = ensureArray(context, "recentTurns");
+        appendRecentTurn(recentTurns, "user", transcript);
+        appendRecentTurn(recentTurns, "assistant", assistant);
+        trimRecentTurns(recentTurns, MAX_RECENT_TURNS);
+
+        JsonNode structuredAssistantPayload = parseJson(assistant);
+        if (structuredAssistantPayload != null && structuredAssistantPayload.isObject() && !structuredAssistantPayload.isEmpty()) {
+            context.set("lastAssistantPayload", structuredAssistantPayload.deepCopy());
+        }
+
+        context.put("lastUpdatedAt", Instant.now().toString());
+        return update;
+    }
+
+    private ObjectNode ensureObject(ObjectNode parent, String fieldName) {
+        JsonNode current = parent.get(fieldName);
+        if (current instanceof ObjectNode objectNode) {
+            return objectNode;
+        }
+        ObjectNode replacement = objectMapper.createObjectNode();
+        parent.set(fieldName, replacement);
+        return replacement;
+    }
+
+    private ArrayNode ensureArray(ObjectNode parent, String fieldName) {
+        JsonNode current = parent.get(fieldName);
+        if (current instanceof ArrayNode arrayNode) {
+            return arrayNode;
+        }
+        ArrayNode replacement = objectMapper.createArrayNode();
+        parent.set(fieldName, replacement);
+        return replacement;
+    }
+
+    private void appendRecentTurn(ArrayNode turns, String role, String content) {
+        if (turns == null || content == null || content.isBlank()) {
+            return;
+        }
+        ObjectNode turn = objectMapper.createObjectNode();
+        turn.put("role", role == null ? "unknown" : role);
+        turn.put("text", content);
+        turn.put("at", Instant.now().toString());
+        turns.add(turn);
+    }
+
+    private void trimRecentTurns(ArrayNode turns, int maxTurns) {
+        if (turns == null || maxTurns <= 0) {
+            return;
+        }
+        while (turns.size() > maxTurns) {
+            turns.remove(0);
+        }
+    }
+
+    private void persistRealtimeIngressEvent(Exchange exchange, String conversationId, String eventType, JsonNode payload) {
+        PersistenceFacade persistenceFacade = lookupPersistenceFacade(exchange);
+        if (persistenceFacade == null) {
+            LOGGER.debug("Realtime ingress event persistence skipped: conversationId={}, eventType={}, reason=noPersistenceFacade",
+                conversationId,
+                eventType);
+            return;
+        }
+        try {
+            persistenceFacade.appendEvent(
+                new AgentEvent(
+                    conversationId,
+                    null,
+                    "realtime." + eventType,
+                    payload == null ? objectMapper.nullNode() : payload.deepCopy(),
+                    Instant.now()
+                ),
+                UUID.randomUUID().toString()
+            );
+            LOGGER.debug("Realtime ingress event persisted: conversationId={}, eventType={}", conversationId, eventType);
+        } catch (Exception persistenceFailure) {
+            LOGGER.warn("Realtime ingress event persistence failed: conversationId={}, eventType={}, error={}",
+                conversationId,
+                eventType,
+                persistenceFailure.getMessage() == null
+                    ? persistenceFailure.getClass().getSimpleName()
+                    : persistenceFailure.getMessage());
+        }
+    }
+
+    private String summarizeObjectKeys(ObjectNode node) {
+        if (node == null || node.isEmpty()) {
+            return "[]";
+        }
+        StringBuilder out = new StringBuilder("[");
+        var fieldNames = node.fieldNames();
+        while (fieldNames.hasNext()) {
+            out.append(fieldNames.next());
+            if (fieldNames.hasNext()) {
+                out.append(',');
+            }
+        }
+        out.append(']');
+        return out.toString();
+    }
+
+    private PersistenceFacade lookupPersistenceFacade(Exchange exchange) {
         return exchange.getContext().getRegistry()
+            .lookupByNameAndType(PERSISTENCE_FACADE_BEAN, PersistenceFacade.class);
+    }
+
+    private RealtimeBrowserSessionRegistry lookupSessionRegistry(Exchange exchange) {
+        RealtimeBrowserSessionRegistry fromRegistry = exchange.getContext().getRegistry()
             .lookupByNameAndType(SESSION_REGISTRY_BEAN, RealtimeBrowserSessionRegistry.class);
+        if (fromRegistry != null) {
+            return fromRegistry;
+        }
+
+        RealtimeBrowserSessionInitProcessor initProcessor = exchange.getContext().getRegistry()
+            .lookupByNameAndType("supportRealtimeSessionInitProcessor", RealtimeBrowserSessionInitProcessor.class);
+        if (initProcessor != null && initProcessor.sessionRegistry() != null) {
+            return initProcessor.sessionRegistry();
+        }
+
+        RealtimeBrowserTokenProcessor tokenProcessor = exchange.getContext().getRegistry()
+            .lookupByNameAndType("supportRealtimeTokenProcessor", RealtimeBrowserTokenProcessor.class);
+        if (tokenProcessor != null && tokenProcessor.sessionRegistry() != null) {
+            return tokenProcessor.sessionRegistry();
+        }
+
+        return null;
+    }
+
+    private ObjectNode restoreSessionStartPayload(Exchange exchange,
+                                                  String conversationId,
+                                                  ObjectNode incomingSession,
+                                                  ResolvedRealtimeConfig config) {
+        RealtimeBrowserSessionRegistry sessionRegistry = lookupSessionRegistry(exchange);
+        ObjectNode restoredSession = sessionRegistry == null ? null : sessionRegistry.getSession(conversationId);
+        ObjectNode sessionPayload;
+        if (restoredSession != null && !restoredSession.isEmpty()) {
+            sessionPayload = restoredSession.deepCopy();
+        } else {
+            sessionPayload = objectMapper.createObjectNode();
+        }
+
+        if (incomingSession != null && !incomingSession.isEmpty()) {
+            mergeObject(sessionPayload, incomingSession);
+        }
+
+        applyConfiguredSessionDefaults(sessionPayload, config);
+        ensureSessionMetadataConversationId(sessionPayload, conversationId);
+
+        if (sessionRegistry != null && !sessionPayload.isEmpty()) {
+            sessionRegistry.putSession(conversationId, sessionPayload);
+        }
+
+        LOGGER.info("Realtime session.start payload restored: conversationId={}, restoredContextPresent={}, incomingOverrides={}, keys={}",
+            conversationId,
+            restoredSession != null && !restoredSession.isEmpty(),
+            incomingSession != null && !incomingSession.isEmpty(),
+            summarizeObjectKeys(sessionPayload));
+
+        return sessionPayload;
+    }
+
+    private void ensureSessionMetadataConversationId(ObjectNode sessionPayload, String conversationId) {
+        if (sessionPayload == null || conversationId == null || conversationId.isBlank()) {
+            return;
+        }
+        ObjectNode metadata = ensureObject(sessionPayload, "metadata");
+        if (!metadata.hasNonNull("conversationId")) {
+            metadata.put("conversationId", conversationId);
+        }
+    }
+
+    private void mergeObject(ObjectNode target, JsonNode source) {
+        if (target == null || source == null || !source.isObject()) {
+            return;
+        }
+        source.properties().forEach(entry -> {
+            String field = entry.getKey();
+            JsonNode incoming = entry.getValue();
+            JsonNode existing = target.get(field);
+            if (incoming != null && incoming.isObject() && existing != null && existing.isObject()) {
+                mergeObject((ObjectNode) existing, incoming);
+            } else if (incoming != null) {
+                target.set(field, incoming.deepCopy());
+            }
+        });
     }
 
     private ObjectNode extractSessionUpdate(Exchange routeExchange, String assistantBody) {

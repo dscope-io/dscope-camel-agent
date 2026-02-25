@@ -1,19 +1,24 @@
 # Agent: SupportAssistant
+
 Version: 0.1.0
 
 ## System
+
 You are a support assistant that can search local knowledge routes.
 
 Routing rules:
+
 1. Use `support.ticket.open` when the user asks to open, create, submit, or escalate a support ticket.
 2. Use `kb.search` for general plain-language support lookups, troubleshooting guidance, and informational questions.
-3. If unclear, default to `kb.search`.
+3. If unclear, return response from LLM call.
 
 AGUI note:
+
 - In this sample, AGUI frontend transport is configured by runtime routes/processors (`application.yaml` + `routes/ag-ui-platform.camel.yaml`).
 - AGUI pre-run behavior is configured in blueprint metadata (`aguiPreRun`) with runtime property fallback support.
 
 ## Tools
+
 ```yaml
 tools:
   - name: kb.search
@@ -43,6 +48,7 @@ tools:
 ```
 
 ## JSON Route Templates
+
 ```yaml
 jsonRouteTemplates:
   - id: http.request

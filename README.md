@@ -152,14 +152,18 @@ agent:
       temperature: 0.2
       max-tokens: 800
       openai:
-        # Spring AI OpenAI chat client uses Chat Completions endpoint.
+        # Supported values:
+        # - chat (default): Spring AI OpenAI Chat Completions
+        # - responses-http: reserved (not yet implemented)
+        # - responses-ws: delegated to pluggable OpenAiResponsesGateway implementation
         api-mode: chat
 ```
 
 Notes:
 
 - OpenAI in this gateway uses Spring AI OpenAI Chat client (`chat` mode).
-- `responses` mode is intentionally not supported in this Spring AI-only gateway.
+- `responses-http` is a planned mode and currently returns a terminal guidance message.
+- `responses-ws` is routed through a pluggable `OpenAiResponsesGateway`; if no plugin is wired, the gateway returns a terminal guidance message.
 - Gemini uses Spring AI Vertex Gemini client and requires:
   - `agent.runtime.spring-ai.gemini.vertex.project-id`
   - `agent.runtime.spring-ai.gemini.vertex.location`
@@ -264,8 +268,10 @@ tools:
 `samples/agent-support-service` uses AGUI component runtime routes and a built-in UI page:
 
 - open `http://localhost:8080/agui/ui`
-- frontend sends `POST /agui/agent` with AGUI request envelope
-- backend responds with an SSE event stream (same POST response); frontend renders assistant output from AGUI message content events
+- frontend supports AGUI text transport switch:
+  - `POST /agui/agent` (POST+SSE)
+  - `WS /agui/rpc` (AGUI over WebSocket)
+- backend responds with AGUI events for the selected transport; frontend renders assistant output from AGUI message content events
 - `/agui/stream/{runId}` is available for split-transport clients
 
 For run commands and endpoint examples, see `samples/agent-support-service/README.md`.
@@ -273,8 +279,24 @@ For run commands and endpoint examples, see `samples/agent-support-service/READM
 Realtime note:
 
 - `POST /realtime/session/{conversationId}/event` supports route-driven session-context updates after `transcript.final` routing.
+- `POST /realtime/session/{conversationId}/init` seeds pre-conversation agent context from blueprint metadata before the first user turn.
 - Agent/tool routes can return a patch via exchange header/property (`realtimeSessionUpdate`, aliases: `realtime.session.update`, `sessionUpdate`) or assistant JSON body (`realtimeSessionUpdate`, `realtimeSession`, `sessionUpdate`).
 - Patch is deep-merged into browser session context for the same `conversationId`; next `/realtime/session/{conversationId}/token` uses merged context.
+
+Seeded pre-conversation context fields (sample runtime):
+
+- `session.metadata.camelAgent.agentProfile.name`
+- `session.metadata.camelAgent.agentProfile.version`
+- `session.metadata.camelAgent.agentProfile.purpose`
+- `session.metadata.camelAgent.agentProfile.tools[]`
+- `session.metadata.camelAgent.context.agentPurpose`
+- `session.metadata.camelAgent.context.agentFocusHint`
+
+Purpose length configuration:
+
+- `agent.runtime.realtime.agent-profile-purpose-max-chars` (aliases: `agent.runtime.realtime.agentProfilePurposeMaxChars`, `agent.realtime.agent-profile-purpose-max-chars`, `agent.realtime.agentProfilePurposeMaxChars`)
+- default: `240`
+- set `0` (or negative) to disable truncation and keep full seeded purpose text.
 
 Voice UX and transcript updates (sample frontend):
 
@@ -284,6 +306,7 @@ Voice UX and transcript updates (sample frontend):
 - Mobile behavior uses icon-only voice button while preserving dynamic `title` and `aria-label` text.
 - WebRTC transcript log panel includes input/output transcript lines and clear-log action.
 - Voice output transcript de-duplication ensures one final assistant transcript entry per completed output (with spacing preserved).
+- Collapsible `Instruction seed (debug)` panel shows the current pre-conversation instruction context; it auto-opens when transport is switched to WebRTC (and on initial load when already in WebRTC mode).
 
 ## Phase-2 Runtime Commands
 

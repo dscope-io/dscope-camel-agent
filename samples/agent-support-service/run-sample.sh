@@ -5,6 +5,24 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SECRETS_FILE="${AGENT_SECRETS_FILE:-$SCRIPT_DIR/.agent-secrets.properties}"
 DEFAULT_PORT="${AGENT_PORT:-8080}"
 MAX_PORT_SCAN="${AGENT_PORT_SCAN_MAX:-20}"
+API_MODE="${AGENT_OPENAI_API_MODE:-}"
+
+FORWARDED_ARGS=()
+for arg in "$@"; do
+  if [[ "$arg" == "--responses-ws" ]]; then
+    API_MODE="responses-ws"
+    continue
+  fi
+  if [[ "$arg" == "--chat" ]]; then
+    API_MODE="chat"
+    continue
+  fi
+  if [[ "$arg" == --api-mode=* ]]; then
+    API_MODE="${arg#--api-mode=}"
+    continue
+  fi
+  FORWARDED_ARGS+=("$arg")
+done
 
 is_port_busy() {
   local port="$1"
@@ -58,12 +76,19 @@ fi
 
 JAVA_PROPS+=("-Dagui.rpc.port=${SELECTED_PORT}" "-Dagui.health.port=${SELECTED_PORT}")
 
+if [[ -n "$API_MODE" ]]; then
+  JAVA_PROPS+=("-DAGENT_OPENAI_API_MODE=${API_MODE}" "-Dagent.runtime.spring-ai.openai.api-mode=${API_MODE}")
+fi
+
 echo "Starting agent-support-service on port ${SELECTED_PORT}"
 echo "UI:     http://localhost:${SELECTED_PORT}/agui/ui"
 echo "Health: http://localhost:${SELECTED_PORT}/health"
+if [[ -n "$API_MODE" ]]; then
+  echo "OpenAI api-mode override: ${API_MODE}"
+fi
 
 mvn -f "$SCRIPT_DIR/pom.xml" \
   "${JAVA_PROPS[@]}" \
   -DskipTests \
   -Daudit.api.enabled=false \
-  clean compile exec:java "$@"
+  clean compile exec:java ${FORWARDED_ARGS+"${FORWARDED_ARGS[@]}"}

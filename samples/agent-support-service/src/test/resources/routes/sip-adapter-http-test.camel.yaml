@@ -1,0 +1,33 @@
+- route:
+    id: sip-session-call-start-test
+    from:
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agent.runtime.test-port:18081}}/sip/adapter/v1/session/{conversationId}/start?httpMethodRestrict=POST
+      steps:
+        - process:
+            ref: supportSipSessionInitEnvelopeProcessor
+        - process:
+            ref: supportRealtimeSessionInitProcessor
+
+- route:
+    id: sip-session-transcript-final-test
+    from:
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agent.runtime.test-port:18081}}/sip/adapter/v1/session/{conversationId}/turn?httpMethodRestrict=POST
+      steps:
+        - process:
+            ref: supportSipTranscriptFinalProcessor
+        - process:
+            ref: supportRealtimeEventProcessorCore
+
+- route:
+    id: sip-session-call-end-test
+    from:
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agent.runtime.test-port:18081}}/sip/adapter/v1/session/{conversationId}/end?httpMethodRestrict=POST
+      steps:
+        - process:
+            ref: supportSipCallEndProcessor

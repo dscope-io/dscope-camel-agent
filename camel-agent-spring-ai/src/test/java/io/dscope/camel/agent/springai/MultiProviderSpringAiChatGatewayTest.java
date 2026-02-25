@@ -8,6 +8,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -60,5 +61,117 @@ class MultiProviderSpringAiChatGatewayTest {
         List<String> remappedNames = remapped.toolCalls().stream().map(AiToolCall::name).toList();
         Assertions.assertTrue(remappedNames.contains("support.ticket.open"));
         Assertions.assertTrue(remappedNames.contains("support ticket open"));
+    }
+
+    @Test
+    void shouldDelegateToResponsesWsGatewayWhenConfigured() {
+        Properties properties = new Properties();
+        properties.setProperty("agent.runtime.spring-ai.openai.api-mode", "responses-ws");
+        properties.setProperty("agent.runtime.spring-ai.openai.api-key", "test-key");
+
+        AtomicBoolean called = new AtomicBoolean(false);
+        OpenAiResponsesGateway responsesGateway = (apiMode,
+                                                   systemPrompt,
+                                                   userContext,
+                                                   tools,
+                                                   model,
+                                                   temperature,
+                                                   maxTokens,
+                                                   apiKey,
+                                                   baseUrl,
+                                                   callback) -> {
+            called.set(true);
+            Assertions.assertEquals("responses-ws", apiMode);
+            Assertions.assertEquals("test-key", apiKey);
+            return new SpringAiChatGateway.SpringAiChatResult("ws-ok", List.of(), true);
+        };
+
+        MultiProviderSpringAiChatGateway gateway = new MultiProviderSpringAiChatGateway(properties, responsesGateway);
+        SpringAiChatGateway.SpringAiChatResult result = gateway.generate(
+            "system",
+            "user",
+            List.of(),
+            null,
+            null,
+            null,
+            null
+        );
+
+        Assertions.assertTrue(called.get());
+        Assertions.assertEquals("ws-ok", result.message());
+        Assertions.assertTrue(result.terminal());
+    }
+
+    @Test
+    void shouldReturnHelpfulMessageForResponsesHttpMode() {
+        Properties properties = new Properties();
+        properties.setProperty("agent.runtime.spring-ai.openai.api-mode", "responses-http");
+        properties.setProperty("agent.runtime.spring-ai.openai.api-key", "test-key");
+
+        MultiProviderSpringAiChatGateway gateway = new MultiProviderSpringAiChatGateway(properties);
+        SpringAiChatGateway.SpringAiChatResult result = gateway.generate(
+            "system",
+            "user",
+            List.of(),
+            null,
+            null,
+            null,
+            null
+        );
+
+        Assertions.assertTrue(result.terminal());
+        Assertions.assertTrue(result.message().contains("responses HTTP mode is not implemented"));
+    }
+
+    @Test
+    void shouldPreferConfiguredApiKeySystemPropertyOverOpenAiApiKeyReference() {
+        Properties properties = new Properties();
+        properties.setProperty("agent.runtime.spring-ai.openai.api-mode", "responses-ws");
+        properties.setProperty("agent.runtime.spring-ai.openai.api-key-system-property", "openai.api.key");
+        properties.setProperty("spring.ai.openai.api-key", "${OPENAI_API_KEY}");
+
+        String previousOpenAiApiKeyReference = System.getProperty("OPENAI_API_KEY");
+        String previousOpenAiApiKey = System.getProperty("openai.api.key");
+        System.setProperty("OPENAI_API_KEY", "placeholder-priority-key");
+        System.setProperty("openai.api.key", "system-priority-key");
+        try {
+            OpenAiResponsesGateway responsesGateway = (apiMode,
+                                                       systemPrompt,
+                                                       userContext,
+                                                       tools,
+                                                       model,
+                                                       temperature,
+                                                       maxTokens,
+                                                       apiKey,
+                                                       baseUrl,
+                                                       callback) -> {
+                Assertions.assertEquals("system-priority-key", apiKey);
+                return new SpringAiChatGateway.SpringAiChatResult("ok", List.of(), true);
+            };
+
+            MultiProviderSpringAiChatGateway gateway = new MultiProviderSpringAiChatGateway(properties, responsesGateway);
+            SpringAiChatGateway.SpringAiChatResult result = gateway.generate(
+                "system",
+                "user",
+                List.of(),
+                null,
+                null,
+                null,
+                null
+            );
+
+            Assertions.assertEquals("ok", result.message());
+        } finally {
+            if (previousOpenAiApiKeyReference == null) {
+                System.clearProperty("OPENAI_API_KEY");
+            } else {
+                System.setProperty("OPENAI_API_KEY", previousOpenAiApiKeyReference);
+            }
+            if (previousOpenAiApiKey == null) {
+                System.clearProperty("openai.api.key");
+            } else {
+                System.setProperty("openai.api.key", previousOpenAiApiKey);
+            }
+        }
     }
 }

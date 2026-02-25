@@ -29,6 +29,10 @@ public class RealtimeBrowserTokenProcessor implements Processor {
         this.sessionRegistry = sessionRegistry;
     }
 
+    RealtimeBrowserSessionRegistry sessionRegistry() {
+        return sessionRegistry;
+    }
+
     @Override
     public void process(Exchange exchange) throws Exception {
         String conversationId = firstNonBlank(

@@ -1,6 +1,5 @@
 package io.dscope.camel.agent.springai;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.cloud.vertexai.VertexAI;
 import io.dscope.camel.agent.model.AiToolCall;
@@ -37,9 +36,15 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final Properties properties;
+    private final OpenAiResponsesGateway openAiResponsesGateway;
 
     public MultiProviderSpringAiChatGateway(Properties properties) {
+        this(properties, new OpenAiRealtimeResponsesGateway(properties));
+    }
+
+    MultiProviderSpringAiChatGateway(Properties properties, OpenAiResponsesGateway openAiResponsesGateway) {
         this.properties = properties;
+        this.openAiResponsesGateway = openAiResponsesGateway;
     }
 
     @Override
@@ -76,9 +81,15 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
             property(properties, "agent.runtime.spring-ai.openai.api-key"),
             property(properties, "spring.ai.openai.api-key")
         );
+        String directConfiguredApiKey = configuredApiKey;
+        if (directConfiguredApiKey != null
+            && directConfiguredApiKey.startsWith("${")
+            && directConfiguredApiKey.endsWith("}")) {
+            directConfiguredApiKey = null;
+        }
         String apiKey = firstNonBlank(
-            resolvePropertyReference(configuredApiKey),
-            firstNonBlank(System.getProperty(apiKeyProperty), System.getenv("OPENAI_API_KEY"))
+            firstNonBlank(System.getProperty(apiKeyProperty), System.getenv("OPENAI_API_KEY")),
+            firstNonBlank(resolvePropertyReference(configuredApiKey), directConfiguredApiKey)
         );
         if (apiKey == null) {
             return terminal("OpenAI API key is missing. Set -D" + apiKeyProperty + "=<token>.", callback);
@@ -94,8 +105,24 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
         double selectedTemperature = temperature != null ? temperature : doubleProp(properties, "agent.runtime.spring-ai.temperature", 0.2d);
         int selectedMaxTokens = maxTokens != null ? maxTokens : intProp(properties, "agent.runtime.spring-ai.max-tokens", 800);
 
-        if ("responses".equals(apiMode)) {
-            return terminal("OpenAI responses mode is not supported in Spring AI chat client. Use api-mode=chat.", callback);
+        if ("responses-ws".equals(apiMode) || "responses_ws".equals(apiMode) || "responses.ws".equals(apiMode)) {
+            return openAiResponsesGateway.generate(
+                apiMode,
+                systemPrompt,
+                userContext,
+                tools,
+                selectedModel,
+                selectedTemperature,
+                selectedMaxTokens,
+                apiKey,
+                baseUrl,
+                callback
+            );
+        }
+
+        if ("responses".equals(apiMode) || "responses-http".equals(apiMode) || "responses_http".equals(apiMode)
+            || "responses.http".equals(apiMode)) {
+            return terminal("OpenAI responses HTTP mode is not implemented in this gateway yet. Use api-mode=chat or api-mode=responses-ws with a configured responses plugin.", callback);
         }
 
         LinkedMultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
@@ -381,16 +408,18 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
 
     private static Double doubleProp(Properties properties, String key, Double defaultValue) {
         try {
-            return Double.parseDouble(prop(properties, key, String.valueOf(defaultValue)));
-        } catch (Exception ignored) {
+            String configured = property(properties, key);
+            return configured == null ? defaultValue : Double.parseDouble(configured);
+        } catch (NumberFormatException ignored) {
             return defaultValue;
         }
     }
 
     private static Integer intProp(Properties properties, String key, Integer defaultValue) {
         try {
-            return Integer.parseInt(prop(properties, key, String.valueOf(defaultValue)));
-        } catch (Exception ignored) {
+            String configured = property(properties, key);
+            return configured == null ? defaultValue : Integer.parseInt(configured);
+        } catch (NumberFormatException ignored) {
             return defaultValue;
         }
     }
@@ -480,4 +509,5 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
         }
         return message;
     }
+
 }

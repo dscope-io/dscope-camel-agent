@@ -126,8 +126,10 @@ This keeps `/agui/ui` demo flows working offline.
 
 Current UI transport model in this sample:
 
-1. Browser sends `POST /agui/agent` with AGUI envelope (`threadId`, `sessionId`, `messages`).
-2. Backend returns an SSE event stream in the same POST response (POST+SSE bridge).
+1. Browser text chat can use either transport via UI selector:
+   - `POST /agui/agent` (POST+SSE bridge)
+   - WebSocket `/agui/rpc` (AGUI event stream over WS)
+2. Backend returns AGUI events for the selected transport.
 3. Frontend parses AGUI events (especially `TEXT_MESSAGE_CONTENT`) and renders assistant text.
 4. If assistant text contains ticket JSON, frontend renders a `ticket-card` widget.
 
@@ -138,12 +140,14 @@ Voice/transcript UX in `/agui/ui`:
 - Current pause milliseconds are shown in the pause label and voice listening status text.
 - WebRTC transcript log panel records input and output transcript events with a clear-log button.
 - Voice output transcript rendering is de-duplicated so only one final assistant transcript line is shown.
+- Collapsible `Instruction seed (debug)` panel displays the current WebRTC instruction seed derived from realtime session metadata.
+- Instruction debug panel auto-opens when transport switches to `WebRTC` and also on initial page load when current transport is already `WebRTC`.
 
 Notes:
 
 - `/agui/agent` is the primary request path for the sample UI.
+- `/agui/rpc` is available for AGUI WebSocket transport and is functionally aligned with `/agui/agent`.
 - `/agui/stream/{runId}` remains available for split-transport clients.
-- `/agui/rpc` is not used by this sample frontend flow.
 - AGUI frontend behavior in this sample is configured by runtime routes/processors (`application.yaml` + `routes/ag-ui-platform.camel.yaml`), not by a UI section in `agents/support/agent.md`.
 
 ## Connectivity Precheck
@@ -219,6 +223,7 @@ Example event payload shape:
 ## AGUI Endpoints
 
 - `POST /agui/agent` -> primary frontend path (single POST request, SSE event stream response)
+- `WS /agui/rpc` -> AGUI WebSocket RPC path (event stream over WebSocket)
 - `GET /agui/stream/{runId}` -> optional event stream endpoint for split transport mode
 - `GET /agui/ui` -> simple Copilot-like frontend with ticket widget rendering
 
@@ -267,6 +272,11 @@ Current behavior:
    - patch is deep-merged into the in-memory realtime browser session context for the same `conversationId`
    - token endpoint (`/realtime/session/{conversationId}/token`) then uses the merged context on next mint
    - response now includes `sessionContextUpdated: true|false`
+- pre-conversation session seed (`/realtime/session/{conversationId}/init`):
+   - init seeds blueprint-derived profile context before first user turn under `session.metadata.camelAgent`
+   - seeded profile fields: `agentProfile.name`, `agentProfile.version`, `agentProfile.purpose`, `agentProfile.tools[]`
+   - seeded context fields: `context.agentPurpose`, `context.agentFocusHint`
+   - WebRTC instruction builder consumes these fields to keep first-turn responses focused on agent purpose and tool scope
 - Browser UI behavior:
    - voice toggle start sends `session.start`, captures mic, streams `input_audio_buffer.append` chunks
    - voice toggle stop sends `input_audio_buffer.commit`, `response.create`, and `session.close`
@@ -312,6 +322,36 @@ curl -s -X POST http://localhost:8080/realtime/session/voice-1/event \
    -d '{"type":"transcript.final","text":"Please open a support ticket for repeated login failures"}'
 ```
 
+### SIP Adapter Stubs (Ingress)
+
+Sample also exposes minimal SIP-oriented ingress routes that reuse the same realtime processors:
+
+- `POST /sip/adapter/v1/session/{conversationId}/start` -> normalizes SIP call payload into realtime `/init` session envelope
+- `POST /sip/adapter/v1/session/{conversationId}/turn` -> normalizes transcript payload into realtime `transcript.final` event and routes into agent flow
+- `POST /sip/adapter/v1/session/{conversationId}/end` -> returns lightweight end-of-call acknowledgment
+
+Example call start:
+
+```bash
+curl -s -X POST http://localhost:8080/sip/adapter/v1/session/sip:demo:call-1/start \
+   -H 'Content-Type: application/json' \
+   -d '{"call":{"id":"call-1","from":"+15551230001","to":"+15557650002"},"session":{"audio":{"output":{"voice":"nova"}}}}'
+```
+
+Example final transcript turn:
+
+```bash
+curl -s -X POST http://localhost:8080/sip/adapter/v1/session/sip:demo:call-1/turn \
+   -H 'Content-Type: application/json' \
+   -d '{"text":"I need help with my login"}'
+```
+
+One-command smoke (start -> turn -> end):
+
+```bash
+bash scripts/sip-adapter-v1-smoke.sh
+```
+
 ## Test Scenarios
 
 Run sample integration tests:
@@ -340,11 +380,14 @@ Notable keys:
 - `agent.runtime.ai.mode=spring-ai`
 - `agent.runtime.spring-ai.provider=openai`
 - `agent.runtime.spring-ai.openai.api-mode=chat`
+- set `agent.runtime.spring-ai.openai.api-mode=responses-ws` to route LLM calls through OpenAI Responses over WebSocket
+- `agent.runtime.spring-ai.openai.responses-ws.*` configures endpoint/model/timeout/reconnect (`endpoint-uri`, `model`, `request-timeout-ms`, `poll-interval-ms`, `max-send-retries`, `max-reconnects`, `initial-backoff-ms`, `max-backoff-ms`)
 - `agent.runtime.spring-ai.model=gpt-4o-mini`
 - `agent.runtime.ai.mode=realtime` is now recognized for realtime relay foundation bootstrap (you can override `aiModelClient` bean for custom realtime adapter)
 - shared bootstrap now binds AGUI defaults, AGUI pre-run processor, realtime relay client, and realtime event processor (if missing)
-- `agent.runtime.realtime.processor-bean-name=supportRealtimeEventProcessor`
+- `agent.runtime.realtime.processor-bean-name=supportRealtimeEventProcessorCore`
 - `agent.runtime.realtime.agent-endpoint-uri=agent:support?blueprint={{agent.blueprint}}`
+- `agent.runtime.realtime.agent-profile-purpose-max-chars=0` in this sample preserves full seeded purpose text from blueprint `## System` (default core behavior is bounded; `0` disables truncation)
 - relay reconnect policy is configurable via `agent.runtime.realtime.reconnect.*`:
    - `max-send-retries` (default `3`)
    - `max-reconnects` (default `8`)
@@ -373,6 +416,33 @@ Blueprint support added (foundation phase):
    - uses `tools[].endpointUri` first
    - else derives `direct:<tools[].routeId>`
 - AGUI pre-run config precedence is: blueprint `aguiPreRun` -> `application.yaml` (`agent.runtime.agui.pre-run.*`) -> alias (`agent.agui.pre-run.*`) -> defaults.
+
+### Responses-WS Quick Switch
+
+1. In `src/main/resources/application.yaml` set:
+   - `agent.runtime.spring-ai.openai.api-mode: responses-ws`
+2. Keep or tune:
+   - `agent.runtime.spring-ai.openai.responses-ws.endpoint-uri`
+   - `agent.runtime.spring-ai.openai.responses-ws.model`
+3. Start the sample and send a regular AGUI request (`POST /agui/agent` or `WS /agui/rpc`).
+
+Optional smoke helper:
+
+```bash
+bash scripts/openai-responses-ws-smoke.sh
+```
+
+No-edit toggles are also available:
+
+- Maven profile:
+   - `mvn -f samples/agent-support-service/pom.xml -Presponses-ws -DskipTests clean compile exec:java`
+   - `mvn -f samples/agent-support-service/pom.xml -Pchat -DskipTests clean compile exec:java`
+- Run script:
+   - `samples/agent-support-service/run-sample.sh --responses-ws`
+   - `samples/agent-support-service/run-sample.sh --chat`
+   - `samples/agent-support-service/run-sample.sh --api-mode=responses-ws`
+- Env var:
+   - `AGENT_OPENAI_API_MODE=responses-ws samples/agent-support-service/run-sample.sh`
 
 ### Optional: Separate JDBC for Audit Trail
 
