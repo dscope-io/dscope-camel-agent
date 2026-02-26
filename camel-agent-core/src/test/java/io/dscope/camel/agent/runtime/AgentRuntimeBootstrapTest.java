@@ -80,4 +80,5 @@ class AgentRuntimeBootstrapTest {
         Assertions.assertNotNull(initProcessor);
         Assertions.assertNotNull(tokenProcessor);
     }
+
 }

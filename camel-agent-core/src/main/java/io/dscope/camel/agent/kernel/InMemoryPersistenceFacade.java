@@ -34,6 +34,18 @@ public class InMemoryPersistenceFacade implements PersistenceFacade {
     }
 
     @Override
+    public List<String> listConversationIds(int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
+        return conversations.entrySet().stream()
+            .sorted((left, right) -> latestTimestamp(right.getValue()).compareTo(latestTimestamp(left.getValue())))
+            .map(Map.Entry::getKey)
+            .limit(limit)
+            .toList();
+    }
+
+    @Override
     public void saveTask(TaskState taskState) {
         tasks.put(taskState.taskId(), taskState);
     }
@@ -84,5 +96,13 @@ public class InMemoryPersistenceFacade implements PersistenceFacade {
     }
 
     private record TaskLock(String ownerId, Instant expiresAt) {
+    }
+
+    private static Instant latestTimestamp(List<AgentEvent> events) {
+        if (events == null || events.isEmpty()) {
+            return Instant.EPOCH;
+        }
+        AgentEvent event = events.get(events.size() - 1);
+        return event.timestamp() == null ? Instant.EPOCH : event.timestamp();
     }
 }

@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-02-26
+
+### Release 0.5.0
+
+- Promoted project and sample modules from snapshot to stable release version `0.5.0`.
+- Completed clean verification build and full test run for the multi-module workspace.
+- Installed `0.5.0` artifacts to local Maven repository for downstream consumption.
+
+### Documentation updates
+
+- Updated root and sample READMEs with `0.5.0` release status.
+- Added Maven dependency import guidance for `camel-agent-starter`, `camel-agent-core`, and optional `camel-agent-persistence-dscope`.
+
+### Build tooling updates
+
+- Replaced MCP-based Karavan metadata generation with a local project-specific generator for `camel-agent-core`.
+- Added `AgentKaravanMetadataGenerator` and wired `karavan-metadata` profile to generate `agent` component metadata under `camel-agent-core/src/main/resources/karavan/metadata`.
+- Updated documented generation command to `mvn -pl camel-agent-core -Pkaravan-metadata -DskipTests compile exec:java`.
+
 ## 2026-02-23
 
 ### AGUI sample voice UX and transcript improvements

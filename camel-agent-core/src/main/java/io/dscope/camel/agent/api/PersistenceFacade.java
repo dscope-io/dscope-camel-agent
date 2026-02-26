@@ -12,6 +12,10 @@ public interface PersistenceFacade {
 
     List<AgentEvent> loadConversation(String conversationId, int limit);
 
+    default List<String> listConversationIds(int limit) {
+        return List.of();
+    }
+
     void saveTask(TaskState taskState);
 
     Optional<TaskState> loadTask(String taskId);

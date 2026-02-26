@@ -34,6 +34,43 @@ public class RealtimeBrowserSessionInitProcessor implements Processor {
         return sessionRegistry;
     }
 
+    public void clearBlueprintCache() {
+        blueprintCache.clear();
+    }
+
+    public int refreshAgentProfileForAllSessions(AgentBlueprint blueprint, int purposeMaxChars) {
+        if (blueprint == null) {
+            return 0;
+        }
+        int updated = 0;
+        for (String conversationId : sessionRegistry.conversationIds()) {
+            if (conversationId == null || conversationId.isBlank()) {
+                continue;
+            }
+            ObjectNode session = sessionRegistry.getSession(conversationId);
+            if (session == null) {
+                continue;
+            }
+            seedBlueprintAgentProfile(session, blueprint, purposeMaxChars, true);
+            sessionRegistry.putSession(conversationId, session);
+            updated++;
+        }
+        return updated;
+    }
+
+    public int refreshAgentProfileForConversation(String conversationId, AgentBlueprint blueprint, int purposeMaxChars) {
+        if (conversationId == null || conversationId.isBlank() || blueprint == null) {
+            return 0;
+        }
+        ObjectNode session = sessionRegistry.getSession(conversationId);
+        if (session == null) {
+            return 0;
+        }
+        seedBlueprintAgentProfile(session, blueprint, purposeMaxChars, true);
+        sessionRegistry.putSession(conversationId, session);
+        return 1;
+    }
+
     @Override
     public void process(Exchange exchange) {
         String conversationId = firstNonBlank(
@@ -166,39 +203,53 @@ public class RealtimeBrowserSessionInitProcessor implements Processor {
             return;
         }
 
-        ObjectNode metadata = ensureObject(session, "metadata");
-        ObjectNode camelAgent = ensureObject(metadata, "camelAgent");
-        ObjectNode context = ensureObject(camelAgent, "context");
-        ObjectNode agentProfile = ensureObject(camelAgent, "agentProfile");
         int purposeMaxChars = intProperty(exchange, DEFAULT_AGENT_PURPOSE_MAX_CHARS,
             "agent.runtime.realtime.agent-profile-purpose-max-chars",
             "agent.runtime.realtime.agentProfilePurposeMaxChars",
             "agent.realtime.agent-profile-purpose-max-chars",
             "agent.realtime.agentProfilePurposeMaxChars");
 
-        putIfMissing(agentProfile, "name", blueprint.name(), "agent");
-        putIfMissing(agentProfile, "version", blueprint.version(), "0.0.1");
-        putIfMissing(agentProfile, "purpose", summarizePurpose(blueprint.systemInstruction(), purposeMaxChars), "You are a helpful agent.");
+        seedBlueprintAgentProfile(session, blueprint, purposeMaxChars, false);
+    }
+
+    private void seedBlueprintAgentProfile(ObjectNode session, AgentBlueprint blueprint, int purposeMaxChars, boolean forceUpdate) {
+        if (session == null || blueprint == null) {
+            return;
+        }
+
+        ObjectNode metadata = ensureObject(session, "metadata");
+        ObjectNode camelAgent = ensureObject(metadata, "camelAgent");
+        ObjectNode context = ensureObject(camelAgent, "context");
+        ObjectNode agentProfile = ensureObject(camelAgent, "agentProfile");
+
+        putValue(agentProfile, "name", blueprint.name(), "agent", forceUpdate);
+        putValue(agentProfile, "version", blueprint.version(), "0.0.1", forceUpdate);
+        putValue(agentProfile, "purpose", summarizePurpose(blueprint.systemInstruction(), purposeMaxChars), "You are a helpful agent.", forceUpdate);
         if (!agentProfile.hasNonNull("seededAt")) {
             agentProfile.put("seededAt", Instant.now().toString());
         }
+        if (forceUpdate) {
+            agentProfile.put("blueprintRefreshedAt", Instant.now().toString());
+        }
 
-        if (!agentProfile.path("tools").isArray() || agentProfile.path("tools").isEmpty()) {
-            ArrayNode tools = objectMapper.createArrayNode();
-            if (blueprint.tools() != null) {
-                for (ToolSpec tool : blueprint.tools()) {
-                    if (tool == null || tool.name() == null || tool.name().isBlank()) {
-                        continue;
-                    }
-                    tools.add(tool.name());
+        ArrayNode tools = objectMapper.createArrayNode();
+        if (blueprint.tools() != null) {
+            for (ToolSpec tool : blueprint.tools()) {
+                if (tool == null || tool.name() == null || tool.name().isBlank()) {
+                    continue;
                 }
+                tools.add(tool.name());
             }
+        }
+        if (forceUpdate || !agentProfile.path("tools").isArray() || agentProfile.path("tools").isEmpty()) {
             if (!tools.isEmpty()) {
                 agentProfile.set("tools", tools);
+            } else if (forceUpdate) {
+                agentProfile.remove("tools");
             }
         }
 
-        if (!context.hasNonNull("agentPurpose")) {
+        if (forceUpdate || !context.hasNonNull("agentPurpose")) {
             context.put("agentPurpose", firstNonBlank(agentProfile.path("purpose").asText(""), "You are a helpful agent."));
         }
         if (!context.hasNonNull("agentFocusHint")) {
@@ -227,8 +278,11 @@ public class RealtimeBrowserSessionInitProcessor implements Processor {
         return replacement;
     }
 
-    private void putIfMissing(ObjectNode node, String key, String value, String fallback) {
-        if (node == null || key == null || key.isBlank() || node.hasNonNull(key)) {
+    private void putValue(ObjectNode node, String key, String value, String fallback, boolean forceUpdate) {
+        if (node == null || key == null || key.isBlank()) {
+            return;
+        }
+        if (!forceUpdate && node.hasNonNull(key)) {
             return;
         }
         String resolved = firstNonBlank(value, fallback);

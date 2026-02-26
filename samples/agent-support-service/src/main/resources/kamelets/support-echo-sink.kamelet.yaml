@@ -1,0 +1,24 @@
+apiVersion: camel.apache.org/v1
+kind: Kamelet
+metadata:
+  name: support-echo-sink
+  annotations:
+    camel.apache.org/kamelet.support.level: Preview
+spec:
+  definition:
+    title: Support Echo Sink
+    description: Prefixes incoming payload text and returns it
+    type: object
+    properties:
+      prefix:
+        type: string
+        title: Prefix
+        description: Prefix text added before message body
+        default: SupportEcho
+  template:
+    from:
+      uri: kamelet:source
+      steps:
+        - setBody:
+            simple: "{{prefix}}: ${body}"
+        - to: "kamelet:sink"

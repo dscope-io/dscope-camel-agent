@@ -1,19 +1,13 @@
 package io.dscope.camel.agent.samples;
 
-import io.dscope.camel.agent.runtime.AgentRuntimeBootstrap;
+import io.dscope.camel.agent.starter.AgentStarterMain;
 
-public final class Main {
+public final class Main extends AgentStarterMain {
 
     private Main() {
     }
 
     public static void main(String[] args) throws Exception {
-        org.apache.camel.main.Main main = new org.apache.camel.main.Main();
-        main.bind("supportUiPageProcessor", new SupportUiPageProcessor());
-        main.bind("supportSipSessionInitEnvelopeProcessor", new SipSessionInitEnvelopeProcessor());
-        main.bind("supportSipTranscriptFinalProcessor", new SipTranscriptFinalProcessor());
-        main.bind("supportSipCallEndProcessor", new SipCallEndProcessor());
-        AgentRuntimeBootstrap.bootstrap(main, "application.yaml");
-        main.run(args);
+        new Main().run(args);
     }
 }

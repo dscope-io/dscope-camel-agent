@@ -1,4 +1,4 @@
-package io.dscope.camel.agent.samples;
+package io.dscope.camel.agent.realtime.sip;
 
 public record SipTranscriptPayload(String text) {
 }

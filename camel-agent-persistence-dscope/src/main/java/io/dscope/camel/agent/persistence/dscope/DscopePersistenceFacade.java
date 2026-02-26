@@ -16,6 +16,7 @@ import io.dscope.camel.persistence.core.PersistedEvent;
 import io.dscope.camel.persistence.core.exception.OptimisticConflictException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -27,6 +28,8 @@ public class DscopePersistenceFacade implements PersistenceFacade {
     public static final String FLOW_TASK = "agent.task";
     public static final String FLOW_DYNAMIC_ROUTE = "agent.dynamicRoute";
     public static final String FLOW_TASK_LOCK = "agent.task.lock";
+    public static final String FLOW_CONVERSATION_INDEX = "agent.conversation.index";
+    private static final String CONVERSATION_INDEX_STREAM = "_all";
 
     private final FlowStateStore flowStateStore;
     private final FlowStateStore auditFlowStateStore;
@@ -71,6 +74,7 @@ public class DscopePersistenceFacade implements PersistenceFacade {
             );
             try {
                 auditFlowStateStore.appendEvents(FLOW_CONVERSATION, event.conversationId(), expectedVersion, List.of(persistedEvent), idempotencyKey);
+                appendConversationIndex(event);
                 return;
             } catch (OptimisticConflictException ex) {
                 if (attempt == maxAttempts) {
@@ -89,6 +93,27 @@ public class DscopePersistenceFacade implements PersistenceFacade {
             result.add(new AgentEvent(conversationId, null, event.eventType(), payload, Instant.parse(event.occurredAt())));
         }
         return result;
+    }
+
+    @Override
+    public List<String> listConversationIds(int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
+        int readLimit = Math.max(limit * 20, 500);
+        List<PersistedEvent> events = auditFlowStateStore.readEvents(FLOW_CONVERSATION_INDEX, CONVERSATION_INDEX_STREAM, 0L, readLimit);
+        if (events.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> ordered = new LinkedHashSet<>();
+        for (int index = events.size() - 1; index >= 0 && ordered.size() < limit; index--) {
+            PersistedEvent event = events.get(index);
+            String conversationId = event.payload().path("conversationId").asText(null);
+            if (conversationId != null && !conversationId.isBlank()) {
+                ordered.add(conversationId);
+            }
+        }
+        return List.copyOf(ordered);
     }
 
     @Override
@@ -357,6 +382,46 @@ public class DscopePersistenceFacade implements PersistenceFacade {
         long envelopeVersion = rehydrated.envelope() == null ? 0L : rehydrated.envelope().version();
         long eventVersion = auditFlowStateStore.readEvents(FLOW_CONVERSATION, conversationId, 0L, 10_000).size();
         return Math.max(envelopeVersion, eventVersion);
+    }
+
+    private void appendConversationIndex(AgentEvent event) {
+        final int maxAttempts = 3;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            long expectedVersion = resolveConversationIndexVersion();
+            ObjectNode payload = objectMapper.createObjectNode()
+                .put("conversationId", event.conversationId())
+                .put("timestamp", event.timestamp() == null ? Instant.now().toString() : event.timestamp().toString())
+                .put("type", event.type());
+            PersistedEvent persistedEvent = new PersistedEvent(
+                UUID.randomUUID().toString(),
+                FLOW_CONVERSATION_INDEX,
+                CONVERSATION_INDEX_STREAM,
+                expectedVersion + 1,
+                "conversation.seen",
+                payload,
+                Instant.now().toString(),
+                event.conversationId() + ":" + (event.timestamp() == null ? "now" : event.timestamp().toString())
+            );
+            try {
+                auditFlowStateStore.appendEvents(
+                    FLOW_CONVERSATION_INDEX,
+                    CONVERSATION_INDEX_STREAM,
+                    expectedVersion,
+                    List.of(persistedEvent),
+                    persistedEvent.idempotencyKey()
+                );
+                return;
+            } catch (OptimisticConflictException ex) {
+                if (attempt == maxAttempts) {
+                    return;
+                }
+            }
+        }
+    }
+
+    private long resolveConversationIndexVersion() {
+        var rehydrated = auditFlowStateStore.rehydrate(FLOW_CONVERSATION_INDEX, CONVERSATION_INDEX_STREAM);
+        return rehydrated.envelope() == null ? 0L : rehydrated.envelope().version();
     }
 
     private record TaskLockState(String ownerId, Instant leaseUntil) {

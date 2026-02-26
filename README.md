@@ -30,6 +30,16 @@ mvn -q test
 mvn clean install
 ```
 
+## Karavan Metadata
+
+Generate Karavan metadata for core build support:
+
+```bash
+mvn -pl camel-agent-core -Pkaravan-metadata -DskipTests compile exec:java
+```
+
+Generated files are written under `camel-agent-core/src/main/resources/karavan/metadata`.
+
 ## Local DScope Integration Bootstrap
 
 Install local AGUI and persistence artifacts, then run this project with local profile:

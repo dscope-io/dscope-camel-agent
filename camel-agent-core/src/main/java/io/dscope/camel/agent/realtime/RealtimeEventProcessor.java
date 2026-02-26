@@ -50,6 +50,10 @@ public class RealtimeEventProcessor implements Processor {
         this.lastRealtimeResponseCreateAt = new ConcurrentHashMap<>();
     }
 
+    public void clearBlueprintRealtimeCache() {
+        blueprintRealtimeCache.clear();
+    }
+
     @Override
     public void process(Exchange exchange) throws Exception {
         String conversationId = firstNonBlank(
@@ -666,6 +670,8 @@ public class RealtimeEventProcessor implements Processor {
         ).normalized();
 
         String apiKey = firstNonBlank(
+            property(exchange, "agent.runtime.spring-ai.openai.api-key", ""),
+            property(exchange, "spring.ai.openai.api-key", ""),
             property(exchange, "openai.api.key", ""),
             System.getenv("OPENAI_API_KEY")
         );

@@ -59,7 +59,7 @@ class RealtimeTokenHttpTtlIntegrationTest {
                 Assertions.assertEquals(conversationId, immediateBody.path("conversationId").asText());
             }
 
-            Thread.sleep(120L);
+            Thread.sleep(1200L);
 
             HttpResult expiredToken = postJson(port, "/realtime/session/" + conversationId + "/token", "{}");
             Assertions.assertEquals(410, expiredToken.statusCode());

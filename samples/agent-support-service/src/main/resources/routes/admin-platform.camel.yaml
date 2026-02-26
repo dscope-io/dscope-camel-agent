@@ -1,0 +1,69 @@
+- route:
+    id: sample-kamelet-echo-smoke
+    from:
+      id: fromSampleKameletEchoSmoke
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/smoke/kamelet/echo?httpMethodRestrict=GET
+      steps:
+        - setBody:
+            id: setBodySampleKameletEchoInput
+            expression:
+              simple:
+                id: simpleSampleKameletEchoInput
+                expression: ${header.query}
+        - to:
+            id: toSampleKameletEcho
+            uri: kamelet:support-echo-sink/sink?prefix=SupportEcho
+        - setHeader:
+            id: setHeaderSampleKameletEchoContentType
+            name: Content-Type
+            constant: text/plain; charset=UTF-8
+
+- route:
+    id: sample-runtime-refresh-all
+    from:
+      id: fromSampleRuntimeRefreshAll
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/runtime/refresh?httpMethodRestrict=POST
+      steps:
+        - process:
+            id: processSampleRuntimeRefreshAll
+            ref: runtimeResourceRefreshProcessor
+
+- route:
+    id: sample-runtime-refresh-conversation
+    from:
+      id: fromSampleRuntimeRefreshConversation
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/runtime/refresh/{conversationId}?httpMethodRestrict=POST
+      steps:
+        - process:
+            id: processSampleRuntimeRefreshConversation
+            ref: runtimeResourceRefreshProcessor
+
+- route:
+    id: sample-runtime-close-conversation
+    from:
+      id: fromSampleRuntimeCloseConversation
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/runtime/conversation/{conversationId}/close?httpMethodRestrict=POST
+      steps:
+        - process:
+            id: processSampleRuntimeCloseConversation
+            ref: runtimeConversationCloseProcessor
+
+- route:
+    id: sample-runtime-purge-preview
+    from:
+      id: fromSampleRuntimePurgePreview
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/runtime/purge/preview?httpMethodRestrict=GET
+      steps:
+        - process:
+            id: processSampleRuntimePurgePreview
+            ref: runtimePurgePreviewProcessor

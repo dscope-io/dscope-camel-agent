@@ -66,6 +66,18 @@ class MarkdownBlueprintLoaderTest {
     }
 
     @Test
+    void shouldParseKameletToolAsEndpointUri() {
+        MarkdownBlueprintLoader loader = new MarkdownBlueprintLoader();
+        var blueprint = loader.load("classpath:agents/valid-agent-with-kamelet-tool.md");
+
+        Assertions.assertEquals(1, blueprint.tools().size());
+        var tool = blueprint.tools().getFirst();
+        Assertions.assertEquals("customer.enrich", tool.name());
+        Assertions.assertEquals("kamelet:jsonpath-action/sink?expression=%24.customer.id&allowSimple=false", tool.endpointUri());
+        Assertions.assertNull(tool.routeId());
+    }
+
+    @Test
     void shouldParseMultiLineSystemInstructionWithBlankLineAfterHeading() {
         MarkdownBlueprintLoader loader = new MarkdownBlueprintLoader();
         var blueprint = loader.load("classpath:agents/valid-agent-with-system-block.md");

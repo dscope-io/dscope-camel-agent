@@ -6,7 +6,7 @@
   <parent>
     <groupId>io.dscope.camel</groupId>
     <artifactId>camel-agent</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.5.0</version>
   </parent>
 
   <artifactId>camel-agent-core</artifactId>
@@ -32,6 +32,10 @@
     <dependency>
       <groupId>org.apache.camel</groupId>
       <artifactId>camel-main</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.camel</groupId>
+      <artifactId>camel-kamelet</artifactId>
     </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
@@ -92,4 +96,29 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <id>karavan-metadata</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <version>3.5.0</version>
+            <configuration>
+              <mainClass>io.dscope.tools.karavan.AgentKaravanMetadataGenerator</mainClass>
+              <classpathScope>compile</classpathScope>
+              <systemProperties>
+                <systemProperty>
+                  <key>karavan.project.basedir</key>
+                  <value>${project.basedir}</value>
+                </systemProperty>
+              </systemProperties>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

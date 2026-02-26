@@ -12,6 +12,8 @@ import io.dscope.camel.agent.model.ToolPolicy;
 import io.dscope.camel.agent.model.ToolSpec;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -134,7 +136,7 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
         for (JsonNode node : toolsNode) {
             String name = required(node, "name");
             String routeId = text(node, "routeId");
-            String endpointUri = text(node, "endpointUri");
+            String endpointUri = resolveEndpointUri(node, name);
             JsonNode inputSchema = node.path("inputSchemaInline").isMissingNode() ? null : node.path("inputSchemaInline");
             JsonNode outputSchema = node.path("outputSchemaInline").isMissingNode() ? null : node.path("outputSchemaInline");
             JsonNode policyNode = node.path("policy");
@@ -154,6 +156,96 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
             ));
         }
         return tools;
+    }
+
+    private String resolveEndpointUri(JsonNode node, String toolName) {
+        String endpointUri = text(node, "endpointUri", "endpoint-uri");
+        if (endpointUri != null && !endpointUri.isBlank()) {
+            return endpointUri;
+        }
+
+        String kameletUri = text(node, "kameletUri", "kamelet-uri");
+        if (kameletUri != null && !kameletUri.isBlank()) {
+            return normalizeKameletUri(kameletUri);
+        }
+
+        JsonNode kameletNode = node.path("kamelet");
+        if (kameletNode.isMissingNode() || kameletNode.isNull()) {
+            return null;
+        }
+        return buildKameletUri(kameletNode, toolName);
+    }
+
+    private String buildKameletUri(JsonNode node, String toolName) {
+        if (node.isTextual()) {
+            return normalizeKameletUri(node.asText());
+        }
+        if (!node.isObject()) {
+            throw new IllegalArgumentException("Invalid kamelet configuration for tool '" + toolName + "': expected string or object");
+        }
+
+        String templateId = text(node, "templateId", "template-id", "name", "id");
+        if (templateId == null || templateId.isBlank()) {
+            throw new IllegalArgumentException("Invalid kamelet configuration for tool '" + toolName + "': missing templateId/name/id");
+        }
+        String action = text(node, "action");
+        if (action == null || action.isBlank()) {
+            action = "sink";
+        }
+
+        StringBuilder uri = new StringBuilder("kamelet:")
+            .append(templateId)
+            .append("/")
+            .append(action);
+
+        JsonNode parameters = firstObject(node, "parameters", "params", "properties");
+        if (parameters != null) {
+            boolean first = true;
+            var fields = parameters.fields();
+            while (fields.hasNext()) {
+                var entry = fields.next();
+                JsonNode value = entry.getValue();
+                if (value == null || value.isNull()) {
+                    continue;
+                }
+                String stringValue = value.isValueNode() ? value.asText() : value.toString();
+                if (stringValue == null || stringValue.isBlank()) {
+                    continue;
+                }
+                uri.append(first ? "?" : "&");
+                first = false;
+                uri.append(urlEncode(entry.getKey())).append("=").append(urlEncode(stringValue));
+            }
+        }
+        return uri.toString();
+    }
+
+    private JsonNode firstObject(JsonNode node, String... fields) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        for (String field : fields) {
+            JsonNode value = node.path(field);
+            if (value.isObject()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private String normalizeKameletUri(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.isBlank()) {
+            return null;
+        }
+        return trimmed.startsWith("kamelet:") ? trimmed : "kamelet:" + trimmed;
+    }
+
+    private String urlEncode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
     private List<JsonRouteTemplateSpec> parseJsonRouteTemplates(JsonNode root) {
@@ -414,6 +506,11 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
                     if (is == null) {
                         throw new IllegalArgumentException("Blueprint not found on classpath: " + location);
                     }
+                    return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            }
+            if (location.startsWith("http://") || location.startsWith("https://")) {
+                try (InputStream is = URI.create(location).toURL().openStream()) {
                     return new String(is.readAllBytes(), StandardCharsets.UTF_8);
                 }
             }

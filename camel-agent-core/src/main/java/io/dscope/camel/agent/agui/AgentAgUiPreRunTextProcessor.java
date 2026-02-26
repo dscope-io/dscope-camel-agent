@@ -32,6 +32,10 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
         this.blueprintCache = new ConcurrentHashMap<>();
     }
 
+    public void clearBlueprintCache() {
+        blueprintCache.clear();
+    }
+
     @Override
     @SuppressWarnings("unchecked")
     public void process(Exchange exchange) {

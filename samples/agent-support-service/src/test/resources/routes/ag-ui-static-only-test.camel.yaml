@@ -1,0 +1,45 @@
+- route:
+    id: agui-ui-test
+    from:
+      id: fromAguiUiTest
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agent.runtime.test-port:18081}}/agui/ui?httpMethodRestrict=GET
+      steps:
+        - setHeader:
+            id: setHeaderUiContentType
+            name: Content-Type
+            constant: text/html; charset=UTF-8
+        - setHeader:
+            id: setHeaderUiCacheControl
+            name: Cache-Control
+            constant: no-store, no-cache, must-revalidate, max-age=0
+        - setHeader:
+            id: setHeaderUiPragma
+            name: Pragma
+            constant: no-cache
+        - setHeader:
+            id: setHeaderUiExpires
+            name: Expires
+            constant: 0
+        - pollEnrich:
+            id: pollUiIndexResource
+            simple: file:{{agui.ui.static-root:samples/agent-support-service/src/main/resources/frontend}}?fileName=index.html&noop=true&idempotent=false
+        - convertBodyTo:
+            id: convertUiIndexToString
+            type: java.lang.String
+
+- route:
+    id: agui-ui-static-test
+    from:
+      id: fromAguiUiStaticTest
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agent.runtime.test-port:18081}}/agui/ui/{assetPath}?httpMethodRestrict=GET
+      steps:
+        - pollEnrich:
+            id: pollAguiUiStaticResource
+            simple: file:{{agui.ui.static-root:samples/agent-support-service/src/main/resources/frontend}}?fileName=${header.assetPath}&noop=true&idempotent=false
+        - convertBodyTo:
+            id: convertAguiUiStaticToString
+            type: java.lang.String

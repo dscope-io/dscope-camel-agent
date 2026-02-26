@@ -371,6 +371,19 @@ Covered scenarios:
 3. Live LLM route decision (when API key is available):
    - validates real tool selection and second-turn context carry-over
 
+4. Copilot page UI ↔ audit parity (Playwright + JUnit):
+   - opens `/agui/ui` in headless Chromium
+   - submits a support-ticket prompt via the page form
+   - uses a deterministic mocked `springAiChatGateway` in test bootstrap (no external OpenAI dependency)
+   - asserts UI assistant output is rendered
+   - verifies the same input/output appears in `/audit/search` for the same conversation
+
+Run Playwright UI/audit test only:
+
+```bash
+mvn -f samples/agent-support-service/pom.xml -Dtest=AgUiPlaywrightAuditTrailIntegrationTest test
+```
+
 ## Runtime Config
 
 Primary config is in `src/main/resources/application.yaml`.

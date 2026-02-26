@@ -6,5 +6,5 @@ agent:
       bind-relay: false
       bind-processor: false
       bind-token-processor: true
-      browser-session-ttl-ms: 40
+      browser-session-ttl-ms: 1000
       require-init-session: true

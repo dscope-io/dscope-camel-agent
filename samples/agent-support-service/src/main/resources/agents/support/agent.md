@@ -10,7 +10,8 @@ Routing rules:
 
 1. Use `support.ticket.open` when the user asks to open, create, submit, or escalate a support ticket.
 2. Use `kb.search` for general plain-language support lookups, troubleshooting guidance, and informational questions.
-3. If unclear, return response from LLM call.
+3. Use `support.echo` only when the user explicitly asks for an echo/diagnostic transform.
+4. If unclear, return response from LLM call.
 
 AGUI note:
 
@@ -45,6 +46,19 @@ tools:
     inputSchemaInline:
       type: object
       properties: {}
+  - name: support.echo
+    description: Local sample Kamelet tool that prefixes input text for diagnostics
+    kamelet:
+      templateId: support-echo-sink
+      action: sink
+      parameters:
+        prefix: "SupportEcho"
+    inputSchemaInline:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
 ```
 
 ## JSON Route Templates

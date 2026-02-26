@@ -58,6 +58,8 @@ public class RealtimeBrowserTokenProcessor implements Processor {
         }
 
         String apiKey = firstNonBlank(
+            property(exchange, "agent.runtime.spring-ai.openai.api-key", ""),
+            property(exchange, "spring.ai.openai.api-key", ""),
             property(exchange, "openai.api.key", ""),
             System.getenv("OPENAI_API_KEY")
         );

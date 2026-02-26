@@ -11,6 +11,12 @@ import io.dscope.camel.agent.realtime.RealtimeBrowserSessionInitProcessor;
 import io.dscope.camel.agent.realtime.RealtimeBrowserSessionRegistry;
 import io.dscope.camel.agent.realtime.RealtimeBrowserTokenProcessor;
 import io.dscope.camel.agent.realtime.RealtimeEventProcessor;
+import io.dscope.camel.agent.realtime.sip.SipCallEndProcessor;
+import io.dscope.camel.agent.realtime.sip.SipSessionInitEnvelopeProcessor;
+import io.dscope.camel.agent.realtime.sip.SipTranscriptFinalProcessor;
+import io.dscope.camel.agent.service.AuditAgentBlueprintProcessor;
+import io.dscope.camel.agent.service.AuditConversationListProcessor;
+import io.dscope.camel.agent.service.AuditTrailSearchProcessor;
 import io.dscope.camel.agent.service.AuditTrailService;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -30,6 +36,7 @@ public final class AgentRuntimeBootstrap {
 
     public static void bootstrap(Main main, String applicationYamlPath) throws Exception {
         Properties properties = effectiveProperties(applicationYamlPath);
+        properties = RuntimeResourceBootstrapper.resolve(properties);
         properties.forEach((key, value) -> main.addInitialProperty(String.valueOf(key), String.valueOf(value)));
         LOGGER.info("Agent runtime bootstrap started: applicationYamlPath={}, propertiesLoaded={}",
             applicationYamlPath,
@@ -49,7 +56,21 @@ public final class AgentRuntimeBootstrap {
             persistenceFacade = createPersistenceFacade(properties, objectMapper);
             main.bind("persistenceFacade", persistenceFacade);
         }
+        String blueprintUri = properties.getProperty("agent.blueprint", "classpath:agents/support/agent.md");
         main.bind("auditTrailService", new AuditTrailService(persistenceFacade, objectMapper));
+        main.bind("auditTrailSearchProcessor", new AuditTrailSearchProcessor(persistenceFacade, objectMapper, blueprintUri));
+        main.bind("auditConversationListProcessor", new AuditConversationListProcessor(persistenceFacade, objectMapper, blueprintUri));
+        main.bind("runtimeResourceRefreshProcessor", new RuntimeResourceRefreshProcessor(applicationYamlPath, persistenceFacade, objectMapper));
+        main.bind("runtimePurgePreviewProcessor", new RuntimePurgePreviewProcessor(objectMapper, persistenceFacade));
+        main.bind("runtimeConversationCloseProcessor", new RuntimeConversationCloseProcessor(objectMapper, persistenceFacade));
+        main.bind(
+            "auditAgentBlueprintProcessor",
+            new AuditAgentBlueprintProcessor(
+                persistenceFacade,
+                objectMapper,
+                blueprintUri
+            )
+        );
         bindAiModelClientIfConfigured(main, properties, objectMapper);
         bindOptionalAgUiAndRealtime(main, properties);
 
@@ -86,8 +107,7 @@ public final class AgentRuntimeBootstrap {
     }
 
     private static Properties effectiveProperties(String applicationYamlPath) throws Exception {
-        Properties effective = new Properties();
-        effective.putAll(ApplicationYamlLoader.loadFromClasspath(applicationYamlPath));
+        Properties effective = RuntimePropertyPlaceholderResolver.resolve(ApplicationYamlLoader.loadFromClasspath(applicationYamlPath));
         for (String key : System.getProperties().stringPropertyNames()) {
             if (key.startsWith("agent.") || key.startsWith("camel.")) {
                 effective.setProperty(key, System.getProperty(key));
@@ -216,6 +236,28 @@ public final class AgentRuntimeBootstrap {
                 preferCoreTokenProcessor
             );
         }
+
+        if (booleanPropertyWithAliases(properties, false,
+            "agent.runtime.sip.bind-processors",
+            "agent.runtime.sip.bindProcessors"
+        )) {
+            String sipInitBeanName = firstNonBlank(
+                properties.getProperty("agent.runtime.sip.init-envelope-processor-bean-name"),
+                properties.getProperty("agent.runtime.sip.initEnvelopeProcessorBeanName"),
+                "supportSipSessionInitEnvelopeProcessor"
+            );
+            String sipTranscriptBeanName = firstNonBlank(
+                properties.getProperty("agent.runtime.sip.transcript-final-processor-bean-name"),
+                properties.getProperty("agent.runtime.sip.transcriptFinalProcessorBeanName"),
+                "supportSipTranscriptFinalProcessor"
+            );
+            String sipCallEndBeanName = firstNonBlank(
+                properties.getProperty("agent.runtime.sip.call-end-processor-bean-name"),
+                properties.getProperty("agent.runtime.sip.callEndProcessorBeanName"),
+                "supportSipCallEndProcessor"
+            );
+            bindSipProcessorsIfMissing(main, sipInitBeanName, sipTranscriptBeanName, sipCallEndBeanName);
+        }
     }
 
     private static void bindAgUiDefaultsIfAvailable(Main main) {
@@ -343,6 +385,24 @@ public final class AgentRuntimeBootstrap {
         LOGGER.info("Agent runtime realtime token processor replaced: beanName={}, previousType={}",
             tokenBeanName,
             existingToken.getClass().getName());
+    }
+
+    private static void bindSipProcessorsIfMissing(Main main,
+                                                   String initBeanName,
+                                                   String transcriptBeanName,
+                                                   String callEndBeanName) {
+        if (initBeanName != null && !initBeanName.isBlank() && main.lookup(initBeanName, Object.class) == null) {
+            main.bind(initBeanName, new SipSessionInitEnvelopeProcessor());
+            LOGGER.info("Agent runtime SIP init envelope processor bound: beanName={}", initBeanName);
+        }
+        if (transcriptBeanName != null && !transcriptBeanName.isBlank() && main.lookup(transcriptBeanName, Object.class) == null) {
+            main.bind(transcriptBeanName, new SipTranscriptFinalProcessor());
+            LOGGER.info("Agent runtime SIP transcript processor bound: beanName={}", transcriptBeanName);
+        }
+        if (callEndBeanName != null && !callEndBeanName.isBlank() && main.lookup(callEndBeanName, Object.class) == null) {
+            main.bind(callEndBeanName, new SipCallEndProcessor());
+            LOGGER.info("Agent runtime SIP call-end processor bound: beanName={}", callEndBeanName);
+        }
     }
 
     private static Object instantiateGateway(Class<?> gatewayType, Properties properties) throws Exception {

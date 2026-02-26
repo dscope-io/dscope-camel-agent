@@ -1,0 +1,910 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Audit Trail Explorer</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0b1020; color: #e8ecff; }
+    .app { max-width: 980px; margin: 20px auto; padding: 0 16px; }
+    .title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+    .subtitle { opacity: .8; margin-bottom: 12px; }
+    .panel { background: #131b34; border: 1px solid #2a335d; border-radius: 12px; padding: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)); gap: 10px; }
+    .field { display: grid; gap: 6px; }
+    .field label { font-size: 12px; opacity: .85; }
+    .field input { border-radius: 8px; border: 1px solid #314074; background: #0f1731; color: #ecf1ff; padding: 8px; }
+    .field select { border-radius: 8px; border: 1px solid #314074; background: #0f1731; color: #ecf1ff; padding: 8px; }
+    .actions { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
+    button { border: 0; border-radius: 9px; background: #4b72ff; color: white; padding: 8px 14px; font-weight: 600; cursor: pointer; }
+    .view-switch { margin-top: 12px; display: flex; gap: 8px; }
+    .view-switch button { background: #233365; }
+    .view-switch button.active { background: #4b72ff; }
+    .status { font-size: 12px; opacity: .85; }
+    .status.ok { color: #9be29b; opacity: 1; }
+    .status.err { color: #ff9e9e; opacity: 1; }
+    pre { margin-top: 12px; border: 1px solid #314074; border-radius: 10px; background: #0f1731; padding: 10px; max-height: 520px; overflow: auto; font-size: 12px; line-height: 1.35; white-space: pre-wrap; word-break: break-word; }
+    .graph-view { margin-top: 12px; display: grid; gap: 10px; }
+    .graph-summary { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 8px; }
+    .summary-card { border: 1px solid #314074; border-radius: 10px; background: #0f1731; padding: 10px; }
+    .summary-label { font-size: 11px; opacity: .8; }
+    .summary-value { margin-top: 4px; font-size: 16px; font-weight: 700; }
+    .type-bars { border: 1px solid #314074; border-radius: 10px; background: #0f1731; padding: 10px; }
+    .type-row { display: grid; grid-template-columns: 170px 1fr 40px; gap: 8px; align-items: center; margin: 5px 0; font-size: 12px; }
+    .bar-wrap { height: 10px; border-radius: 999px; background: #172548; overflow: hidden; }
+    .bar-fill { height: 100%; background: #4b72ff; }
+    .event-list { display: grid; gap: 8px; }
+    .event-card { border: 1px solid #314074; border-radius: 10px; background: #0f1731; padding: 10px; }
+    .event-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12px; }
+    .event-type { font-weight: 700; }
+    .event-time { opacity: .8; font-size: 11px; }
+    .event-meta { margin-top: 4px; font-size: 11px; opacity: .85; }
+    .event-payload { margin-top: 6px; font-size: 12px; line-height: 1.35; white-space: pre-wrap; word-break: break-word; }
+    .tree-view { margin-top: 12px; border: 1px solid #314074; border-radius: 10px; background: #0f1731; padding: 10px; max-height: 640px; overflow: auto; font-size: 12px; }
+    .tree-line { margin: 3px 0; }
+    .tree-node { display: inline-flex; gap: 6px; align-items: baseline; }
+    .tree-key { opacity: .9; }
+    .tree-value { opacity: .95; }
+    .tree-children { margin-left: 18px; padding-left: 10px; border-left: 1px dashed #314074; }
+    .tree-details > summary { cursor: pointer; list-style: none; }
+    .tree-details > summary::-webkit-details-marker { display: none; }
+    .tree-meta { opacity: .75; }
+    .agent-md-view { margin-top: 12px; border: 1px solid #314074; border-radius: 10px; background: #0f1731; padding: 10px; max-height: 640px; overflow: auto; }
+    .agent-md-meta { font-size: 12px; opacity: .85; margin-bottom: 8px; }
+    .agent-md-content { margin: 0; font-size: 12px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
+    .meta-panel { margin-top: 12px; border: 1px solid #314074; border-radius: 10px; background: #0f1731; padding: 10px; }
+    .meta-title { font-size: 14px; font-weight: 700; }
+    .meta-description { margin-top: 6px; font-size: 12px; opacity: .9; }
+    .meta-line { margin-top: 6px; font-size: 12px; opacity: .85; }
+    .meta-topics { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+    .topic-chip { border: 1px solid #314074; border-radius: 999px; background: #1a2850; padding: 2px 8px; font-size: 11px; }
+    .conv-panel { margin-bottom: 12px; }
+    .conv-actions { margin-top: 8px; display: flex; gap: 8px; align-items: center; }
+    .inline-controls { margin-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .inline-controls input { border-radius: 8px; border: 1px solid #314074; background: #0f1731; color: #ecf1ff; padding: 8px; }
+    .inline-controls label { font-size: 12px; opacity: .85; }
+    .preview-panel { margin-top: 8px; border: 1px solid #314074; border-radius: 10px; background: #0f1731; padding: 10px; font-size: 12px; }
+    .preview-panel details { margin-top: 6px; }
+    .preview-panel summary { cursor: pointer; }
+    .preview-ids { margin: 6px 0 0; padding-left: 18px; max-height: 160px; overflow: auto; }
+    .preview-ids li { margin: 3px 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .conv-list { margin-top: 10px; border: 1px solid #314074; border-radius: 10px; background: #0f1731; max-height: 260px; overflow: auto; }
+    .conv-item { border-bottom: 1px solid #243766; padding: 9px 10px; cursor: pointer; }
+    .conv-item:last-child { border-bottom: 0; }
+    .conv-item:hover { background: #1a2850; }
+    .conv-id { font-size: 11px; opacity: .78; }
+    .conv-title { margin-top: 2px; font-size: 13px; font-weight: 700; }
+    .conv-meta { margin-top: 4px; font-size: 11px; opacity: .82; }
+    .empty-list { padding: 10px; font-size: 12px; opacity: .8; }
+    .hidden { display: none; }
+    a { color: #8fb4ff; }
+    @media (max-width: 860px) {
+      .grid { grid-template-columns: 1fr; }
+      .graph-summary { grid-template-columns: 1fr 1fr; }
+      .type-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="title">Audit Trail Explorer</div>
+    <div class="subtitle">Search conversations via <code>/audit/conversations</code> and inspect details via <code>/audit/search</code>.</div>
+    <div class="subtitle"><a href="/agui/ui">&larr; Back to AGUI chat</a></div>
+
+    <div class="panel conv-panel">
+      <div class="grid" style="grid-template-columns: 2fr 1fr 1fr;">
+        <div class="field">
+          <label for="conversationQ">Conversation list query (optional)</label>
+          <input id="conversationQ" placeholder="conversationId, title, topic" />
+        </div>
+        <div class="field">
+          <label for="conversationTopic">topic filter (optional)</label>
+          <input id="conversationTopic" placeholder="support.ticket.open" />
+        </div>
+        <div class="field">
+          <label for="conversationListLimit">list limit (default 50)</label>
+          <input id="conversationListLimit" type="number" min="1" max="500" placeholder="50" />
+        </div>
+      </div>
+      <div class="grid" style="grid-template-columns: 1fr 1fr; margin-top: 10px;">
+        <div class="field">
+          <label for="conversationSortBy">sort by</label>
+          <select id="conversationSortBy">
+            <option value="lastEventAt" selected>Last event time</option>
+            <option value="title">Title</option>
+            <option value="eventCount">Event count</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="conversationSortOrder">order</label>
+          <select id="conversationSortOrder">
+            <option value="desc" selected>Descending</option>
+            <option value="asc">Ascending</option>
+          </select>
+        </div>
+      </div>
+      <div class="conv-actions">
+        <button id="loadConversationsBtn" type="button">Load Conversations</button>
+        <button id="refreshAllBtn" type="button">Refresh All Blueprints</button>
+        <button id="refreshConversationBtn" type="button">Refresh Selected Conversation</button>
+        <button id="closeConversationBtn" type="button">Close Conversation Instance</button>
+        <span id="conversationStatus" class="status">Idle</span>
+      </div>
+      <div class="inline-controls">
+        <label><input id="purgeRequireClosed" type="checkbox" checked /> Closed only</label>
+        <input id="purgeBefore" type="datetime-local" step="1" placeholder="before date/time (optional)" />
+        <input id="purgeAgentName" placeholder="agent name/type (optional)" />
+        <button id="purgePreviewBtn" type="button">Preview Purge Scope</button>
+      </div>
+      <div id="purgePreviewPanel" class="preview-panel hidden"></div>
+      <div id="conversationList" class="conv-list">
+        <div class="empty-list">Load conversations to browse audit threads.</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="grid">
+        <div class="field">
+          <label for="conversationId">conversationId (required)</label>
+          <input id="conversationId" placeholder="sip:trace:2026-02-25-001" />
+        </div>
+        <div class="field">
+          <label for="type">type (optional)</label>
+          <input id="type" placeholder="tool.call.completed" />
+        </div>
+        <div class="field">
+          <label for="limit">limit (optional, default 200)</label>
+          <input id="limit" type="number" min="1" max="2000" placeholder="200" />
+        </div>
+        <div class="field">
+          <label for="from">from (date/time, optional)</label>
+          <input id="from" type="datetime-local" step="1" />
+        </div>
+        <div class="field">
+          <label for="to">to (date/time, optional)</label>
+          <input id="to" type="datetime-local" step="1" />
+        </div>
+        <div class="field">
+          <label for="q">q (free-text, optional)</label>
+          <input id="q" placeholder="ticketId" />
+        </div>
+      </div>
+      <div class="actions">
+        <button id="searchBtn" type="button">Search</button>
+        <button id="exportBtn" type="button">Export JSON</button>
+        <span id="status" class="status">Idle</span>
+      </div>
+      <div id="conversationMeta" class="meta-panel">
+        <div id="metaTitle" class="meta-title">No conversation loaded</div>
+        <div id="metaDescription" class="meta-description"></div>
+        <div id="metaLine" class="meta-line"></div>
+        <div id="metaTopics" class="meta-topics"></div>
+      </div>
+      <div class="view-switch">
+        <button id="treeViewBtn" class="active" type="button">Tree View</button>
+        <button id="graphViewBtn" type="button">Graph View</button>
+        <button id="rawViewBtn" type="button">Raw JSON</button>
+        <button id="agentMdViewBtn" type="button">Agent.md</button>
+      </div>
+      <pre id="result">{ "hint": "Run a query to view audit events." }</pre>
+      <div id="graphView" class="graph-view hidden"></div>
+      <div id="treeView" class="tree-view hidden"></div>
+      <div id="agentMdView" class="agent-md-view hidden">
+        <div id="agentMdMeta" class="agent-md-meta">Agent.md not loaded yet.</div>
+        <pre id="agentMdContent" class="agent-md-content"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const conversationIdEl = document.getElementById('conversationId');
+    const typeEl = document.getElementById('type');
+    const limitEl = document.getElementById('limit');
+    const fromEl = document.getElementById('from');
+    const toEl = document.getElementById('to');
+    const qEl = document.getElementById('q');
+    const conversationQEl = document.getElementById('conversationQ');
+    const conversationTopicEl = document.getElementById('conversationTopic');
+    const conversationListLimitEl = document.getElementById('conversationListLimit');
+    const conversationSortByEl = document.getElementById('conversationSortBy');
+    const conversationSortOrderEl = document.getElementById('conversationSortOrder');
+    const loadConversationsBtnEl = document.getElementById('loadConversationsBtn');
+    const refreshAllBtnEl = document.getElementById('refreshAllBtn');
+    const refreshConversationBtnEl = document.getElementById('refreshConversationBtn');
+    const closeConversationBtnEl = document.getElementById('closeConversationBtn');
+    const purgeRequireClosedEl = document.getElementById('purgeRequireClosed');
+    const purgeBeforeEl = document.getElementById('purgeBefore');
+    const purgeAgentNameEl = document.getElementById('purgeAgentName');
+    const purgePreviewBtnEl = document.getElementById('purgePreviewBtn');
+    const purgePreviewPanelEl = document.getElementById('purgePreviewPanel');
+    const conversationStatusEl = document.getElementById('conversationStatus');
+    const conversationListEl = document.getElementById('conversationList');
+    const searchBtnEl = document.getElementById('searchBtn');
+    const exportBtnEl = document.getElementById('exportBtn');
+    const rawViewBtnEl = document.getElementById('rawViewBtn');
+    const graphViewBtnEl = document.getElementById('graphViewBtn');
+    const treeViewBtnEl = document.getElementById('treeViewBtn');
+    const agentMdViewBtnEl = document.getElementById('agentMdViewBtn');
+    const statusEl = document.getElementById('status');
+    const resultEl = document.getElementById('result');
+    const graphViewEl = document.getElementById('graphView');
+    const treeViewEl = document.getElementById('treeView');
+    const agentMdViewEl = document.getElementById('agentMdView');
+    const agentMdMetaEl = document.getElementById('agentMdMeta');
+    const agentMdContentEl = document.getElementById('agentMdContent');
+    const metaTitleEl = document.getElementById('metaTitle');
+    const metaDescriptionEl = document.getElementById('metaDescription');
+    const metaLineEl = document.getElementById('metaLine');
+    const metaTopicsEl = document.getElementById('metaTopics');
+    let lastResultJson = null;
+    let lastAgentMd = null;
+    let lastConversationsResult = null;
+    let activeView = 'raw';
+    const ICON_FOLDER = '\uD83D\uDDC2\uFE0F';
+    const ICON_OBJECT = '\uD83D\uDCE6';
+    const ICON_ARRAY = '\uD83E\uDDE9';
+    const ICON_TEXT = '\uD83D\uDCDD';
+    const ICON_NUMBER = '\uD83D\uDD22';
+    const ICON_TRUE = '\u2705';
+    const ICON_FALSE = '\u274C';
+    const ICON_NULL = '\u2205';
+
+    function setStatus(text, cls) {
+      statusEl.textContent = text;
+      statusEl.className = `status ${cls || ''}`.trim();
+    }
+
+    function setConversationStatus(text, cls) {
+      conversationStatusEl.textContent = text;
+      conversationStatusEl.className = `status ${cls || ''}`.trim();
+    }
+
+    function renderPurgePreviewPanel(parsed) {
+      if (!parsed || typeof parsed !== 'object') {
+        purgePreviewPanelEl.classList.add('hidden');
+        purgePreviewPanelEl.innerHTML = '';
+        return;
+      }
+      const scanned = parsed.scannedConversations == null ? '?' : parsed.scannedConversations;
+      const matched = parsed.matchedConversations == null ? '?' : parsed.matchedConversations;
+      const ids = Array.isArray(parsed.conversationIds) ? parsed.conversationIds : [];
+      const truncated = parsed.conversationIdsTruncated ? ' (truncated)' : '';
+      const idsHtml = ids.length
+        ? `<details><summary>Matched conversation IDs (${ids.length})${truncated}</summary><ul class="preview-ids">${ids.map((id) => `<li>${escapeHtml(String(id || ''))}</li>`).join('')}</ul></details>`
+        : '<div>No conversation IDs returned for this preview.</div>';
+
+      purgePreviewPanelEl.classList.remove('hidden');
+      purgePreviewPanelEl.innerHTML = `
+        <div><strong>Purge preview</strong>: ${matched} matched / ${scanned} scanned</div>
+        ${idsHtml}
+      `;
+    }
+
+    function renderConversationMetadata(metadata) {
+      if (!metadata || typeof metadata !== 'object') {
+        metaTitleEl.textContent = 'No conversation loaded';
+        metaDescriptionEl.textContent = '';
+        metaLineEl.textContent = '';
+        metaTopicsEl.innerHTML = '';
+        return;
+      }
+
+      metaTitleEl.textContent = metadata.title || metadata.agentTitle || metadata.conversationId || 'Conversation';
+      metaDescriptionEl.textContent = metadata.description || '';
+      const eventCount = metadata.eventCount == null ? '?' : String(metadata.eventCount);
+      const firstEventAt = metadata.firstEventAt || '-';
+      const lastEventAt = metadata.lastEventAt || '-';
+      metaLineEl.textContent = `Events: ${eventCount} | First: ${firstEventAt} | Last: ${lastEventAt}`;
+      const topics = Array.isArray(metadata.topics) ? metadata.topics : [];
+      metaTopicsEl.innerHTML = topics.length
+        ? topics.map((topic) => `<span class="topic-chip">${escapeHtml(topic)}</span>`).join('')
+        : '<span class="topic-chip">No topics</span>';
+    }
+
+    function renderConversationList(items) {
+      if (!Array.isArray(items) || !items.length) {
+        conversationListEl.innerHTML = '<div class="empty-list">No conversations found.</div>';
+        return;
+      }
+      conversationListEl.innerHTML = items.map((item) => {
+        const metadata = item && item.metadata && typeof item.metadata === 'object' ? item.metadata : {};
+        const conversationId = String(item?.conversationId || metadata.conversationId || '');
+        const title = String(metadata.title || conversationId || 'Conversation');
+        const topics = Array.isArray(metadata.topics) ? metadata.topics.slice(0, 4).join(', ') : '';
+        const lastEventAt = String(metadata.lastEventAt || '-');
+        return `
+          <div class="conv-item" data-conversation-id="${escapeHtml(conversationId)}">
+            <div class="conv-id">${escapeHtml(conversationId)}</div>
+            <div class="conv-title">Title: ${escapeHtml(title)}</div>
+            <div class="conv-meta">Topics: ${escapeHtml(topics || 'No topics')} | Last: ${escapeHtml(lastEventAt)}</div>
+          </div>
+        `;
+      }).join('');
+      for (const row of conversationListEl.querySelectorAll('.conv-item')) {
+        row.addEventListener('click', () => {
+          const conversationId = row.getAttribute('data-conversation-id') || '';
+          conversationIdEl.value = conversationId;
+          runSearch();
+          setView('tree');
+        });
+      }
+    }
+
+    async function loadConversations() {
+      const params = new URLSearchParams();
+      const q = (conversationQEl.value || '').trim();
+      const topic = (conversationTopicEl.value || '').trim();
+      const limit = (conversationListLimitEl.value || '').trim();
+      const sortBy = (conversationSortByEl.value || '').trim();
+      const order = (conversationSortOrderEl.value || '').trim();
+      if (q) params.set('q', q);
+      if (topic) params.set('topic', topic);
+      if (limit) params.set('limit', limit);
+      if (sortBy) params.set('sortBy', sortBy);
+      if (order) params.set('order', order);
+
+      syncListStateToUrl({ q, topic, limit, sortBy, order });
+
+      setConversationStatus('Loading…', '');
+      try {
+        const response = await fetch(`/audit/conversations?${params.toString()}`);
+        const text = await response.text();
+        let parsed = null;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          parsed = null;
+        }
+        if (!response.ok || !parsed) {
+          lastConversationsResult = null;
+          conversationListEl.innerHTML = `<div class="empty-list">Failed to load conversations (${response.status}).</div>`;
+          setConversationStatus(`Error ${response.status}`, 'err');
+          return;
+        }
+        lastConversationsResult = parsed;
+        renderConversationList(parsed.items || []);
+        setConversationStatus(`OK (${parsed.count || 0})`, 'ok');
+      } catch (err) {
+        lastConversationsResult = null;
+        conversationListEl.innerHTML = `<div class="empty-list">Request failed: ${escapeHtml(String(err))}</div>`;
+        setConversationStatus('Request failed', 'err');
+      }
+    }
+
+    async function refreshBlueprint(conversationId) {
+      const targetConversationId = (conversationId || '').trim();
+      const endpoint = targetConversationId
+        ? `/runtime/refresh/${encodeURIComponent(targetConversationId)}`
+        : '/runtime/refresh';
+      const label = targetConversationId ? `conversation ${targetConversationId}` : 'all conversations';
+
+      setConversationStatus(`Refreshing ${label}…`, '');
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: targetConversationId ? JSON.stringify({ conversationId: targetConversationId }) : '{}'
+        });
+        const text = await response.text();
+        let parsed = null;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          parsed = null;
+        }
+
+        if (!response.ok || !parsed) {
+          setConversationStatus(`Refresh failed (${response.status})`, 'err');
+          setStatus(`Refresh failed (${response.status})`, 'err');
+          return;
+        }
+
+        const scope = parsed.conversationScope || (targetConversationId ? 'single' : 'all');
+        const refreshed = parsed.refreshed ? 'OK' : 'failed';
+        const targets = parsed.conversationTargetCount == null ? '?' : parsed.conversationTargetCount;
+        setConversationStatus(`Refresh ${refreshed} (${scope}, ${targets} targets)`, parsed.refreshed ? 'ok' : 'err');
+        setStatus(`Refresh ${refreshed} (${scope})`, parsed.refreshed ? 'ok' : 'err');
+
+        if (targetConversationId) {
+          conversationIdEl.value = targetConversationId;
+        }
+        const selectedConversationId = (conversationIdEl.value || '').trim();
+        if (selectedConversationId) {
+          runSearch();
+        }
+      } catch (err) {
+        setConversationStatus('Refresh request failed', 'err');
+        setStatus(`Refresh request failed: ${String(err)}`, 'err');
+      }
+    }
+
+    async function closeConversationInstance(conversationId) {
+      const targetConversationId = (conversationId || '').trim();
+      if (!targetConversationId) {
+        setConversationStatus('conversationId is required to close instance', 'err');
+        return;
+      }
+
+      setConversationStatus(`Closing instance for ${targetConversationId}…`, '');
+      try {
+        const response = await fetch(`/runtime/conversation/${encodeURIComponent(targetConversationId)}/close`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversationId: targetConversationId })
+        });
+        const text = await response.text();
+        let parsed = null;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          parsed = null;
+        }
+
+        if (!response.ok || !parsed) {
+          setConversationStatus(`Close failed (${response.status})`, 'err');
+          setStatus(`Close failed (${response.status})`, 'err');
+          return;
+        }
+
+        const relayClosed = parsed.realtimeRelayClosed == null ? 0 : parsed.realtimeRelayClosed;
+        const memoryCleared = parsed.chatMemoryCleared == null ? 0 : parsed.chatMemoryCleared;
+        setConversationStatus(`Instance closed (memory=${memoryCleared}, realtime=${relayClosed})`, 'ok');
+        setStatus('Conversation instance closed; JDBC audit history preserved', 'ok');
+        conversationIdEl.value = targetConversationId;
+      } catch (err) {
+        setConversationStatus('Close request failed', 'err');
+        setStatus(`Close request failed: ${String(err)}`, 'err');
+      }
+    }
+
+    async function previewPurgeScope() {
+      const params = new URLSearchParams();
+      const requireClosed = !!purgeRequireClosedEl.checked;
+      const before = localDateTimeToIso(purgeBeforeEl.value || '');
+      const agentName = (purgeAgentNameEl.value || '').trim();
+
+      if (before === null) {
+        setConversationStatus('Invalid purge before date/time', 'err');
+        return;
+      }
+
+      params.set('requireClosed', String(requireClosed));
+      params.set('limit', '200');
+      params.set('includeConversationIds', 'true');
+      if (before) {
+        params.set('before', before);
+      }
+      if (agentName) {
+        params.set('agentName', agentName);
+      }
+
+      setConversationStatus('Previewing purge scope…', '');
+      try {
+        const response = await fetch(`/runtime/purge/preview?${params.toString()}`);
+        const text = await response.text();
+        let parsed = null;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          parsed = null;
+        }
+
+        if (!response.ok || !parsed) {
+          setConversationStatus(`Purge preview failed (${response.status})`, 'err');
+          setStatus(`Purge preview failed (${response.status})`, 'err');
+          renderPurgePreviewPanel(null);
+          return;
+        }
+
+        const scanned = parsed.scannedConversations == null ? '?' : parsed.scannedConversations;
+        const matched = parsed.matchedConversations == null ? '?' : parsed.matchedConversations;
+        const truncated = parsed.conversationIdsTruncated ? ' (truncated)' : '';
+        setConversationStatus(`Purge preview: ${matched} matched / ${scanned} scanned${truncated}`, 'ok');
+        setStatus('Purge preview completed (no data deleted)', 'ok');
+        renderPurgePreviewPanel(parsed);
+      } catch (err) {
+        setConversationStatus('Purge preview request failed', 'err');
+        setStatus(`Purge preview request failed: ${String(err)}`, 'err');
+        renderPurgePreviewPanel(null);
+      }
+    }
+
+    function syncListStateToUrl({ q, topic, limit, sortBy, order }) {
+      const url = new URL(window.location.href);
+      const params = url.searchParams;
+
+      if (q) params.set('listQ', q); else params.delete('listQ');
+      if (topic) params.set('listTopic', topic); else params.delete('listTopic');
+      if (limit) params.set('listLimit', limit); else params.delete('listLimit');
+      if (sortBy) params.set('listSortBy', sortBy); else params.delete('listSortBy');
+      if (order) params.set('listOrder', order); else params.delete('listOrder');
+
+      params.set('listAuto', '1');
+
+      const query = params.toString();
+      const nextUrl = `${url.pathname}${query ? `?${query}` : ''}${url.hash || ''}`;
+      window.history.replaceState(null, '', nextUrl);
+    }
+
+    function escapeHtml(text) {
+      return String(text || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function summarizeTypeCounts(events) {
+      const counts = new Map();
+      for (const event of events || []) {
+        const type = String(event?.type || 'unknown');
+        counts.set(type, (counts.get(type) || 0) + 1);
+      }
+      return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    }
+
+    function payloadPreview(payload) {
+      if (payload == null) {
+        return '';
+      }
+      if (typeof payload === 'string') {
+        return payload.length > 320 ? `${payload.slice(0, 320)}…` : payload;
+      }
+      try {
+        const text = JSON.stringify(payload);
+        return text.length > 320 ? `${text.slice(0, 320)}…` : text;
+      } catch {
+        return String(payload);
+      }
+    }
+
+    function renderGraphView(data) {
+      if (!data || !Array.isArray(data.events)) {
+        graphViewEl.innerHTML = '<div class="summary-card">No structured JSON result to visualize yet.</div>';
+        return;
+      }
+
+      const events = data.events;
+      const typeCounts = summarizeTypeCounts(events);
+      const maxTypeCount = typeCounts.length ? typeCounts[0][1] : 1;
+      const firstTimestamp = events[0]?.timestamp || '';
+      const lastTimestamp = events[events.length - 1]?.timestamp || '';
+
+      const typeBarsHtml = typeCounts.length
+        ? typeCounts.slice(0, 12).map(([type, count]) => {
+            const pct = Math.round((count / maxTypeCount) * 100);
+            return `
+              <div class="type-row">
+                <div>${escapeHtml(type)}</div>
+                <div class="bar-wrap"><div class="bar-fill" style="width:${pct}%"></div></div>
+                <div>${count}</div>
+              </div>`;
+          }).join('')
+        : '<div class="type-row"><div>No events</div><div></div><div>0</div></div>';
+
+      const eventsHtml = events.map((event) => `
+        <div class="event-card">
+          <div class="event-top">
+            <div class="event-type">${escapeHtml(event.type || 'unknown')}</div>
+            <div class="event-time">${escapeHtml(event.timestamp || '')}</div>
+          </div>
+          <div class="event-meta">conversationId=${escapeHtml(event.conversationId || '')} | taskId=${escapeHtml(event.taskId || '')}</div>
+          <div class="event-payload">${escapeHtml(payloadPreview(event.payload))}</div>
+        </div>`).join('');
+
+      graphViewEl.innerHTML = `
+        <div class="graph-summary">
+          <div class="summary-card"><div class="summary-label">Conversation</div><div class="summary-value">${escapeHtml(data.conversationId || '-')}</div></div>
+          <div class="summary-card"><div class="summary-label">Event Count</div><div class="summary-value">${events.length}</div></div>
+          <div class="summary-card"><div class="summary-label">First Timestamp</div><div class="summary-value">${escapeHtml(firstTimestamp || '-')}</div></div>
+          <div class="summary-card"><div class="summary-label">Last Timestamp</div><div class="summary-value">${escapeHtml(lastTimestamp || '-')}</div></div>
+        </div>
+        <div class="type-bars">
+          <div class="summary-label">Event Types</div>
+          ${typeBarsHtml}
+        </div>
+        <div class="event-list">${eventsHtml || '<div class="summary-card">No events to display.</div>'}</div>
+      `;
+    }
+
+    function formatLeaf(value) {
+      if (value === null) {
+        return `<span class="tree-value">${ICON_NULL} null</span>`;
+      }
+      if (typeof value === 'string') {
+        return `<span class="tree-value">${ICON_TEXT} "${escapeHtml(value)}"</span>`;
+      }
+      if (typeof value === 'number') {
+        return `<span class="tree-value">${ICON_NUMBER} ${value}</span>`;
+      }
+      if (typeof value === 'boolean') {
+        return `<span class="tree-value">${value ? `${ICON_TRUE} true` : `${ICON_FALSE} false`}</span>`;
+      }
+      return `<span class="tree-value">${escapeHtml(String(value))}</span>`;
+    }
+
+    function renderTreeNode(node, key, depth) {
+      const keyLabel = key == null ? '' : `<span class="tree-key">${ICON_FOLDER} ${escapeHtml(String(key))}:</span>`;
+      if (node === null || typeof node !== 'object') {
+        return `<div class="tree-line"><span class="tree-node">${keyLabel}${formatLeaf(node)}</span></div>`;
+      }
+
+      const isArray = Array.isArray(node);
+      const entries = isArray
+        ? node.map((value, index) => [index, value])
+        : Object.entries(node);
+      const icon = isArray ? ICON_ARRAY : ICON_OBJECT;
+      const kind = isArray ? 'array' : 'object';
+      const count = entries.length;
+      const openByDefault = depth < 2 ? 'open' : '';
+
+      const childrenHtml = entries.length
+        ? entries.map(([childKey, childValue]) => renderTreeNode(childValue, childKey, depth + 1)).join('')
+        : '<div class="tree-line"><span class="tree-meta">(empty)</span></div>';
+
+      return `
+        <details class="tree-details" ${openByDefault}>
+          <summary class="tree-line">
+            <span class="tree-node">${keyLabel}<span class="tree-value">${icon} ${kind} <span class="tree-meta">(${count})</span></span></span>
+          </summary>
+          <div class="tree-children">${childrenHtml}</div>
+        </details>
+      `;
+    }
+
+    function renderTreeView(data) {
+      if (!data || typeof data !== 'object') {
+        treeViewEl.innerHTML = '<div class="tree-line"><span class="tree-meta">No structured JSON result to visualize yet.</span></div>';
+        return;
+      }
+      treeViewEl.innerHTML = renderTreeNode(data, 'root', 0);
+    }
+
+    async function loadAgentMd(conversationId) {
+      if (!conversationId) {
+        lastAgentMd = null;
+        agentMdMetaEl.textContent = 'conversationId is required.';
+        agentMdContentEl.textContent = '';
+        return;
+      }
+      try {
+        const response = await fetch(`/audit/agent-md?conversationId=${encodeURIComponent(conversationId)}`);
+        const text = await response.text();
+        let parsed = null;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          parsed = null;
+        }
+        if (!response.ok || !parsed) {
+          lastAgentMd = null;
+          agentMdMetaEl.textContent = `Agent.md load failed (${response.status})`;
+          agentMdContentEl.textContent = text;
+          return;
+        }
+        lastAgentMd = parsed;
+        const foundSuffix = parsed.conversationFound ? 'found in audit' : 'not found in audit';
+        agentMdMetaEl.textContent = `Blueprint: ${parsed.blueprintUri} | conversation ${foundSuffix}`;
+        agentMdContentEl.textContent = parsed.content || '';
+        if (parsed.metadata && typeof parsed.metadata === 'object') {
+          renderConversationMetadata(parsed.metadata);
+        }
+      } catch (err) {
+        lastAgentMd = null;
+        agentMdMetaEl.textContent = 'Agent.md load failed (request error)';
+        agentMdContentEl.textContent = String(err);
+      }
+    }
+
+    function setView(mode) {
+      activeView = mode === 'graph' || mode === 'tree' || mode === 'agent-md' ? mode : 'raw';
+      const graphMode = activeView === 'graph';
+      const treeMode = activeView === 'tree';
+      const agentMdMode = activeView === 'agent-md';
+      resultEl.classList.toggle('hidden', graphMode || treeMode || agentMdMode);
+      graphViewEl.classList.toggle('hidden', !graphMode);
+      treeViewEl.classList.toggle('hidden', !treeMode);
+      agentMdViewEl.classList.toggle('hidden', !agentMdMode);
+      rawViewBtnEl.classList.toggle('active', activeView === 'raw');
+      graphViewBtnEl.classList.toggle('active', graphMode);
+      treeViewBtnEl.classList.toggle('active', treeMode);
+      agentMdViewBtnEl.classList.toggle('active', agentMdMode);
+    }
+
+    function localDateTimeToIso(value) {
+      const text = (value || '').trim();
+      if (!text) {
+        return '';
+      }
+      const date = new Date(text);
+      if (Number.isNaN(date.getTime())) {
+        return null;
+      }
+      return date.toISOString();
+    }
+
+    function isoToLocalDateTime(value) {
+      const text = (value || '').trim();
+      if (!text) {
+        return '';
+      }
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(text)) {
+        return text.length === 16 ? `${text}:00` : text;
+      }
+      const date = new Date(text);
+      if (Number.isNaN(date.getTime())) {
+        return '';
+      }
+      const timezoneOffsetMs = date.getTimezoneOffset() * 60_000;
+      return new Date(date.getTime() - timezoneOffsetMs).toISOString().slice(0, 19);
+    }
+
+    async function runSearch() {
+      const conversationId = (conversationIdEl.value || '').trim();
+      if (!conversationId) {
+        setStatus('conversationId is required', 'err');
+        return;
+      }
+      loadAgentMd(conversationId);
+      const params = new URLSearchParams();
+      params.set('conversationId', conversationId);
+      const type = (typeEl.value || '').trim();
+      const limit = (limitEl.value || '').trim();
+      const from = localDateTimeToIso(fromEl.value || '');
+      const to = localDateTimeToIso(toEl.value || '');
+      const q = (qEl.value || '').trim();
+
+      if (from === null) {
+        setStatus('Invalid "from" date/time', 'err');
+        return;
+      }
+      if (to === null) {
+        setStatus('Invalid "to" date/time', 'err');
+        return;
+      }
+
+      if (type) params.set('type', type);
+      if (limit) params.set('limit', limit);
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      if (q) params.set('q', q);
+
+      setStatus('Searching…', '');
+      try {
+        const response = await fetch(`/audit/search?${params.toString()}`);
+        const text = await response.text();
+        let parsed;
+        try {
+          parsed = JSON.parse(text);
+          resultEl.textContent = JSON.stringify(parsed, null, 2);
+          renderGraphView(parsed);
+          renderTreeView(parsed);
+        } catch {
+          resultEl.textContent = text;
+          renderGraphView(null);
+          renderTreeView(null);
+        }
+        if (response.ok) {
+          lastResultJson = parsed || null;
+          const count = parsed && typeof parsed.count === 'number' ? parsed.count : '?';
+          if (parsed && parsed.conversationMetadata) {
+            renderConversationMetadata(parsed.conversationMetadata);
+          }
+          setStatus(`OK (${count} events)`, 'ok');
+        } else {
+          lastResultJson = null;
+          setStatus(`Error ${response.status}`, 'err');
+        }
+      } catch (err) {
+        lastResultJson = null;
+        setStatus('Request failed', 'err');
+        resultEl.textContent = String(err);
+        renderGraphView(null);
+        renderTreeView(null);
+      }
+    }
+
+    function exportJson() {
+      if (!lastResultJson) {
+        setStatus('Run a successful search first', 'err');
+        return;
+      }
+      const conversationId = (conversationIdEl.value || 'audit').trim().replace(/[^a-zA-Z0-9._-]+/g, '_');
+      const fileName = `audit-search-${conversationId || 'result'}.json`;
+      const blob = new Blob([JSON.stringify(lastResultJson, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setStatus(`Exported ${fileName}`, 'ok');
+    }
+
+    function applyQueryParams() {
+      const params = new URLSearchParams(window.location.search || '');
+      const conversationId = (params.get('conversationId') || '').trim();
+      const type = (params.get('type') || '').trim();
+      const limit = (params.get('limit') || '').trim();
+      const from = (params.get('from') || '').trim();
+      const to = (params.get('to') || '').trim();
+      const q = (params.get('q') || '').trim();
+      const view = (params.get('view') || '').trim().toLowerCase();
+      const requestedView = (view === 'raw' || view === 'graph' || view === 'tree' || view === 'agent-md') ? view : '';
+
+      const listQ = (params.get('listQ') || '').trim();
+      const listTopic = (params.get('listTopic') || '').trim();
+      const listLimit = (params.get('listLimit') || '').trim();
+      const listSortBy = (params.get('listSortBy') || '').trim();
+      const listOrder = (params.get('listOrder') || '').trim().toLowerCase();
+
+      if (conversationId) conversationIdEl.value = conversationId;
+      if (type) typeEl.value = type;
+      if (limit) limitEl.value = limit;
+      if (from) fromEl.value = isoToLocalDateTime(from);
+      if (to) toEl.value = isoToLocalDateTime(to);
+      if (q) qEl.value = q;
+
+      if (listQ) conversationQEl.value = listQ;
+      if (listTopic) conversationTopicEl.value = listTopic;
+      if (listLimit) conversationListLimitEl.value = listLimit;
+      if (listSortBy && ['lastEventAt', 'title', 'eventCount'].includes(listSortBy)) {
+        conversationSortByEl.value = listSortBy;
+      }
+      if (listOrder && ['asc', 'desc'].includes(listOrder)) {
+        conversationSortOrderEl.value = listOrder;
+      }
+
+      const auto = (params.get('auto') || '').trim().toLowerCase();
+      const shouldAutoSearch = conversationId && auto !== '0' && auto !== 'false';
+      const listAuto = (params.get('listAuto') || '').trim().toLowerCase();
+      const shouldAutoListLoad = listAuto === '1' || listAuto === 'true';
+      if (requestedView === 'agent-md' && conversationId) {
+        loadAgentMd(conversationId);
+      }
+      if (shouldAutoSearch) {
+        runSearch();
+      }
+      return {
+        requestedView,
+        shouldAutoListLoad
+      };
+    }
+
+    searchBtnEl.addEventListener('click', runSearch);
+    loadConversationsBtnEl.addEventListener('click', loadConversations);
+    refreshAllBtnEl.addEventListener('click', () => refreshBlueprint(''));
+    refreshConversationBtnEl.addEventListener('click', () => {
+      const conversationId = (conversationIdEl.value || '').trim();
+      if (!conversationId) {
+        setConversationStatus('conversationId is required for per-conversation refresh', 'err');
+        return;
+      }
+      refreshBlueprint(conversationId);
+    });
+    closeConversationBtnEl.addEventListener('click', () => {
+      const conversationId = (conversationIdEl.value || '').trim();
+      closeConversationInstance(conversationId);
+    });
+    purgePreviewBtnEl.addEventListener('click', previewPurgeScope);
+    exportBtnEl.addEventListener('click', exportJson);
+    rawViewBtnEl.addEventListener('click', () => setView('raw'));
+    graphViewBtnEl.addEventListener('click', () => setView('graph'));
+    treeViewBtnEl.addEventListener('click', () => setView('tree'));
+    agentMdViewBtnEl.addEventListener('click', () => {
+      const conversationId = (conversationIdEl.value || '').trim();
+      loadAgentMd(conversationId);
+      setView('agent-md');
+    });
+    const initialState = applyQueryParams();
+    if (initialState.shouldAutoListLoad) {
+      loadConversations();
+    }
+    setView(initialState.requestedView || 'tree');
+  </script>
+</body>
+</html>

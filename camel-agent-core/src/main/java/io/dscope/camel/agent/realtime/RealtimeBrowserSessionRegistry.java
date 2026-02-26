@@ -3,6 +3,7 @@ package io.dscope.camel.agent.realtime;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.Set;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -65,6 +66,19 @@ public class RealtimeBrowserSessionRegistry {
             return null;
         }
         return entry.session().deepCopy();
+    }
+
+    public Set<String> conversationIds() {
+        long now = System.currentTimeMillis();
+        evictExpired(now);
+        return Set.copyOf(sessionByConversationId.keySet());
+    }
+
+    public void removeSession(String conversationId) {
+        if (conversationId == null || conversationId.isBlank()) {
+            return;
+        }
+        sessionByConversationId.remove(conversationId);
     }
 
     public ObjectNode defaultSession(String model, String voice, String conversationId) {

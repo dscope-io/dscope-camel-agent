@@ -12,6 +12,7 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -39,7 +40,15 @@ import io.dscope.camel.agent.validation.SchemaValidator;
 class SpringAiAuditTrailIntegrationTest {
 
     @Test
+    @Timeout(90)
     void shouldUseLlmDecisionAndCarryFirstTurnResultIntoSecondTurnContext() {
+        boolean liveEnabled = Boolean.parseBoolean(System.getProperty("it.live.openai.enabled", "false"))
+            || Boolean.parseBoolean(System.getenv().getOrDefault("IT_LIVE_OPENAI_ENABLED", "false"));
+        Assumptions.assumeTrue(
+            liveEnabled,
+            "Live OpenAI test disabled. Set -Dit.live.openai.enabled=true or IT_LIVE_OPENAI_ENABLED=true to run"
+        );
+
         String apiKey = resolveOpenAiApiKey();
         Assumptions.assumeTrue(apiKey != null && !apiKey.isBlank(), "OPENAI_API_KEY (or openai.api.key/.agent-secrets.properties) is required");
 
