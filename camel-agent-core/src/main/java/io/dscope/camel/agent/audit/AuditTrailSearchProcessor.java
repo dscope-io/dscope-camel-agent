@@ -1,4 +1,4 @@
-package io.dscope.camel.agent.service;
+package io.dscope.camel.agent.audit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dscope.camel.agent.api.PersistenceFacade;
@@ -24,15 +24,13 @@ public class AuditTrailSearchProcessor implements Processor {
     private final String blueprintUri;
 
     public AuditTrailSearchProcessor(PersistenceFacade persistenceFacade, ObjectMapper objectMapper) {
-        this(persistenceFacade, objectMapper, "classpath:agents/support/agent.md");
+        this(persistenceFacade, objectMapper, null);
     }
 
     public AuditTrailSearchProcessor(PersistenceFacade persistenceFacade, ObjectMapper objectMapper, String blueprintUri) {
         this.persistenceFacade = persistenceFacade;
         this.objectMapper = objectMapper;
-        this.blueprintUri = (blueprintUri == null || blueprintUri.isBlank())
-            ? "classpath:agents/support/agent.md"
-            : blueprintUri;
+        this.blueprintUri = blueprintUri == null || blueprintUri.isBlank() ? null : blueprintUri;
     }
 
     @Override

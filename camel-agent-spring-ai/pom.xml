@@ -44,6 +44,11 @@
       <version>${spring.ai.version}</version>
     </dependency>
     <dependency>
+      <groupId>org.springframework.ai</groupId>
+      <artifactId>spring-ai-ollama</artifactId>
+      <version>${spring.ai.version}</version>
+    </dependency>
+    <dependency>
       <groupId>io.dscope.camel</groupId>
       <artifactId>camel-persistence-core</artifactId>
       <version>${persistence.version}</version>

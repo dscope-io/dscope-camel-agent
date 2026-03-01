@@ -152,7 +152,7 @@
         - setHeader:
             id: setHeaderUiExpires
             name: Expires
-            constant: 0
+            constant: "0"
 - route:
     id: agui-ui-static
     from:
@@ -167,69 +167,6 @@
         - convertBodyTo:
             id: convertAguiUiStaticToString
             type: java.lang.String
-- route:
-    id: sample-audit-search-api
-    from:
-      id: fromSampleAuditSearch
-      uri: undertow
-      parameters:
-        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/audit/search?httpMethodRestrict=GET
-      steps:
-        - process:
-            id: processSampleAuditSearch
-            ref: auditTrailSearchProcessor
-- route:
-    id: sample-audit-conversations-api
-    from:
-      id: fromSampleAuditConversations
-      uri: undertow
-      parameters:
-        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/audit/conversations?httpMethodRestrict=GET
-      steps:
-        - process:
-            id: processSampleAuditConversations
-            ref: auditConversationListProcessor
-- route:
-    id: sample-audit-agent-md-api
-    from:
-      id: fromSampleAuditAgentMd
-      uri: undertow
-      parameters:
-        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/audit/agent-md?httpMethodRestrict=GET
-      steps:
-        - process:
-            id: processSampleAuditAgentMd
-            ref: auditAgentBlueprintProcessor
-- route:
-    id: sample-audit-ui
-    from:
-      id: fromSampleAuditUi
-      uri: undertow
-      parameters:
-        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/audit/ui?httpMethodRestrict=GET
-      steps:
-        - pollEnrich:
-            id: pollAuditUiPage
-            simple: file:{{agui.ui.static-root:samples/agent-support-service/src/main/resources/frontend}}?fileName=audit.html&noop=true&idempotent=false
-        - convertBodyTo:
-            id: convertAuditUiToString
-            type: java.lang.String
-        - setHeader:
-            id: setHeaderAuditUiContentType
-            name: Content-Type
-            constant: text/html; charset=UTF-8
-        - setHeader:
-            id: setHeaderAuditUiCacheControl
-            name: Cache-Control
-            constant: no-store, no-cache, must-revalidate, max-age=0
-        - setHeader:
-            id: setHeaderAuditUiPragma
-            name: Pragma
-            constant: no-cache
-        - setHeader:
-            id: setHeaderAuditUiExpires
-            name: Expires
-            constant: 0
 - route:
     id: realtime-session-event
     from:

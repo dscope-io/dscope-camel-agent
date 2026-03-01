@@ -9,7 +9,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -105,9 +104,7 @@ public class AgentKaravanMetadataGenerator {
 
         JsonNode properties = source.path("properties");
         if (properties.isObject()) {
-            Iterator<Map.Entry<String, JsonNode>> entries = properties.fields();
-            while (entries.hasNext()) {
-                Map.Entry<String, JsonNode> entry = entries.next();
+            for (Map.Entry<String, JsonNode> entry : properties.properties()) {
                 String name = entry.getKey();
                 JsonNode value = entry.getValue();
                 String propDescription = value.path("description").asText("");

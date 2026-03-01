@@ -9,7 +9,7 @@ import io.dscope.camel.agent.model.DynamicRouteState;
 import io.dscope.camel.agent.model.TaskState;
 import io.dscope.camel.agent.model.TaskStatus;
 import io.dscope.camel.agent.registry.CorrelationRegistry;
-import io.dscope.camel.agent.service.AuditTrailService;
+import io.dscope.camel.agent.audit.AuditTrailService;
 import io.dscope.camel.persistence.core.AppendResult;
 import io.dscope.camel.persistence.core.FlowStateStore;
 import io.dscope.camel.persistence.core.PersistedEvent;

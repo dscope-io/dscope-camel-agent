@@ -110,7 +110,7 @@ public class RealtimeBrowserSessionRegistry {
         if (target == null || source == null || !source.isObject()) {
             return;
         }
-        source.fields().forEachRemaining(entry -> {
+        source.properties().forEach(entry -> {
             String field = entry.getKey();
             JsonNode incoming = entry.getValue();
             JsonNode existing = target.get(field);

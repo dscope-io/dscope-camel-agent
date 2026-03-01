@@ -11,6 +11,7 @@ import java.util.Properties;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 class MultiProviderSpringAiChatGatewayTest {
 
@@ -173,5 +174,28 @@ class MultiProviderSpringAiChatGatewayTest {
                 System.setProperty("openai.api.key", previousOpenAiApiKey);
             }
         }
+    }
+
+    @Test
+    @Timeout(20)
+    void shouldUseOllamaProviderBranchWhenConfigured() {
+        Properties properties = new Properties();
+        properties.setProperty("agent.runtime.spring-ai.provider", "ollama");
+        properties.setProperty("agent.runtime.spring-ai.ollama.base-url", "http://127.0.0.1:invalid");
+        properties.setProperty("agent.runtime.spring-ai.ollama.model", "llama3.1");
+
+        MultiProviderSpringAiChatGateway gateway = new MultiProviderSpringAiChatGateway(properties);
+        SpringAiChatGateway.SpringAiChatResult result = gateway.generate(
+            "system",
+            "user",
+            List.of(),
+            null,
+            null,
+            null,
+            null
+        );
+
+        Assertions.assertTrue(result.terminal());
+        Assertions.assertTrue(result.message().contains("OLLAMA invocation error"));
     }
 }

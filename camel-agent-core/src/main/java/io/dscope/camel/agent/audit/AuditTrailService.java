@@ -1,4 +1,4 @@
-package io.dscope.camel.agent.service;
+package io.dscope.camel.agent.audit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dscope.camel.agent.api.PersistenceFacade;

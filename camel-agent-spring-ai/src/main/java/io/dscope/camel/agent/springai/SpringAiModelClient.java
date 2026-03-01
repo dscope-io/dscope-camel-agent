@@ -12,11 +12,8 @@ import java.util.function.Consumer;
 public class SpringAiModelClient implements AiModelClient {
 
     private final SpringAiChatGateway chatGateway;
-    private final ObjectMapper objectMapper;
-
     public SpringAiModelClient(SpringAiChatGateway chatGateway, ObjectMapper objectMapper) {
         this.chatGateway = chatGateway;
-        this.objectMapper = objectMapper;
     }
 
     @Override

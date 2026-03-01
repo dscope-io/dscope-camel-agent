@@ -2,6 +2,14 @@ package io.dscope.camel.agent.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dscope.camel.agent.agui.AgentAgUiPreRunTextProcessor;
+import io.dscope.camel.agent.audit.AuditAgentBlueprintProcessor;
+import io.dscope.camel.agent.audit.AuditConversationAgentMessageProcessor;
+import io.dscope.camel.agent.audit.AuditConversationListProcessor;
+import io.dscope.camel.agent.audit.AuditConversationViewProcessor;
+import io.dscope.camel.agent.audit.AuditTrailSearchProcessor;
+import io.dscope.camel.agent.audit.AuditTrailService;
+import io.dscope.camel.agent.audit.mcp.AuditMcpToolsCallProcessor;
+import io.dscope.camel.agent.audit.mcp.AuditMcpToolsListProcessor;
 import io.dscope.camel.agent.api.AiModelClient;
 import io.dscope.camel.agent.api.PersistenceFacade;
 import io.dscope.camel.agent.kernel.InMemoryPersistenceFacade;
@@ -14,15 +22,31 @@ import io.dscope.camel.agent.realtime.RealtimeEventProcessor;
 import io.dscope.camel.agent.realtime.sip.SipCallEndProcessor;
 import io.dscope.camel.agent.realtime.sip.SipSessionInitEnvelopeProcessor;
 import io.dscope.camel.agent.realtime.sip.SipTranscriptFinalProcessor;
-import io.dscope.camel.agent.service.AuditAgentBlueprintProcessor;
-import io.dscope.camel.agent.service.AuditConversationListProcessor;
-import io.dscope.camel.agent.service.AuditTrailSearchProcessor;
-import io.dscope.camel.agent.service.AuditTrailService;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.Properties;
+import io.dscope.camel.mcp.processor.McpErrorProcessor;
+import io.dscope.camel.mcp.processor.McpHealthStatusProcessor;
+import io.dscope.camel.mcp.processor.McpHttpValidatorProcessor;
+import io.dscope.camel.mcp.processor.McpInitializeProcessor;
+import io.dscope.camel.mcp.processor.McpJsonRpcEnvelopeProcessor;
+import io.dscope.camel.mcp.processor.McpNotificationAckProcessor;
+import io.dscope.camel.mcp.processor.McpNotificationProcessor;
+import io.dscope.camel.mcp.processor.McpNotificationsInitializedProcessor;
+import io.dscope.camel.mcp.processor.McpPingProcessor;
+import io.dscope.camel.mcp.processor.McpRateLimitProcessor;
+import io.dscope.camel.mcp.processor.McpRequestSizeGuardProcessor;
+import io.dscope.camel.mcp.processor.McpResourcesListProcessor;
+import io.dscope.camel.mcp.processor.McpResourcesReadProcessor;
+import io.dscope.camel.mcp.processor.McpStreamProcessor;
+import io.dscope.camel.mcp.processor.McpUiInitializeProcessor;
+import io.dscope.camel.mcp.processor.McpUiMessageProcessor;
+import io.dscope.camel.mcp.processor.McpUiToolsCallPostProcessor;
+import io.dscope.camel.mcp.processor.McpUiToolsCallProcessor;
+import io.dscope.camel.mcp.processor.McpUiUpdateModelContextProcessor;
+import io.dscope.camel.mcp.service.McpUiSessionRegistry;
 import org.apache.camel.main.Main;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,21 +80,44 @@ public final class AgentRuntimeBootstrap {
             persistenceFacade = createPersistenceFacade(properties, objectMapper);
             main.bind("persistenceFacade", persistenceFacade);
         }
-        String blueprintUri = properties.getProperty("agent.blueprint", "classpath:agents/support/agent.md");
-        main.bind("auditTrailService", new AuditTrailService(persistenceFacade, objectMapper));
-        main.bind("auditTrailSearchProcessor", new AuditTrailSearchProcessor(persistenceFacade, objectMapper, blueprintUri));
-        main.bind("auditConversationListProcessor", new AuditConversationListProcessor(persistenceFacade, objectMapper, blueprintUri));
-        main.bind("runtimeResourceRefreshProcessor", new RuntimeResourceRefreshProcessor(applicationYamlPath, persistenceFacade, objectMapper));
-        main.bind("runtimePurgePreviewProcessor", new RuntimePurgePreviewProcessor(objectMapper, persistenceFacade));
-        main.bind("runtimeConversationCloseProcessor", new RuntimeConversationCloseProcessor(objectMapper, persistenceFacade));
-        main.bind(
-            "auditAgentBlueprintProcessor",
-            new AuditAgentBlueprintProcessor(
-                persistenceFacade,
-                objectMapper,
-                blueprintUri
-            )
+        String blueprintUri = properties.getProperty("agent.blueprint");
+
+        AuditTrailSearchProcessor auditTrailSearchProcessor = new AuditTrailSearchProcessor(persistenceFacade, objectMapper, blueprintUri);
+        AuditConversationListProcessor auditConversationListProcessor = new AuditConversationListProcessor(persistenceFacade, objectMapper, blueprintUri);
+        AuditConversationViewProcessor auditConversationViewProcessor = new AuditConversationViewProcessor(persistenceFacade, objectMapper);
+        AuditConversationAgentMessageProcessor auditConversationAgentMessageProcessor = new AuditConversationAgentMessageProcessor(persistenceFacade, objectMapper);
+        RuntimeResourceRefreshProcessor runtimeResourceRefreshProcessor = new RuntimeResourceRefreshProcessor(applicationYamlPath, persistenceFacade, objectMapper);
+        RuntimePurgePreviewProcessor runtimePurgePreviewProcessor = new RuntimePurgePreviewProcessor(objectMapper, persistenceFacade);
+        RuntimeConversationCloseProcessor runtimeConversationCloseProcessor = new RuntimeConversationCloseProcessor(objectMapper, persistenceFacade);
+        AuditAgentBlueprintProcessor auditAgentBlueprintProcessor = new AuditAgentBlueprintProcessor(
+            persistenceFacade,
+            objectMapper,
+            blueprintUri
         );
+
+        main.bind("auditTrailService", new AuditTrailService(persistenceFacade, objectMapper));
+        main.bind("auditTrailSearchProcessor", auditTrailSearchProcessor);
+        main.bind("auditConversationListProcessor", auditConversationListProcessor);
+        main.bind("auditConversationViewProcessor", auditConversationViewProcessor);
+        main.bind("auditConversationAgentMessageProcessor", auditConversationAgentMessageProcessor);
+        main.bind("runtimeResourceRefreshProcessor", runtimeResourceRefreshProcessor);
+        main.bind("runtimePurgePreviewProcessor", runtimePurgePreviewProcessor);
+        main.bind("runtimeConversationCloseProcessor", runtimeConversationCloseProcessor);
+        main.bind("auditAgentBlueprintProcessor", auditAgentBlueprintProcessor);
+
+        bindMcpProcessors(
+            main,
+            objectMapper,
+            auditTrailSearchProcessor,
+            auditConversationListProcessor,
+            auditConversationViewProcessor,
+            auditConversationAgentMessageProcessor,
+            auditAgentBlueprintProcessor,
+            runtimeResourceRefreshProcessor,
+            runtimeConversationCloseProcessor,
+            runtimePurgePreviewProcessor
+        );
+
         bindAiModelClientIfConfigured(main, properties, objectMapper);
         bindOptionalAgUiAndRealtime(main, properties);
 
@@ -82,6 +129,76 @@ public final class AgentRuntimeBootstrap {
             LOGGER.info("Agent runtime route builder disabled by configuration");
         }
         LOGGER.info("Agent runtime bootstrap completed");
+    }
+
+    private static void bindMcpProcessors(Main main,
+                                          ObjectMapper objectMapper,
+                                          AuditTrailSearchProcessor auditTrailSearchProcessor,
+                                          AuditConversationListProcessor auditConversationListProcessor,
+                                          AuditConversationViewProcessor auditConversationViewProcessor,
+                                          AuditConversationAgentMessageProcessor auditConversationAgentMessageProcessor,
+                                          AuditAgentBlueprintProcessor auditAgentBlueprintProcessor,
+                                          RuntimeResourceRefreshProcessor runtimeResourceRefreshProcessor,
+                                          RuntimeConversationCloseProcessor runtimeConversationCloseProcessor,
+                                          RuntimePurgePreviewProcessor runtimePurgePreviewProcessor) {
+        McpRequestSizeGuardProcessor requestSizeGuardProcessor = new McpRequestSizeGuardProcessor();
+        McpHttpValidatorProcessor httpValidatorProcessor = new McpHttpValidatorProcessor();
+        McpRateLimitProcessor rateLimitProcessor = new McpRateLimitProcessor();
+        McpJsonRpcEnvelopeProcessor jsonRpcEnvelopeProcessor = new McpJsonRpcEnvelopeProcessor();
+        McpInitializeProcessor initializeProcessor = new McpInitializeProcessor();
+        McpPingProcessor pingProcessor = new McpPingProcessor();
+        McpNotificationsInitializedProcessor notificationsInitializedProcessor = new McpNotificationsInitializedProcessor();
+        McpNotificationProcessor notificationProcessor = new McpNotificationProcessor();
+        McpNotificationAckProcessor notificationAckProcessor = new McpNotificationAckProcessor();
+        McpErrorProcessor errorProcessor = new McpErrorProcessor();
+        McpStreamProcessor streamProcessor = new McpStreamProcessor();
+        McpHealthStatusProcessor healthStatusProcessor = new McpHealthStatusProcessor(rateLimitProcessor);
+
+        McpUiSessionRegistry uiSessionRegistry = new McpUiSessionRegistry();
+        uiSessionRegistry.start();
+        McpUiInitializeProcessor uiInitializeProcessor = new McpUiInitializeProcessor(uiSessionRegistry);
+        McpUiMessageProcessor uiMessageProcessor = new McpUiMessageProcessor(uiSessionRegistry);
+        McpUiUpdateModelContextProcessor uiUpdateModelContextProcessor = new McpUiUpdateModelContextProcessor(uiSessionRegistry);
+        McpUiToolsCallProcessor uiToolsCallProcessor = new McpUiToolsCallProcessor(uiSessionRegistry);
+        McpUiToolsCallPostProcessor uiToolsCallPostProcessor = new McpUiToolsCallPostProcessor(uiSessionRegistry);
+
+        AuditMcpToolsListProcessor toolsListProcessor = new AuditMcpToolsListProcessor();
+        AuditMcpToolsCallProcessor toolsCallProcessor = new AuditMcpToolsCallProcessor(
+            objectMapper,
+            auditTrailSearchProcessor,
+            auditConversationListProcessor,
+            auditConversationViewProcessor,
+            auditConversationAgentMessageProcessor,
+            auditAgentBlueprintProcessor,
+            runtimeResourceRefreshProcessor,
+            runtimeConversationCloseProcessor,
+            runtimePurgePreviewProcessor
+        );
+        McpResourcesListProcessor resourcesListProcessor = new McpResourcesListProcessor();
+        McpResourcesReadProcessor resourcesReadProcessor = new McpResourcesReadProcessor();
+
+        main.bind("mcpRequestSizeGuard", requestSizeGuardProcessor);
+        main.bind("mcpHttpValidator", httpValidatorProcessor);
+        main.bind("mcpRateLimit", rateLimitProcessor);
+        main.bind("mcpJsonRpcEnvelope", jsonRpcEnvelopeProcessor);
+        main.bind("mcpInitialize", initializeProcessor);
+        main.bind("mcpPing", pingProcessor);
+        main.bind("mcpNotificationsInitialized", notificationsInitializedProcessor);
+        main.bind("mcpNotification", notificationProcessor);
+        main.bind("mcpNotificationAck", notificationAckProcessor);
+        main.bind("mcpError", errorProcessor);
+        main.bind("mcpStream", streamProcessor);
+        main.bind("mcpHealthStatus", healthStatusProcessor);
+        main.bind("mcpUiSessionRegistry", uiSessionRegistry);
+        main.bind("mcpUiInitialize", uiInitializeProcessor);
+        main.bind("mcpUiMessage", uiMessageProcessor);
+        main.bind("mcpUiUpdateModelContext", uiUpdateModelContextProcessor);
+        main.bind("mcpUiToolsCall", uiToolsCallProcessor);
+        main.bind("mcpUiToolsCallPost", uiToolsCallPostProcessor);
+        main.bind("mcpToolsList", toolsListProcessor);
+        main.bind("mcpToolsCall", toolsCallProcessor);
+        main.bind("mcpResourcesList", resourcesListProcessor);
+        main.bind("mcpResourcesRead", resourcesReadProcessor);
     }
 
     private static ObjectMapper existingObjectMapper(Main main) {

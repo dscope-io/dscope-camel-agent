@@ -12,18 +12,28 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.util.concurrent.Executors;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 class PostgresPersistenceAuditPurgeIntegrationTest {
 
+    private static final int TEST_TIMEOUT_SECONDS = 90;
+    private static final int JDBC_LOGIN_TIMEOUT_SECONDS = 10;
+    private static final int SQL_QUERY_TIMEOUT_SECONDS = 20;
+    private static final int JDBC_CONNECT_TIMEOUT_SECONDS = 10;
+    private static final int JDBC_SOCKET_TIMEOUT_SECONDS = 30;
+
     @Test
+    @Timeout(TEST_TIMEOUT_SECONDS)
+    @EnabledIfSystemProperty(named = "it.postgres.enabled", matches = "true")
     void shouldPersistAuditToPostgresAndPurgeByClosedDateAndAgentType() throws Exception {
         String runtimeUrl = firstNonBlank(
             System.getProperty("it.postgres.runtime.url"),
@@ -49,8 +59,10 @@ class PostgresPersistenceAuditPurgeIntegrationTest {
             "support-agent"
         );
 
-        Assumptions.assumeTrue(runtimeUrl != null && !runtimeUrl.isBlank(), "Missing it.postgres.runtime.url");
-        Assumptions.assumeTrue(auditUrl != null && !auditUrl.isBlank(), "Missing it.postgres.audit.url");
+        Assertions.assertTrue(runtimeUrl != null && !runtimeUrl.isBlank(),
+            "Missing it.postgres.runtime.url (or IT_POSTGRES_RUNTIME_URL) while it.postgres.enabled=true");
+        Assertions.assertTrue(auditUrl != null && !auditUrl.isBlank(),
+            "Missing it.postgres.audit.url (or IT_POSTGRES_AUDIT_URL) while it.postgres.enabled=true");
 
         String runtimeJdbcUrl = withJdbcCredentials(runtimeUrl, username, password);
         String auditJdbcUrl = withJdbcCredentials(auditUrl, username, password);
@@ -142,7 +154,14 @@ class PostgresPersistenceAuditPurgeIntegrationTest {
 
     private static Connection open(String url, String username, String password) throws Exception {
         Class.forName("org.postgresql.Driver");
-        return DriverManager.getConnection(url, username, password);
+        DriverManager.setLoginTimeout(JDBC_LOGIN_TIMEOUT_SECONDS);
+        Connection connection = DriverManager.getConnection(url, username, password);
+        connection.setNetworkTimeout(Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "pg-it-network-timeout");
+            t.setDaemon(true);
+            return t;
+        }), SQL_QUERY_TIMEOUT_SECONDS * 1000);
+        return connection;
     }
 
     private static long countRuntimeTaskSnapshots(Connection connection, String conversationId) throws Exception {
@@ -161,6 +180,7 @@ class PostgresPersistenceAuditPurgeIntegrationTest {
               AND (snapshot_json::jsonb ->> 'conversationId') = ?
             """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setQueryTimeout(SQL_QUERY_TIMEOUT_SECONDS);
             statement.setString(1, flowType);
             statement.setString(2, conversationId);
             try (ResultSet resultSet = statement.executeQuery()) {
@@ -178,6 +198,7 @@ class PostgresPersistenceAuditPurgeIntegrationTest {
               AND flow_id = ?
             """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setQueryTimeout(SQL_QUERY_TIMEOUT_SECONDS);
             statement.setString(1, conversationId);
             try (ResultSet resultSet = statement.executeQuery()) {
                 resultSet.next();
@@ -209,6 +230,7 @@ class PostgresPersistenceAuditPurgeIntegrationTest {
               )
             """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setQueryTimeout(SQL_QUERY_TIMEOUT_SECONDS);
             statement.setString(1, purgeBefore.toString());
             statement.setString(2, agentName);
             statement.setString(3, agentName);
@@ -264,6 +286,7 @@ class PostgresPersistenceAuditPurgeIntegrationTest {
               AND (snapshot_json::jsonb ->> 'conversationId') = ?
             """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setQueryTimeout(SQL_QUERY_TIMEOUT_SECONDS);
             statement.setString(1, flowType);
             statement.setString(2, conversationId);
             try (ResultSet resultSet = statement.executeQuery()) {
@@ -278,6 +301,7 @@ class PostgresPersistenceAuditPurgeIntegrationTest {
 
     private static void delete(Connection connection, String sql, String value) throws Exception {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setQueryTimeout(SQL_QUERY_TIMEOUT_SECONDS);
             statement.setString(1, value);
             statement.executeUpdate();
         }
@@ -297,10 +321,30 @@ class PostgresPersistenceAuditPurgeIntegrationTest {
             return url;
         }
         String normalized = url.trim();
-        if (normalized.contains("user=") || normalized.contains("password=")) {
+        boolean hasUser = normalized.contains("user=");
+        boolean hasPassword = normalized.contains("password=");
+        boolean hasConnectTimeout = normalized.contains("connectTimeout=");
+        boolean hasSocketTimeout = normalized.contains("socketTimeout=");
+
+        List<String> queryParams = new ArrayList<>();
+        if (!hasUser) {
+            queryParams.add("user=" + username);
+        }
+        if (!hasPassword) {
+            queryParams.add("password=" + password);
+        }
+        if (!hasConnectTimeout) {
+            queryParams.add("connectTimeout=" + JDBC_CONNECT_TIMEOUT_SECONDS);
+        }
+        if (!hasSocketTimeout) {
+            queryParams.add("socketTimeout=" + JDBC_SOCKET_TIMEOUT_SECONDS);
+        }
+
+        if (queryParams.isEmpty()) {
             return normalized;
         }
+
         String join = normalized.contains("?") ? "&" : "?";
-        return normalized + join + "user=" + username + "&password=" + password;
+        return normalized + join + String.join("&", queryParams);
     }
 }

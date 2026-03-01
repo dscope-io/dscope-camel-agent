@@ -53,6 +53,16 @@
     .agent-md-view { margin-top: 12px; border: 1px solid #314074; border-radius: 10px; background: #0f1731; padding: 10px; max-height: 640px; overflow: auto; }
     .agent-md-meta { font-size: 12px; opacity: .85; margin-bottom: 8px; }
     .agent-md-content { margin: 0; font-size: 12px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
+    .copilot-view { margin-top: 12px; border: 1px solid #314074; border-radius: 10px; background: #0f1731; padding: 10px; max-height: 640px; overflow: auto; }
+    .copilot-meta { font-size: 12px; opacity: .9; }
+    .copilot-messages { margin-top: 10px; display: grid; gap: 8px; }
+    .copilot-message { border: 1px solid #314074; border-radius: 10px; background: #101a36; padding: 8px; }
+    .copilot-message-role { font-size: 11px; font-weight: 700; opacity: .9; }
+    .copilot-message-text { margin-top: 4px; white-space: pre-wrap; word-break: break-word; font-size: 12px; }
+    .copilot-message-time { margin-top: 4px; font-size: 11px; opacity: .8; }
+    .copilot-send { margin-top: 10px; display: grid; gap: 8px; }
+    .copilot-send textarea { width: 100%; min-height: 72px; border-radius: 8px; border: 1px solid #314074; background: #0f1731; color: #ecf1ff; padding: 8px; resize: vertical; }
+    .copilot-send-actions { display: flex; gap: 8px; align-items: center; }
     .meta-panel { margin-top: 12px; border: 1px solid #314074; border-radius: 10px; background: #0f1731; padding: 10px; }
     .meta-title { font-size: 14px; font-weight: 700; }
     .meta-description { margin-top: 6px; font-size: 12px; opacity: .9; }
@@ -89,7 +99,7 @@
 <body>
   <div class="app">
     <div class="title">Audit Trail Explorer</div>
-    <div class="subtitle">Search conversations via <code>/audit/conversations</code> and inspect details via <code>/audit/search</code>.</div>
+    <div class="subtitle">Audit console uses MCP tools on <code>/mcp/admin</code> for conversation and runtime operations.</div>
     <div class="subtitle"><a href="/agui/ui">&larr; Back to AGUI chat</a></div>
 
     <div class="panel conv-panel">
@@ -186,6 +196,7 @@
         <button id="graphViewBtn" type="button">Graph View</button>
         <button id="rawViewBtn" type="button">Raw JSON</button>
         <button id="agentMdViewBtn" type="button">Agent.md</button>
+        <button id="copilotKitViewBtn" type="button">CopilotKit</button>
       </div>
       <pre id="result">{ "hint": "Run a query to view audit events." }</pre>
       <div id="graphView" class="graph-view hidden"></div>
@@ -193,6 +204,17 @@
       <div id="agentMdView" class="agent-md-view hidden">
         <div id="agentMdMeta" class="agent-md-meta">Agent.md not loaded yet.</div>
         <pre id="agentMdContent" class="agent-md-content"></pre>
+      </div>
+      <div id="copilotKitView" class="copilot-view hidden">
+        <div id="copilotKitMeta" class="copilot-meta">CopilotKit view not loaded yet.</div>
+        <div id="copilotKitMessages" class="copilot-messages"></div>
+        <div class="copilot-send">
+          <label for="copilotManualMessage">Manual assistant message to AGUI session</label>
+          <textarea id="copilotManualMessage" placeholder="Type a manual assistant message..."></textarea>
+          <div class="copilot-send-actions">
+            <button id="copilotSendBtn" type="button">Send Message</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -226,6 +248,7 @@
     const graphViewBtnEl = document.getElementById('graphViewBtn');
     const treeViewBtnEl = document.getElementById('treeViewBtn');
     const agentMdViewBtnEl = document.getElementById('agentMdViewBtn');
+    const copilotKitViewBtnEl = document.getElementById('copilotKitViewBtn');
     const statusEl = document.getElementById('status');
     const resultEl = document.getElementById('result');
     const graphViewEl = document.getElementById('graphView');
@@ -233,14 +256,24 @@
     const agentMdViewEl = document.getElementById('agentMdView');
     const agentMdMetaEl = document.getElementById('agentMdMeta');
     const agentMdContentEl = document.getElementById('agentMdContent');
+    const copilotKitViewEl = document.getElementById('copilotKitView');
+    const copilotKitMetaEl = document.getElementById('copilotKitMeta');
+    const copilotKitMessagesEl = document.getElementById('copilotKitMessages');
+    const copilotManualMessageEl = document.getElementById('copilotManualMessage');
+    const copilotSendBtnEl = document.getElementById('copilotSendBtn');
     const metaTitleEl = document.getElementById('metaTitle');
     const metaDescriptionEl = document.getElementById('metaDescription');
     const metaLineEl = document.getElementById('metaLine');
     const metaTopicsEl = document.getElementById('metaTopics');
     let lastResultJson = null;
     let lastAgentMd = null;
+    let lastCopilotKit = null;
     let lastConversationsResult = null;
     let activeView = 'raw';
+    let mcpSessionId = '';
+    let mcpRequestSeq = 1;
+    const MCP_ENDPOINT = '/mcp/admin';
+    const MCP_PROTOCOL_VERSION = '2025-06-18';
     const ICON_FOLDER = '\uD83D\uDDC2\uFE0F';
     const ICON_OBJECT = '\uD83D\uDCE6';
     const ICON_ARRAY = '\uD83E\uDDE9';
@@ -249,6 +282,83 @@
     const ICON_TRUE = '\u2705';
     const ICON_FALSE = '\u274C';
     const ICON_NULL = '\u2205';
+
+    async function ensureMcpSession() {
+      if (mcpSessionId) {
+        return mcpSessionId;
+      }
+      const initResult = await mcpRpc('ui/initialize', { resourceUri: 'mcp://resource/audit-app.html' }, { ensureSession: false });
+      if (!initResult || !initResult.sessionId) {
+        throw new Error('MCP ui/initialize did not return sessionId');
+      }
+      mcpSessionId = String(initResult.sessionId);
+      return mcpSessionId;
+    }
+
+    function parseToolResult(result) {
+      if (!result || typeof result !== 'object') {
+        return null;
+      }
+      if (result.structuredContent && typeof result.structuredContent === 'object') {
+        return result.structuredContent;
+      }
+      const content = Array.isArray(result.content) ? result.content : [];
+      const textEntry = content.find((entry) => entry && entry.type === 'text' && typeof entry.text === 'string');
+      if (textEntry && textEntry.text) {
+        try {
+          return JSON.parse(textEntry.text);
+        } catch {
+          return { raw: textEntry.text };
+        }
+      }
+      return null;
+    }
+
+    async function mcpRpc(method, params, options = {}) {
+      const ensureSession = options.ensureSession !== false;
+      if (ensureSession && method !== 'ui/initialize') {
+        await ensureMcpSession();
+      }
+
+      const requestId = `audit-ui-${mcpRequestSeq++}`;
+      const response = await fetch(MCP_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json, text/event-stream',
+          'MCP-Protocol-Version': MCP_PROTOCOL_VERSION,
+          ...(mcpSessionId ? { 'X-MCP-Session-Id': mcpSessionId } : {})
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: requestId,
+          method,
+          params: params || {}
+        })
+      });
+
+      const text = await response.text();
+      let envelope = null;
+      try {
+        envelope = text ? JSON.parse(text) : null;
+      } catch {
+        envelope = null;
+      }
+
+      if (!response.ok) {
+        const msg = envelope && envelope.error && envelope.error.message
+          ? envelope.error.message
+          : `MCP request failed (${response.status})`;
+        throw new Error(msg);
+      }
+      if (!envelope || typeof envelope !== 'object') {
+        throw new Error('Invalid MCP response envelope');
+      }
+      if (envelope.error) {
+        throw new Error(String(envelope.error.message || 'MCP error'));
+      }
+      return envelope.result;
+    }
 
     function setStatus(text, cls) {
       statusEl.textContent = text;
@@ -326,8 +436,101 @@
           const conversationId = row.getAttribute('data-conversation-id') || '';
           conversationIdEl.value = conversationId;
           runSearch();
-          setView('tree');
+          setView(activeView === 'copilot' ? 'copilot' : 'tree');
         });
+      }
+    }
+
+    function renderCopilotKitView(data) {
+      lastCopilotKit = data || null;
+      if (!data || typeof data !== 'object') {
+        copilotKitMetaEl.textContent = 'CopilotKit data unavailable.';
+        copilotKitMessagesEl.innerHTML = '';
+        return;
+      }
+
+      const agui = data.agui && typeof data.agui === 'object' ? data.agui : {};
+      const perspective = data.agentPerspective && typeof data.agentPerspective === 'object' ? data.agentPerspective : {};
+      const messages = Array.isArray(perspective.messages) ? perspective.messages : [];
+      const available = !!data.copilotKitAvailable;
+
+      copilotKitMetaEl.textContent = `AGUI session=${agui.sessionId || '-'} | run=${agui.runId || '-'} | thread=${agui.threadId || '-'} | available=${available ? 'yes' : 'no'} | messages=${messages.length}`;
+      if (!messages.length) {
+        copilotKitMessagesEl.innerHTML = '<div class="empty-list">No agent-perspective messages found for this conversation.</div>';
+        return;
+      }
+
+      copilotKitMessagesEl.innerHTML = messages.map((msg) => {
+        const role = escapeHtml(String(msg?.role || 'system'));
+        const text = escapeHtml(String(msg?.text || ''));
+        const type = escapeHtml(String(msg?.type || ''));
+        const timestamp = escapeHtml(String(msg?.timestamp || ''));
+        return `
+          <div class="copilot-message">
+            <div class="copilot-message-role">${role} - ${type}</div>
+            <div class="copilot-message-text">${text || '(empty)'}</div>
+            <div class="copilot-message-time">${timestamp}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function loadCopilotKit(conversationId) {
+      const id = (conversationId || '').trim();
+      if (!id) {
+        renderCopilotKitView(null);
+        copilotKitMetaEl.textContent = 'conversationId is required.';
+        return;
+      }
+      try {
+        const result = await mcpRpc('tools/call', {
+          name: 'audit.conversation.view',
+          arguments: { conversationId: id }
+        });
+        const parsed = parseToolResult(result);
+        if (!parsed) {
+          renderCopilotKitView(null);
+          copilotKitMetaEl.textContent = 'CopilotKit load failed (empty MCP result)';
+          return;
+        }
+        renderCopilotKitView(parsed);
+      } catch (err) {
+        renderCopilotKitView(null);
+        copilotKitMetaEl.textContent = `CopilotKit load failed: ${String(err)}`;
+      }
+    }
+
+    async function sendCopilotManualMessage() {
+      const conversationId = (conversationIdEl.value || '').trim();
+      const message = (copilotManualMessageEl.value || '').trim();
+      if (!conversationId) {
+        setStatus('conversationId is required', 'err');
+        return;
+      }
+      if (!message) {
+        setStatus('manual message is required', 'err');
+        return;
+      }
+
+      copilotSendBtnEl.disabled = true;
+      setStatus('Sending manual assistant message...', '');
+      try {
+        const result = await mcpRpc('tools/call', {
+          name: 'audit.conversation.agentMessage',
+          arguments: { conversationId, message }
+        });
+        const parsed = parseToolResult(result);
+        if (!parsed || !parsed.accepted) {
+          setStatus('Manual message failed', 'err');
+          return;
+        }
+        copilotManualMessageEl.value = '';
+        setStatus('Manual assistant message appended', 'ok');
+        await Promise.all([runSearch(), loadCopilotKit(conversationId)]);
+      } catch (err) {
+        setStatus(`Manual message request failed: ${String(err)}`, 'err');
+      } finally {
+        copilotSendBtnEl.disabled = false;
       }
     }
 
@@ -346,20 +549,23 @@
 
       syncListStateToUrl({ q, topic, limit, sortBy, order });
 
-      setConversationStatus('Loading…', '');
+      setConversationStatus('Loading...', '');
       try {
-        const response = await fetch(`/audit/conversations?${params.toString()}`);
-        const text = await response.text();
-        let parsed = null;
-        try {
-          parsed = JSON.parse(text);
-        } catch {
-          parsed = null;
-        }
-        if (!response.ok || !parsed) {
+        const result = await mcpRpc('tools/call', {
+          name: 'audit.conversations.list',
+          arguments: {
+            q,
+            topic,
+            limit,
+            sortBy,
+            order
+          }
+        });
+        const parsed = parseToolResult(result);
+        if (!parsed) {
           lastConversationsResult = null;
-          conversationListEl.innerHTML = `<div class="empty-list">Failed to load conversations (${response.status}).</div>`;
-          setConversationStatus(`Error ${response.status}`, 'err');
+          conversationListEl.innerHTML = '<div class="empty-list">Failed to load conversations (empty MCP result).</div>';
+          setConversationStatus('Error', 'err');
           return;
         }
         lastConversationsResult = parsed;
@@ -374,29 +580,18 @@
 
     async function refreshBlueprint(conversationId) {
       const targetConversationId = (conversationId || '').trim();
-      const endpoint = targetConversationId
-        ? `/runtime/refresh/${encodeURIComponent(targetConversationId)}`
-        : '/runtime/refresh';
       const label = targetConversationId ? `conversation ${targetConversationId}` : 'all conversations';
 
-      setConversationStatus(`Refreshing ${label}…`, '');
+      setConversationStatus(`Refreshing ${label}...`, '');
       try {
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: targetConversationId ? JSON.stringify({ conversationId: targetConversationId }) : '{}'
+        const result = await mcpRpc('tools/call', {
+          name: 'runtime.refresh',
+          arguments: targetConversationId ? { conversationId: targetConversationId } : {}
         });
-        const text = await response.text();
-        let parsed = null;
-        try {
-          parsed = JSON.parse(text);
-        } catch {
-          parsed = null;
-        }
-
-        if (!response.ok || !parsed) {
-          setConversationStatus(`Refresh failed (${response.status})`, 'err');
-          setStatus(`Refresh failed (${response.status})`, 'err');
+        const parsed = parseToolResult(result);
+        if (!parsed) {
+          setConversationStatus('Refresh failed', 'err');
+          setStatus('Refresh failed', 'err');
           return;
         }
 
@@ -426,24 +621,16 @@
         return;
       }
 
-      setConversationStatus(`Closing instance for ${targetConversationId}…`, '');
+      setConversationStatus(`Closing instance for ${targetConversationId}...`, '');
       try {
-        const response = await fetch(`/runtime/conversation/${encodeURIComponent(targetConversationId)}/close`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ conversationId: targetConversationId })
+        const result = await mcpRpc('tools/call', {
+          name: 'runtime.conversation.close',
+          arguments: { conversationId: targetConversationId }
         });
-        const text = await response.text();
-        let parsed = null;
-        try {
-          parsed = JSON.parse(text);
-        } catch {
-          parsed = null;
-        }
-
-        if (!response.ok || !parsed) {
-          setConversationStatus(`Close failed (${response.status})`, 'err');
-          setStatus(`Close failed (${response.status})`, 'err');
+        const parsed = parseToolResult(result);
+        if (!parsed) {
+          setConversationStatus('Close failed', 'err');
+          setStatus('Close failed', 'err');
           return;
         }
 
@@ -459,7 +646,6 @@
     }
 
     async function previewPurgeScope() {
-      const params = new URLSearchParams();
       const requireClosed = !!purgeRequireClosedEl.checked;
       const before = localDateTimeToIso(purgeBeforeEl.value || '');
       const agentName = (purgeAgentNameEl.value || '').trim();
@@ -469,30 +655,23 @@
         return;
       }
 
-      params.set('requireClosed', String(requireClosed));
-      params.set('limit', '200');
-      params.set('includeConversationIds', 'true');
-      if (before) {
-        params.set('before', before);
-      }
-      if (agentName) {
-        params.set('agentName', agentName);
-      }
-
-      setConversationStatus('Previewing purge scope…', '');
+      setConversationStatus('Previewing purge scope...', '');
       try {
-        const response = await fetch(`/runtime/purge/preview?${params.toString()}`);
-        const text = await response.text();
-        let parsed = null;
-        try {
-          parsed = JSON.parse(text);
-        } catch {
-          parsed = null;
-        }
+        const result = await mcpRpc('tools/call', {
+          name: 'runtime.purge.preview',
+          arguments: {
+            requireClosed,
+            before: before || '',
+            agentName,
+            limit: 200,
+            includeConversationIds: true
+          }
+        });
+        const parsed = parseToolResult(result);
 
-        if (!response.ok || !parsed) {
-          setConversationStatus(`Purge preview failed (${response.status})`, 'err');
-          setStatus(`Purge preview failed (${response.status})`, 'err');
+        if (!parsed) {
+          setConversationStatus('Purge preview failed', 'err');
+          setStatus('Purge preview failed', 'err');
           renderPurgePreviewPanel(null);
           return;
         }
@@ -550,11 +729,11 @@
         return '';
       }
       if (typeof payload === 'string') {
-        return payload.length > 320 ? `${payload.slice(0, 320)}…` : payload;
+        return payload.length > 320 ? `${payload.slice(0, 320)}...` : payload;
       }
       try {
         const text = JSON.stringify(payload);
-        return text.length > 320 ? `${text.slice(0, 320)}…` : text;
+        return text.length > 320 ? `${text.slice(0, 320)}...` : text;
       } catch {
         return String(payload);
       }
@@ -670,18 +849,15 @@
         return;
       }
       try {
-        const response = await fetch(`/audit/agent-md?conversationId=${encodeURIComponent(conversationId)}`);
-        const text = await response.text();
-        let parsed = null;
-        try {
-          parsed = JSON.parse(text);
-        } catch {
-          parsed = null;
-        }
-        if (!response.ok || !parsed) {
+        const result = await mcpRpc('tools/call', {
+          name: 'audit.agent.blueprint',
+          arguments: { conversationId }
+        });
+        const parsed = parseToolResult(result);
+        if (!parsed) {
           lastAgentMd = null;
-          agentMdMetaEl.textContent = `Agent.md load failed (${response.status})`;
-          agentMdContentEl.textContent = text;
+          agentMdMetaEl.textContent = 'Agent.md load failed (empty MCP result)';
+          agentMdContentEl.textContent = '';
           return;
         }
         lastAgentMd = parsed;
@@ -699,18 +875,25 @@
     }
 
     function setView(mode) {
-      activeView = mode === 'graph' || mode === 'tree' || mode === 'agent-md' ? mode : 'raw';
+      activeView = mode === 'graph' || mode === 'tree' || mode === 'agent-md' || mode === 'copilot' ? mode : 'raw';
       const graphMode = activeView === 'graph';
       const treeMode = activeView === 'tree';
       const agentMdMode = activeView === 'agent-md';
-      resultEl.classList.toggle('hidden', graphMode || treeMode || agentMdMode);
+      const copilotMode = activeView === 'copilot';
+      resultEl.classList.toggle('hidden', graphMode || treeMode || agentMdMode || copilotMode);
       graphViewEl.classList.toggle('hidden', !graphMode);
       treeViewEl.classList.toggle('hidden', !treeMode);
       agentMdViewEl.classList.toggle('hidden', !agentMdMode);
+      copilotKitViewEl.classList.toggle('hidden', !copilotMode);
       rawViewBtnEl.classList.toggle('active', activeView === 'raw');
       graphViewBtnEl.classList.toggle('active', graphMode);
       treeViewBtnEl.classList.toggle('active', treeMode);
       agentMdViewBtnEl.classList.toggle('active', agentMdMode);
+      copilotKitViewBtnEl.classList.toggle('active', copilotMode);
+
+      if (copilotMode) {
+        loadCopilotKit((conversationIdEl.value || '').trim());
+      }
     }
 
     function localDateTimeToIso(value) {
@@ -771,32 +954,37 @@
       if (to) params.set('to', to);
       if (q) params.set('q', q);
 
-      setStatus('Searching…', '');
+      setStatus('Searching...', '');
       try {
-        const response = await fetch(`/audit/search?${params.toString()}`);
-        const text = await response.text();
-        let parsed;
-        try {
-          parsed = JSON.parse(text);
-          resultEl.textContent = JSON.stringify(parsed, null, 2);
-          renderGraphView(parsed);
-          renderTreeView(parsed);
-        } catch {
-          resultEl.textContent = text;
+        const result = await mcpRpc('tools/call', {
+          name: 'audit.events.search',
+          arguments: {
+            conversationId,
+            type,
+            limit,
+            from,
+            to,
+            q
+          }
+        });
+        const parsed = parseToolResult(result);
+        if (!parsed) {
+          lastResultJson = null;
+          setStatus('Error: empty MCP result', 'err');
+          resultEl.textContent = '{ "error": "empty_mcp_result" }';
           renderGraphView(null);
           renderTreeView(null);
+          return;
         }
-        if (response.ok) {
-          lastResultJson = parsed || null;
-          const count = parsed && typeof parsed.count === 'number' ? parsed.count : '?';
-          if (parsed && parsed.conversationMetadata) {
-            renderConversationMetadata(parsed.conversationMetadata);
-          }
-          setStatus(`OK (${count} events)`, 'ok');
-        } else {
-          lastResultJson = null;
-          setStatus(`Error ${response.status}`, 'err');
+        resultEl.textContent = JSON.stringify(parsed, null, 2);
+        renderGraphView(parsed);
+        renderTreeView(parsed);
+        lastResultJson = parsed;
+        const count = typeof parsed.count === 'number' ? parsed.count : '?';
+        if (parsed.conversationMetadata) {
+          renderConversationMetadata(parsed.conversationMetadata);
         }
+        setStatus(`OK (${count} events)`, 'ok');
       } catch (err) {
         lastResultJson = null;
         setStatus('Request failed', 'err');
@@ -834,7 +1022,7 @@
       const to = (params.get('to') || '').trim();
       const q = (params.get('q') || '').trim();
       const view = (params.get('view') || '').trim().toLowerCase();
-      const requestedView = (view === 'raw' || view === 'graph' || view === 'tree' || view === 'agent-md') ? view : '';
+      const requestedView = (view === 'raw' || view === 'graph' || view === 'tree' || view === 'agent-md' || view === 'copilot') ? view : '';
 
       const listQ = (params.get('listQ') || '').trim();
       const listTopic = (params.get('listTopic') || '').trim();
@@ -865,6 +1053,9 @@
       const shouldAutoListLoad = listAuto === '1' || listAuto === 'true';
       if (requestedView === 'agent-md' && conversationId) {
         loadAgentMd(conversationId);
+      }
+      if (requestedView === 'copilot' && conversationId) {
+        loadCopilotKit(conversationId);
       }
       if (shouldAutoSearch) {
         runSearch();
@@ -900,11 +1091,25 @@
       loadAgentMd(conversationId);
       setView('agent-md');
     });
-    const initialState = applyQueryParams();
-    if (initialState.shouldAutoListLoad) {
-      loadConversations();
-    }
-    setView(initialState.requestedView || 'tree');
+    copilotKitViewBtnEl.addEventListener('click', () => {
+      const conversationId = (conversationIdEl.value || '').trim();
+      loadCopilotKit(conversationId);
+      setView('copilot');
+    });
+    copilotSendBtnEl.addEventListener('click', sendCopilotManualMessage);
+    (async () => {
+      try {
+        await ensureMcpSession();
+      } catch (err) {
+        setStatus(`MCP init failed: ${String(err)}`, 'err');
+      }
+
+      const initialState = applyQueryParams();
+      if (initialState.shouldAutoListLoad) {
+        loadConversations();
+      }
+      setView(initialState.requestedView || 'tree');
+    })();
   </script>
 </body>
 </html>

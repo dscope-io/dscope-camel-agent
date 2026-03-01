@@ -1,3 +1,170 @@
+- onException:
+    exception:
+      - java.lang.IllegalArgumentException
+    handled:
+      constant: "true"
+    steps:
+      - setHeader:
+          name: CamelHttpResponseCode
+          constant: "400"
+      - setProperty:
+          name: mcp.error.code
+          constant: "-32600"
+      - setProperty:
+          name: mcp.error.message
+          simple: "${exception.message}"
+      - process:
+          ref: mcpError
+
+- route:
+    id: sample-admin-mcp-api
+    from:
+      id: fromSampleAdminMcpApi
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/mcp/admin?httpMethodRestrict=POST
+      steps:
+        - process:
+            id: processSampleAdminMcpRequestSize
+            ref: mcpRequestSizeGuard
+        - process:
+            id: processSampleAdminMcpHttpValidator
+            ref: mcpHttpValidator
+        - process:
+            id: processSampleAdminMcpRateLimit
+            ref: mcpRateLimit
+        - process:
+            id: processSampleAdminMcpEnvelope
+            ref: mcpJsonRpcEnvelope
+        - choice:
+            when:
+              - simple: "${exchangeProperty.mcp.jsonrpc.type} == 'NOTIFICATION'"
+                steps:
+                  - process:
+                      id: processSampleAdminMcpNotification
+                      ref: mcpNotification
+                  - choice:
+                      when:
+                        - simple: "${exchangeProperty.mcp.notification.type} == 'initialized'"
+                          steps:
+                            - process:
+                                id: processSampleAdminMcpNotificationsInitialized
+                                ref: mcpNotificationsInitialized
+                      otherwise:
+                        steps:
+                          - process:
+                              id: processSampleAdminMcpNotificationAck
+                              ref: mcpNotificationAck
+              - simple: "${exchangeProperty.mcp.jsonrpc.method} == 'initialize'"
+                steps:
+                  - process:
+                      id: processSampleAdminMcpInitialize
+                      ref: mcpInitialize
+              - simple: "${exchangeProperty.mcp.jsonrpc.method} == 'ping'"
+                steps:
+                  - process:
+                      id: processSampleAdminMcpPing
+                      ref: mcpPing
+              - simple: "${exchangeProperty.mcp.jsonrpc.method} == 'tools/list'"
+                steps:
+                  - process:
+                      id: processSampleAdminMcpToolsList
+                      ref: mcpToolsList
+              - simple: "${exchangeProperty.mcp.jsonrpc.method} == 'tools/call'"
+                steps:
+                  - process:
+                      id: processSampleAdminMcpToolsCall
+                      ref: mcpToolsCall
+              - simple: "${exchangeProperty.mcp.jsonrpc.method} == 'resources/list'"
+                steps:
+                  - process:
+                      id: processSampleAdminMcpResourcesList
+                      ref: mcpResourcesList
+              - simple: "${exchangeProperty.mcp.jsonrpc.method} == 'resources/read'"
+                steps:
+                  - process:
+                      id: processSampleAdminMcpResourcesRead
+                      ref: mcpResourcesRead
+              - simple: "${exchangeProperty.mcp.jsonrpc.method} == 'ui/initialize'"
+                steps:
+                  - process:
+                      id: processSampleAdminMcpUiInitialize
+                      ref: mcpUiInitialize
+              - simple: "${exchangeProperty.mcp.jsonrpc.method} == 'ui/message'"
+                steps:
+                  - process:
+                      id: processSampleAdminMcpUiMessage
+                      ref: mcpUiMessage
+              - simple: "${exchangeProperty.mcp.jsonrpc.method} == 'ui/update-model-context'"
+                steps:
+                  - process:
+                      id: processSampleAdminMcpUiUpdateModelContext
+                      ref: mcpUiUpdateModelContext
+              - simple: "${exchangeProperty.mcp.jsonrpc.method} == 'ui/tools/call'"
+                steps:
+                  - doTry:
+                      steps:
+                        - process:
+                            id: processSampleAdminMcpUiToolsCall
+                            ref: mcpUiToolsCall
+                        - process:
+                            id: processSampleAdminMcpUiToolsCallDelegate
+                            ref: mcpToolsCall
+                        - process:
+                            id: processSampleAdminMcpUiToolsCallPost
+                            ref: mcpUiToolsCallPost
+                      doCatch:
+                        - exception:
+                            - java.lang.Exception
+                          steps:
+                            - process:
+                                id: processSampleAdminMcpUiToolsCallPostOnError
+                                ref: mcpUiToolsCallPost
+                            - setProperty:
+                                name: mcp.error.code
+                                constant: "-32603"
+                            - setProperty:
+                                name: mcp.error.message
+                                simple: "Tool execution failed: ${exception.message}"
+                            - process:
+                                id: processSampleAdminMcpUiToolsCallError
+                                ref: mcpError
+            otherwise:
+              steps:
+                - setProperty:
+                    name: mcp.error.code
+                    constant: "-32601"
+                - setProperty:
+                    name: mcp.error.message
+                    simple: "Unsupported MCP method: ${exchangeProperty.mcp.jsonrpc.method}"
+                - process:
+                    id: processSampleAdminMcpUnsupported
+                    ref: mcpError
+
+- route:
+    id: sample-admin-mcp-health
+    from:
+      id: fromSampleAdminMcpHealth
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/mcp/admin/health?httpMethodRestrict=GET
+      steps:
+        - process:
+            id: processSampleAdminMcpHealth
+            ref: mcpHealthStatus
+
+- route:
+    id: sample-admin-mcp-stream
+    from:
+      id: fromSampleAdminMcpStream
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/mcp/admin/stream?httpMethodRestrict=GET
+      steps:
+        - process:
+            id: processSampleAdminMcpStream
+            ref: mcpStream
+
 - route:
     id: sample-kamelet-echo-smoke
     from:
@@ -67,3 +234,118 @@
         - process:
             id: processSampleRuntimePurgePreview
             ref: runtimePurgePreviewProcessor
+
+- route:
+    id: sample-audit-search-api
+    from:
+      id: fromSampleAuditSearch
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/audit/search?httpMethodRestrict=GET
+      steps:
+        - process:
+            id: processSampleAuditSearch
+            ref: auditTrailSearchProcessor
+
+- route:
+    id: sample-audit-conversations-api
+    from:
+      id: fromSampleAuditConversations
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/audit/conversations?httpMethodRestrict=GET
+      steps:
+        - process:
+            id: processSampleAuditConversations
+            ref: auditConversationListProcessor
+
+- route:
+    id: sample-audit-conversation-view-api
+    from:
+      id: fromSampleAuditConversationView
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/audit/conversation/view?httpMethodRestrict=GET
+      steps:
+        - process:
+            id: processSampleAuditConversationView
+            ref: auditConversationViewProcessor
+
+- route:
+    id: sample-audit-conversation-agent-message-api
+    from:
+      id: fromSampleAuditConversationAgentMessage
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/audit/conversation/agent-message?httpMethodRestrict=POST
+      steps:
+        - process:
+            id: processSampleAuditConversationAgentMessage
+            ref: auditConversationAgentMessageProcessor
+
+- route:
+    id: sample-audit-copilotkit-view-alias-api
+    from:
+      id: fromSampleAuditCopilotKitViewAlias
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/audit/copilotkit?httpMethodRestrict=GET
+      steps:
+        - process:
+            id: processSampleAuditCopilotKitViewAlias
+            ref: auditConversationViewProcessor
+
+- route:
+    id: sample-audit-copilotkit-agent-message-alias-api
+    from:
+      id: fromSampleAuditCopilotKitAgentMessageAlias
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/audit/copilotkit/agent-message?httpMethodRestrict=POST
+      steps:
+        - process:
+            id: processSampleAuditCopilotKitAgentMessageAlias
+            ref: auditConversationAgentMessageProcessor
+
+- route:
+    id: sample-audit-agent-md-api
+    from:
+      id: fromSampleAuditAgentMd
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/audit/agent-md?httpMethodRestrict=GET
+      steps:
+        - process:
+            id: processSampleAuditAgentMd
+            ref: auditAgentBlueprintProcessor
+
+- route:
+    id: sample-audit-ui
+    from:
+      id: fromSampleAuditUi
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/audit/ui?httpMethodRestrict=GET
+      steps:
+        - pollEnrich:
+            id: pollAuditUiPage
+            simple: file:{{agui.ui.static-root:samples/agent-support-service/src/main/resources/frontend}}?fileName=audit.html&noop=true&idempotent=false
+        - convertBodyTo:
+            id: convertAuditUiToString
+            type: java.lang.String
+        - setHeader:
+            id: setHeaderAuditUiContentType
+            name: Content-Type
+            constant: text/html; charset=UTF-8
+        - setHeader:
+            id: setHeaderAuditUiCacheControl
+            name: Cache-Control
+            constant: no-store, no-cache, must-revalidate, max-age=0
+        - setHeader:
+            id: setHeaderAuditUiPragma
+            name: Pragma
+            constant: no-cache
+        - setHeader:
+            id: setHeaderAuditUiExpires
+            name: Expires
+            constant: "0"

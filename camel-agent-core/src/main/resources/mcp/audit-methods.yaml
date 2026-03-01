@@ -1,0 +1,227 @@
+methods:
+  - name: audit.conversations.list
+    title: List audit conversations
+    description: Returns conversation list metadata for audit exploration.
+    inputSchema:
+      type: object
+      additionalProperties: false
+      properties:
+        q:
+          type: string
+          description: Free-text search against id/title/topics.
+        topic:
+          type: string
+          description: Topic filter.
+        limit:
+          type: integer
+          description: Result limit, default 50.
+        sortBy:
+          type: string
+          description: Sort field.
+          enum: [lastEventAt, title, eventCount]
+        order:
+          type: string
+          description: Sort order.
+          enum: [asc, desc]
+    outputSchema:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            type: object
+        structuredContent:
+          type: object
+
+  - name: audit.events.search
+    title: Search audit events
+    description: Searches events for a conversation with optional filters.
+    inputSchema:
+      type: object
+      additionalProperties: false
+      properties:
+        conversationId:
+          type: string
+          description: Conversation identifier.
+        type:
+          type: string
+          description: Event type filter.
+        q:
+          type: string
+          description: Free-text payload query.
+        from:
+          type: string
+          description: ISO timestamp lower bound.
+        to:
+          type: string
+          description: ISO timestamp upper bound.
+        limit:
+          type: integer
+          description: Result limit, default 200.
+      required: [conversationId]
+    outputSchema:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            type: object
+        structuredContent:
+          type: object
+
+  - name: audit.conversation.view
+    title: Build agent conversation view
+    description: Builds agent-perspective conversation timeline for audit console.
+    inputSchema:
+      type: object
+      additionalProperties: false
+      properties:
+        conversationId:
+          type: string
+          description: Conversation identifier.
+        limit:
+          type: integer
+          description: Scan limit, default 500.
+      required: [conversationId]
+    outputSchema:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            type: object
+        structuredContent:
+          type: object
+
+  - name: audit.conversation.agentMessage
+    title: Append manual assistant message
+    description: Appends manual assistant message to conversation and AGUI correlation.
+    inputSchema:
+      type: object
+      additionalProperties: false
+      properties:
+        conversationId:
+          type: string
+          description: Conversation identifier.
+        message:
+          type: string
+          description: Assistant message text.
+        sessionId:
+          type: string
+          description: Optional AGUI session id.
+        runId:
+          type: string
+          description: Optional AGUI run id.
+        threadId:
+          type: string
+          description: Optional AGUI thread id.
+      required: [conversationId, message]
+    outputSchema:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            type: object
+        structuredContent:
+          type: object
+
+  - name: audit.agent.blueprint
+    title: Load agent blueprint
+    description: Loads current Agent.md and parsed metadata for conversation.
+    inputSchema:
+      type: object
+      additionalProperties: false
+      properties:
+        conversationId:
+          type: string
+          description: Conversation identifier.
+      required: [conversationId]
+    outputSchema:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            type: object
+        structuredContent:
+          type: object
+
+  - name: runtime.refresh
+    title: Refresh runtime resources
+    description: Refreshes blueprint/resource state globally or for one conversation.
+    inputSchema:
+      type: object
+      additionalProperties: false
+      properties:
+        conversationId:
+          type: string
+          description: Optional conversation id for targeted refresh.
+    outputSchema:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            type: object
+        structuredContent:
+          type: object
+
+  - name: runtime.conversation.close
+    title: Close conversation runtime instance
+    description: Clears in-memory runtime state while preserving persisted audit records.
+    inputSchema:
+      type: object
+      additionalProperties: false
+      properties:
+        conversationId:
+          type: string
+          description: Conversation identifier.
+      required: [conversationId]
+    outputSchema:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            type: object
+        structuredContent:
+          type: object
+
+  - name: runtime.purge.preview
+    title: Preview purge scope
+    description: Returns non-destructive purge candidate preview.
+    inputSchema:
+      type: object
+      additionalProperties: false
+      properties:
+        requireClosed:
+          type: boolean
+          description: Only closed conversations.
+        before:
+          type: string
+          description: ISO timestamp upper bound.
+        agentName:
+          type: string
+          description: Filter by agent name/type.
+        limit:
+          type: integer
+          description: Max matched conversations.
+        eventScanLimit:
+          type: integer
+          description: Events to inspect per conversation.
+        conversationScanLimit:
+          type: integer
+          description: Conversation ids to scan.
+        includeConversationIds:
+          type: boolean
+          description: Include matched ids list.
+    outputSchema:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            type: object
+        structuredContent:
+          type: object

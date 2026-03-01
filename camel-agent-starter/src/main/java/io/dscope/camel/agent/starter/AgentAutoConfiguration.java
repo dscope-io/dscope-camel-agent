@@ -138,7 +138,6 @@ public class AgentAutoConfiguration {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private java.util.List<?> readJsonRouteTemplates(AgentBlueprint blueprint) {
         try {
             return (java.util.List<?>) blueprint.getClass().getMethod("jsonRouteTemplates").invoke(blueprint);

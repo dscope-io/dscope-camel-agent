@@ -21,7 +21,7 @@
         - setHeader:
             id: setHeaderUiExpires
             name: Expires
-            constant: 0
+            constant: "0"
         - pollEnrich:
             id: pollUiIndexResource
             simple: file:{{agui.ui.static-root:samples/agent-support-service/src/main/resources/frontend}}?fileName=index.html&noop=true&idempotent=false

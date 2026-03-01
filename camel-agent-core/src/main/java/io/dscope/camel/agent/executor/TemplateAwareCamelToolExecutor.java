@@ -113,7 +113,7 @@ public class TemplateAwareCamelToolExecutor implements ToolExecutor {
         }
         if (node.isObject()) {
             ObjectNode objectNode = objectMapper.createObjectNode();
-            node.fields().forEachRemaining(entry -> objectNode.set(entry.getKey(), renderTemplate(entry.getValue(), arguments)));
+            node.properties().forEach(entry -> objectNode.set(entry.getKey(), renderTemplate(entry.getValue(), arguments)));
             return objectNode;
         }
         if (node.isArray()) {
@@ -126,9 +126,7 @@ public class TemplateAwareCamelToolExecutor implements ToolExecutor {
         if (node.isTextual()) {
             String rendered = node.asText();
             if (arguments != null && arguments.isObject()) {
-                var fields = arguments.fields();
-                while (fields.hasNext()) {
-                    var entry = fields.next();
+                for (Map.Entry<String, JsonNode> entry : arguments.properties()) {
                     String placeholder = "{{" + entry.getKey() + "}}";
                     String replacement = entry.getValue().isValueNode() ? entry.getValue().asText() : entry.getValue().toString();
                     rendered = rendered.replace(placeholder, replacement);
@@ -201,7 +199,7 @@ public class TemplateAwareCamelToolExecutor implements ToolExecutor {
                 if (!step.isObject() || step.size() != 1) {
                     throw new IllegalArgumentException("Invalid JSON DSL step format: " + step);
                 }
-                Map.Entry<String, JsonNode> entry = step.fields().next();
+                Map.Entry<String, JsonNode> entry = step.properties().iterator().next();
                 String key = entry.getKey();
                 JsonNode value = entry.getValue();
 
@@ -251,7 +249,7 @@ public class TemplateAwareCamelToolExecutor implements ToolExecutor {
             return;
         }
         if (node.isObject()) {
-            node.fields().forEachRemaining(entry -> {
+            node.properties().forEach(entry -> {
                 if (DISALLOWED_DSL_KEYS.contains(entry.getKey())) {
                     throw new IllegalArgumentException("Generated JSON DSL contains disallowed key: " + entry.getKey());
                 }

@@ -18,6 +18,7 @@ import org.apache.camel.Processor;
 import org.apache.camel.main.Main;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -27,6 +28,7 @@ class RealtimeTokenHttpTtlIntegrationTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("tokenTtlScenarios")
+    @Timeout(90)
     void shouldValidateTokenTtlScenarios(String name,
                                          String conversationId,
                                          boolean useMockedTokenProcessor) throws Exception {
@@ -94,6 +96,7 @@ class RealtimeTokenHttpTtlIntegrationTest {
     }
 
     @Test
+    @Timeout(90)
     void shouldRequireInitWhenPreferCoreTokenProcessorEnabledWithoutExplicitRequireFlag() throws Exception {
         int port = randomPort();
         String previousPort = System.getProperty("agent.runtime.test-port");

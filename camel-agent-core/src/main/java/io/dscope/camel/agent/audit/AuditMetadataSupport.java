@@ -1,4 +1,4 @@
-package io.dscope.camel.agent.service;
+package io.dscope.camel.agent.audit;
 
 import io.dscope.camel.agent.model.AgentEvent;
 import java.io.InputStream;
@@ -7,7 +7,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;

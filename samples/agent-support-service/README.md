@@ -392,6 +392,9 @@ Notable keys:
 
 - `agent.runtime.ai.mode=spring-ai`
 - `agent.runtime.spring-ai.provider=openai`
+- `agent.runtime.spring-ai.provider=ollama` is supported for local/remote Ollama chat backends
+- `agent.runtime.spring-ai.ollama.base-url=http://localhost:11434`
+- `agent.runtime.spring-ai.ollama.model=llama3.1`
 - `agent.runtime.spring-ai.openai.api-mode=chat`
 - set `agent.runtime.spring-ai.openai.api-mode=responses-ws` to route LLM calls through OpenAI Responses over WebSocket
 - `agent.runtime.spring-ai.openai.responses-ws.*` configures endpoint/model/timeout/reconnect (`endpoint-uri`, `model`, `request-timeout-ms`, `poll-interval-ms`, `max-send-retries`, `max-reconnects`, `initial-backoff-ms`, `max-backoff-ms`)
@@ -456,6 +459,27 @@ No-edit toggles are also available:
    - `samples/agent-support-service/run-sample.sh --api-mode=responses-ws`
 - Env var:
    - `AGENT_OPENAI_API_MODE=responses-ws samples/agent-support-service/run-sample.sh`
+
+### Ollama Quick Switch
+
+Run the sample with Ollama provider (no OpenAI key required):
+
+```bash
+mvn -f samples/agent-support-service/pom.xml \
+   -Dagent.runtime.spring-ai.provider=ollama \
+   -Dagent.runtime.spring-ai.ollama.base-url=http://localhost:11434 \
+   -Dagent.runtime.spring-ai.ollama.model=llama3.1 \
+   -DskipTests clean compile exec:java
+```
+
+Equivalent run script form:
+
+```bash
+samples/agent-support-service/run-sample.sh \
+   -Dagent.runtime.spring-ai.provider=ollama \
+   -Dagent.runtime.spring-ai.ollama.base-url=http://localhost:11434 \
+   -Dagent.runtime.spring-ai.ollama.model=llama3.1
+```
 
 ### Optional: Separate JDBC for Audit Trail
 

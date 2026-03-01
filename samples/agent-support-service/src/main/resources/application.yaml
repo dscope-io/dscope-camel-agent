@@ -20,7 +20,7 @@ openai:
 
 agent:
   runtime:
-    routes-include-pattern: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/sip-adapter-platform.camel.yaml
+    routes-include-pattern: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/admin-platform.camel.yaml,classpath:routes/sip-adapter-platform.camel.yaml
     agent-routes-enabled: true
     ai:
       mode: spring-ai
@@ -91,6 +91,9 @@ agent:
         model: claude-3-5-sonnet-20241022
         api-key-system-property: anthropic.api.key
         anthropic-version: "2023-06-01"
+      ollama:
+        base-url: http://localhost:11434
+        model: llama3.1
   blueprint: classpath:agents/support/agent.md
   sample:
     prompt: My login is failing, please open a support ticket

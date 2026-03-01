@@ -3,7 +3,9 @@ package io.dscope.camel.agent.persistence.dscope;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dscope.camel.agent.api.PersistenceFacade;
 import io.dscope.camel.agent.model.AuditGranularity;
+import io.dscope.camel.persistence.core.FlowStateStore;
 import io.dscope.camel.persistence.core.FlowStateStoreFactory;
+import io.dscope.camel.persistence.core.PersistenceBackend;
 import io.dscope.camel.persistence.core.PersistenceConfiguration;
 import java.util.Properties;
 
@@ -25,12 +27,29 @@ public final class DscopePersistenceFactory {
 
         PersistenceConfiguration configuration = PersistenceConfiguration.fromProperties(effective);
         AuditGranularity auditGranularity = AuditGranularity.from(effective.getProperty("agent.audit.granularity"));
-        var flowStateStore = FlowStateStoreFactory.create(configuration);
+        var flowStateStore = createFlowStateStore(configuration);
         if (auditEffective == null) {
             return new DscopePersistenceFacade(flowStateStore, objectMapper, auditGranularity);
         }
-        var auditStore = FlowStateStoreFactory.create(PersistenceConfiguration.fromProperties(auditEffective));
+        var auditStore = createFlowStateStore(PersistenceConfiguration.fromProperties(auditEffective));
         return new DscopePersistenceFacade(flowStateStore, auditStore, objectMapper, auditGranularity);
+    }
+
+    static FlowStateStore createFlowStateStore(PersistenceConfiguration configuration) {
+        if (configuration == null) {
+            throw new IllegalArgumentException("Persistence configuration cannot be null");
+        }
+
+        PersistenceBackend backend = configuration.backend();
+        if (backend == PersistenceBackend.JDBC && isPostgres(configuration.jdbcUrl())) {
+            return new PostgresTextJdbcFlowStateStore(configuration.jdbcUrl(), configuration.jdbcUser(), configuration.jdbcPassword());
+        }
+
+        if (backend == PersistenceBackend.REDIS_JDBC && isPostgres(configuration.jdbcUrl())) {
+            return new PostgresTextJdbcFlowStateStore(configuration.jdbcUrl(), configuration.jdbcUser(), configuration.jdbcPassword());
+        }
+
+        return FlowStateStoreFactory.create(configuration);
     }
 
     static Properties buildAuditPersistenceProperties(Properties effective) {
@@ -73,5 +92,9 @@ public final class DscopePersistenceFactory {
         if (value != null && !value.isBlank()) {
             target.setProperty(targetKey, value);
         }
+    }
+
+    private static boolean isPostgres(String jdbcUrl) {
+        return jdbcUrl != null && jdbcUrl.trim().toLowerCase().startsWith("jdbc:postgresql:");
     }
 }

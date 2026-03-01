@@ -201,9 +201,7 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
         JsonNode parameters = firstObject(node, "parameters", "params", "properties");
         if (parameters != null) {
             boolean first = true;
-            var fields = parameters.fields();
-            while (fields.hasNext()) {
-                var entry = fields.next();
+            for (Map.Entry<String, JsonNode> entry : parameters.properties()) {
                 JsonNode value = entry.getValue();
                 if (value == null || value.isNull()) {
                     continue;
@@ -490,7 +488,7 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
                 if (node == null || !node.isObject()) {
                     continue;
                 }
-                node.fields().forEachRemaining(entry -> merged.put(entry.getKey(), entry.getValue()));
+                node.properties().forEach(entry -> merged.put(entry.getKey(), entry.getValue()));
             } catch (IOException e) {
                 throw new IllegalArgumentException("Failed to parse YAML block in blueprint", e);
             }

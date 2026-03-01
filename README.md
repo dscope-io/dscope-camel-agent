@@ -6,7 +6,7 @@
 
 - `camel-agent-core`: `agent:` Camel component, kernel, blueprint parser, tool registry, schema checks.
 - `camel-agent-persistence-dscope`: persistence adapter using `dscope-camel-persistence` (`redis`, `jdbc`, `redis_jdbc`).
-- `camel-agent-spring-ai`: Spring AI multi-provider gateway (`openai`, `anthropic`, `vertex gemini`).
+- `camel-agent-spring-ai`: Spring AI multi-provider gateway (`openai`, `anthropic`, `vertex gemini`, `ollama`).
 - `camel-agent-starter`: Spring Boot auto-configuration.
 - `samples/agent-support-service`: runnable Camel Main support sample.
 
@@ -157,7 +157,7 @@ agent:
     ai:
       mode: spring-ai
     spring-ai:
-      provider: openai # openai | gemini | claude
+      provider: openai # openai | gemini | claude | ollama
       model: gpt-4o-mini
       temperature: 0.2
       max-tokens: 800
@@ -178,6 +178,9 @@ Notes:
   - `agent.runtime.spring-ai.gemini.vertex.project-id`
   - `agent.runtime.spring-ai.gemini.vertex.location`
 - Claude uses Spring AI Anthropic client (`/v1/messages`).
+- Ollama uses local/remote Ollama chat endpoint (default base URL `http://localhost:11434`) and provider config:
+  - `agent.runtime.spring-ai.ollama.base-url`
+  - `agent.runtime.spring-ai.ollama.model`
 
 ## Connectivity Check
 
@@ -285,6 +288,16 @@ tools:
 - `/agui/stream/{runId}` is available for split-transport clients
 
 For run commands and endpoint examples, see `samples/agent-support-service/README.md`.
+
+Audit conversation endpoints (sample runtime):
+
+- `GET /audit/conversation/view?conversationId=<id>`
+- `POST /audit/conversation/agent-message`
+
+Compatibility aliases (deprecated):
+
+- `GET /audit/copilotkit`
+- `POST /audit/copilotkit/agent-message`
 
 Realtime note:
 

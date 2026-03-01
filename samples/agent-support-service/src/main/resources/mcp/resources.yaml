@@ -1,0 +1,6 @@
+resources:
+  - uri: mcp://resource/audit-app.html
+    name: Audit Trail MCP App
+    description: Embedded audit/admin console backed by MCP tools.
+    mimeType: text/html
+    source: classpath:frontend/audit.html
