@@ -6,6 +6,7 @@ import io.dscope.camel.agent.audit.AuditAgentBlueprintProcessor;
 import io.dscope.camel.agent.audit.AuditConversationAgentMessageProcessor;
 import io.dscope.camel.agent.audit.AuditConversationListProcessor;
 import io.dscope.camel.agent.audit.AuditConversationViewProcessor;
+import io.dscope.camel.agent.audit.AuditConversationSessionDataProcessor;
 import io.dscope.camel.agent.audit.AuditTrailSearchProcessor;
 import io.dscope.camel.agent.audit.AuditTrailService;
 import io.dscope.camel.agent.audit.mcp.AuditMcpToolsCallProcessor;
@@ -14,6 +15,7 @@ import io.dscope.camel.agent.api.AiModelClient;
 import io.dscope.camel.agent.api.PersistenceFacade;
 import io.dscope.camel.agent.kernel.InMemoryPersistenceFacade;
 import io.dscope.camel.agent.kernel.StaticAiModelClient;
+import io.dscope.camel.agent.model.AuditGranularity;
 import io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient;
 import io.dscope.camel.agent.realtime.RealtimeBrowserSessionInitProcessor;
 import io.dscope.camel.agent.realtime.RealtimeBrowserSessionRegistry;
@@ -26,6 +28,8 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Properties;
 import io.dscope.camel.mcp.processor.McpErrorProcessor;
 import io.dscope.camel.mcp.processor.McpHealthStatusProcessor;
@@ -80,12 +84,25 @@ public final class AgentRuntimeBootstrap {
             persistenceFacade = createPersistenceFacade(properties, objectMapper);
             main.bind("persistenceFacade", persistenceFacade);
         }
+
+        ConversationArchiveService conversationArchiveService = createConversationArchiveService(properties, objectMapper);
+        main.bind("conversationArchiveService", conversationArchiveService);
         String blueprintUri = properties.getProperty("agent.blueprint");
 
+        RuntimeControlState runtimeControlState = new RuntimeControlState(
+            AuditGranularity.from(properties.getProperty("agent.audit.granularity", "debug"))
+        );
+        main.bind("runtimeControlState", runtimeControlState);
         AuditTrailSearchProcessor auditTrailSearchProcessor = new AuditTrailSearchProcessor(persistenceFacade, objectMapper, blueprintUri);
         AuditConversationListProcessor auditConversationListProcessor = new AuditConversationListProcessor(persistenceFacade, objectMapper, blueprintUri);
         AuditConversationViewProcessor auditConversationViewProcessor = new AuditConversationViewProcessor(persistenceFacade, objectMapper);
         AuditConversationAgentMessageProcessor auditConversationAgentMessageProcessor = new AuditConversationAgentMessageProcessor(persistenceFacade, objectMapper);
+        AuditConversationSessionDataProcessor auditConversationSessionDataProcessor =
+            new AuditConversationSessionDataProcessor(conversationArchiveService, objectMapper);
+        RuntimeAuditGranularityProcessor runtimeAuditGranularityProcessor =
+            new RuntimeAuditGranularityProcessor(objectMapper, runtimeControlState);
+        RuntimeConversationPersistenceProcessor runtimeConversationPersistenceProcessor =
+            new RuntimeConversationPersistenceProcessor(objectMapper, conversationArchiveService);
         RuntimeResourceRefreshProcessor runtimeResourceRefreshProcessor = new RuntimeResourceRefreshProcessor(applicationYamlPath, persistenceFacade, objectMapper);
         RuntimePurgePreviewProcessor runtimePurgePreviewProcessor = new RuntimePurgePreviewProcessor(objectMapper, persistenceFacade);
         RuntimeConversationCloseProcessor runtimeConversationCloseProcessor = new RuntimeConversationCloseProcessor(objectMapper, persistenceFacade);
@@ -100,6 +117,9 @@ public final class AgentRuntimeBootstrap {
         main.bind("auditConversationListProcessor", auditConversationListProcessor);
         main.bind("auditConversationViewProcessor", auditConversationViewProcessor);
         main.bind("auditConversationAgentMessageProcessor", auditConversationAgentMessageProcessor);
+        main.bind("auditConversationSessionDataProcessor", auditConversationSessionDataProcessor);
+        main.bind("runtimeAuditGranularityProcessor", runtimeAuditGranularityProcessor);
+        main.bind("runtimeConversationPersistenceProcessor", runtimeConversationPersistenceProcessor);
         main.bind("runtimeResourceRefreshProcessor", runtimeResourceRefreshProcessor);
         main.bind("runtimePurgePreviewProcessor", runtimePurgePreviewProcessor);
         main.bind("runtimeConversationCloseProcessor", runtimeConversationCloseProcessor);
@@ -111,9 +131,12 @@ public final class AgentRuntimeBootstrap {
             auditTrailSearchProcessor,
             auditConversationListProcessor,
             auditConversationViewProcessor,
+            auditConversationSessionDataProcessor,
             auditConversationAgentMessageProcessor,
             auditAgentBlueprintProcessor,
+            runtimeAuditGranularityProcessor,
             runtimeResourceRefreshProcessor,
+            runtimeConversationPersistenceProcessor,
             runtimeConversationCloseProcessor,
             runtimePurgePreviewProcessor
         );
@@ -136,9 +159,12 @@ public final class AgentRuntimeBootstrap {
                                           AuditTrailSearchProcessor auditTrailSearchProcessor,
                                           AuditConversationListProcessor auditConversationListProcessor,
                                           AuditConversationViewProcessor auditConversationViewProcessor,
+                                          AuditConversationSessionDataProcessor auditConversationSessionDataProcessor,
                                           AuditConversationAgentMessageProcessor auditConversationAgentMessageProcessor,
                                           AuditAgentBlueprintProcessor auditAgentBlueprintProcessor,
+                                          RuntimeAuditGranularityProcessor runtimeAuditGranularityProcessor,
                                           RuntimeResourceRefreshProcessor runtimeResourceRefreshProcessor,
+                                          RuntimeConversationPersistenceProcessor runtimeConversationPersistenceProcessor,
                                           RuntimeConversationCloseProcessor runtimeConversationCloseProcessor,
                                           RuntimePurgePreviewProcessor runtimePurgePreviewProcessor) {
         McpRequestSizeGuardProcessor requestSizeGuardProcessor = new McpRequestSizeGuardProcessor();
@@ -168,9 +194,12 @@ public final class AgentRuntimeBootstrap {
             auditTrailSearchProcessor,
             auditConversationListProcessor,
             auditConversationViewProcessor,
+            auditConversationSessionDataProcessor,
             auditConversationAgentMessageProcessor,
             auditAgentBlueprintProcessor,
+            runtimeAuditGranularityProcessor,
             runtimeResourceRefreshProcessor,
+            runtimeConversationPersistenceProcessor,
             runtimeConversationCloseProcessor,
             runtimePurgePreviewProcessor
         );
@@ -217,8 +246,58 @@ public final class AgentRuntimeBootstrap {
             PersistenceFacade persistence = (PersistenceFacade) create.invoke(null, properties, objectMapper);
             LOGGER.info("Agent runtime persistence selected: dscope factory");
             return persistence;
-        } catch (Exception ignored) {
-            LOGGER.info("Agent runtime persistence selected: in-memory fallback");
+        } catch (Exception failure) {
+            Throwable root = failure;
+            while (root.getCause() != null && root.getCause() != root) {
+                root = root.getCause();
+            }
+            String rootMessage = root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
+            LOGGER.warn("Agent runtime persistence selected: in-memory fallback (reason: {})", rootMessage);
+            LOGGER.debug("Agent runtime persistence bootstrap failure details", failure);
+            return new InMemoryPersistenceFacade();
+        }
+    }
+
+    private static ConversationArchiveService createConversationArchiveService(Properties properties, ObjectMapper objectMapper) {
+        boolean enabled = Boolean.parseBoolean(properties.getProperty("agent.conversation.persistence.enabled", "false"));
+        PersistenceFacade archivePersistence = createConversationArchivePersistence(properties, objectMapper);
+        LOGGER.info("Agent runtime conversation persistence initialized: enabled={}", enabled);
+        return new ConversationArchiveService(archivePersistence, objectMapper, enabled);
+    }
+
+    private static PersistenceFacade createConversationArchivePersistence(Properties properties, ObjectMapper objectMapper) {
+        Map<String, String> mapped = new LinkedHashMap<>();
+        for (String key : properties.stringPropertyNames()) {
+            if (!key.startsWith("agent.conversation.persistence.")) {
+                continue;
+            }
+            String suffix = key.substring("agent.conversation.persistence.".length());
+            if (suffix.isBlank() || "enabled".equals(suffix)) {
+                continue;
+            }
+            mapped.put("camel.persistence." + suffix, properties.getProperty(key));
+        }
+
+        if (mapped.isEmpty()) {
+            return new InMemoryPersistenceFacade();
+        }
+
+        Properties archiveProps = new Properties();
+        archiveProps.putAll(mapped);
+        archiveProps.putIfAbsent("camel.persistence.enabled", "true");
+        archiveProps.putIfAbsent("camel.persistence.backend", "jdbc");
+
+        try {
+            Class<?> factoryType = Class.forName("io.dscope.camel.agent.persistence.dscope.DscopePersistenceFactory");
+            Method create = factoryType.getMethod("create", Properties.class, ObjectMapper.class);
+            return (PersistenceFacade) create.invoke(null, archiveProps, objectMapper);
+        } catch (Exception failure) {
+            Throwable root = failure;
+            while (root.getCause() != null && root.getCause() != root) {
+                root = root.getCause();
+            }
+            String rootMessage = root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
+            LOGGER.warn("Conversation archive persistence fallback to in-memory (reason: {})", rootMessage);
             return new InMemoryPersistenceFacade();
         }
     }

@@ -382,6 +382,39 @@ class RealtimeEventProcessorTest {
     }
 
     @Test
+    void shouldPersistRealtimeTranscriptTurnMessagesToAuditTrail() throws Exception {
+        RecordingRelayClient relayClient = new RecordingRelayClient();
+        RealtimeEventProcessor processor = new RealtimeEventProcessor(relayClient, "direct:test-agent-transcript-persistence");
+
+        InMemoryPersistenceFacade persistence = new InMemoryPersistenceFacade();
+        CamelContext context = createContext(Map.of(), Map.of("persistenceFacade", persistence));
+        context.addRoutes(new RouteBuilder() {
+            @Override
+            public void configure() {
+                from("direct:test-agent-transcript-persistence")
+                    .transform(simple("assistant: ${body}"));
+            }
+        });
+
+        try {
+            Exchange exchange = new DefaultExchange(context);
+            exchange.getMessage().setHeader("conversationId", "conv-realtime-turn-audit");
+            exchange.getMessage().setBody("{\"type\":\"transcript.final\",\"text\":\"please open ticket\"}");
+
+            processor.process(exchange);
+
+            List<AgentEvent> events = persistence.loadConversation("conv-realtime-turn-audit", 20);
+            Assertions.assertTrue(events.stream().anyMatch(event -> "realtime.transcript.final".equals(event.type())));
+            Assertions.assertTrue(events.stream().anyMatch(event -> "user.message".equals(event.type())
+                && "please open ticket".equals(event.payload().asText())));
+            Assertions.assertTrue(events.stream().anyMatch(event -> "assistant.message".equals(event.type())
+                && "assistant: please open ticket".equals(event.payload().asText())));
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Test
     void shouldLogRealtimeContextCheckpointsInOrder() throws Exception {
         RecordingRelayClient relayClient = new RecordingRelayClient();
         RealtimeEventProcessor processor = new RealtimeEventProcessor(relayClient, "direct:test-agent-log-order");

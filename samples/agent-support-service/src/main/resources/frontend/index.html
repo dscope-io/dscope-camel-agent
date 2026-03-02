@@ -36,6 +36,19 @@
     textarea { width: 100%; min-height: 84px; resize: vertical; border-radius: 10px; border: 1px solid #314074; background: #0f1731; color: #ecf1ff; padding: 10px; }
     button { width: max-content; border: 0; border-radius: 9px; background: #4b72ff; color: white; padding: 8px 14px; font-weight: 600; cursor: pointer; }
     .voice-toggle { display: inline-flex; align-items: center; gap: 6px; }
+    .voice-toggle-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      line-height: 1;
+    }
+    .voice-toggle-icon svg {
+      width: 16px;
+      height: 16px;
+      fill: currentColor;
+    }
     .voice-toggle.idle { background: #4b72ff; }
     .voice-toggle.live { background: #233365; }
     .voice-toggle.busy { background: #3b4f93; cursor: progress; }
@@ -49,6 +62,7 @@
 </head>
 <body>
   <div class="app">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230f1731'/%3E%3Cpath d='M32 41a9 9 0 0 0 9-9V19a9 9 0 1 0-18 0v13a9 9 0 0 0 9 9zm-4 5.2V52h-8a2 2 0 1 0 0 4h24a2 2 0 1 0 0-4h-8v-5.8A16 16 0 0 0 48 31a2 2 0 1 0-4 0 12 12 0 0 1-24 0 2 2 0 1 0-4 0 16 16 0 0 0 12 15.2z' fill='%23ecf1ff'/%3E%3C/svg%3E" />
     <div class="title">Support Copilot (AGUI Protocol Sample)</div>
     <div class="subtitle">AGUI transport switch: POST+SSE (<code>/agui/agent</code>) or WebSocket (<code>/agui/rpc</code>) with ticket widget rendering. <a href="/audit/ui">Open audit trail explorer</a>.</div>
 
@@ -66,7 +80,7 @@
         <button type="submit">Send</button>
       </form>
       <div class="controls">
-        <button id="voice-toggle" class="voice-toggle idle" type="button" title="Start Voice" aria-label="Start Voice"><span class="voice-toggle-icon">🎤</span><span class="voice-toggle-text">Start Voice</span></button>
+        <button id="voice-toggle" class="voice-toggle idle" type="button" title="Start Voice" aria-label="Start Voice"><span class="voice-toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v4a3 3 0 0 0 3 3zm-1 2.92V20H8a1 1 0 1 0 0 2h8a1 1 0 1 0 0-2h-3v-3.08A7.01 7.01 0 0 0 19 10a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7.01 7.01 0 0 0 6 6.92z"></path></svg></span><span class="voice-toggle-text">Start Voice</span></button>
         <label for="transport-mode" class="status">Transport</label>
         <select id="transport-mode">
           <option value="relay" selected>Camel relay (WebSocket)</option>
@@ -392,6 +406,16 @@
       voiceStatusEl.textContent = text;
     }
 
+    function voiceToggleIconSvg(kind) {
+      if (kind === 'stop') {
+        return '<svg viewBox="0 0 24 24" focusable="false"><rect x="7" y="7" width="10" height="10" rx="1.5" ry="1.5"></rect></svg>';
+      }
+      if (kind === 'busy') {
+        return '<svg viewBox="0 0 24 24" focusable="false"><path d="M12 2a10 10 0 1 0 10 10h-2a8 8 0 1 1-8-8V2z"></path></svg>';
+      }
+      return '<svg viewBox="0 0 24 24" focusable="false"><path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v4a3 3 0 0 0 3 3zm-1 2.92V20H8a1 1 0 1 0 0 2h8a1 1 0 1 0 0-2h-3v-3.08A7.01 7.01 0 0 0 19 10a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7.01 7.01 0 0 0 6 6.92z"></path></svg>';
+    }
+
     function updateVoiceToggleButton() {
       if (!voiceToggleEl) {
         return;
@@ -400,8 +424,8 @@
       if (voiceToggleBusy) {
         voiceToggleEl.classList.add('busy');
         voiceToggleEl.innerHTML = voiceToggleAction === 'stop'
-          ? '<span class="voice-toggle-icon">⏳</span><span class="voice-toggle-text">Stopping Voice</span>'
-          : '<span class="voice-toggle-icon">⏳</span><span class="voice-toggle-text">Starting Voice</span>';
+          ? `<span class="voice-toggle-icon" aria-hidden="true">${voiceToggleIconSvg('busy')}</span><span class="voice-toggle-text">Stopping Voice</span>`
+          : `<span class="voice-toggle-icon" aria-hidden="true">${voiceToggleIconSvg('busy')}</span><span class="voice-toggle-text">Starting Voice</span>`;
         const busyText = voiceToggleAction === 'stop' ? 'Stopping Voice' : 'Starting Voice';
         voiceToggleEl.title = busyText;
         voiceToggleEl.setAttribute('aria-label', busyText);
@@ -411,12 +435,12 @@
       voiceToggleEl.disabled = false;
       if (voiceActive) {
         voiceToggleEl.classList.add('live');
-        voiceToggleEl.innerHTML = '<span class="voice-toggle-icon">⏹</span><span class="voice-toggle-text">Stop Voice</span>';
+        voiceToggleEl.innerHTML = `<span class="voice-toggle-icon" aria-hidden="true">${voiceToggleIconSvg('stop')}</span><span class="voice-toggle-text">Stop Voice</span>`;
         voiceToggleEl.title = 'Stop Voice';
         voiceToggleEl.setAttribute('aria-label', 'Stop Voice');
       } else {
         voiceToggleEl.classList.add('idle');
-        voiceToggleEl.innerHTML = '<span class="voice-toggle-icon">🎤</span><span class="voice-toggle-text">Start Voice</span>';
+        voiceToggleEl.innerHTML = `<span class="voice-toggle-icon" aria-hidden="true">${voiceToggleIconSvg('mic')}</span><span class="voice-toggle-text">Start Voice</span>`;
         voiceToggleEl.title = 'Start Voice';
         voiceToggleEl.setAttribute('aria-label', 'Start Voice');
       }
@@ -981,6 +1005,25 @@
       }
     }
 
+    function reportObservedRealtimeTranscript(direction, transcript, eventType, eventScope) {
+      if (!isWebRtcMode() || !transcript) {
+        return;
+      }
+      const normalizedTranscript = normalizeDisplayText(String(transcript || '')).trim();
+      if (!normalizedTranscript) {
+        return;
+      }
+      enqueueRealtimeEvent({
+        type: 'transcript.observed',
+        direction,
+        observedEventType: eventType || '',
+        eventScope: eventScope || '',
+        transcript: normalizedTranscript,
+        text: normalizedTranscript
+      }).catch(() => {
+      });
+    }
+
     function scheduleWebRtcResponseRecovery(transcript, eventScope) {
       clearWebRtcResponseRecoveryTimer();
       if (!transcript) {
@@ -1021,6 +1064,7 @@
       if (webRtcResponsePending) {
         return false;
       }
+      realtimeAudioSinceResponseCreate = false;
       const requestEvent = {
         type: 'response.create',
         response: {
@@ -1516,6 +1560,7 @@
             if (!handledTranscriptKeys.has(outputKey)) {
               handledTranscriptKeys.add(outputKey);
               logWebRtcTranscript('output', finalTranscript, type, transcriptScope);
+              reportObservedRealtimeTranscript('output', finalTranscript, type, transcriptScope);
               const added = tryAddVoiceMessage('agent', finalTranscript, 'voice-output-transcript', null, transcriptScope);
               if (added) {
                 scheduleFallbackSpeech(finalTranscript);
@@ -1541,6 +1586,8 @@
         if (isInputTranscriptEvent && transcriptFinal && !isLikelyTranscriptFragment(transcriptFinal)) {
           const eventScope = event.item_id || event.response_id || event.id || type;
           logWebRtcTranscript('input', transcriptFinal, type, eventScope);
+          reportObservedRealtimeTranscript('input', transcriptFinal, type, eventScope);
+          tryAddVoiceMessage('user', transcriptFinal, 'voice-transcript', null, eventScope);
           const key = `input:${eventScope}:${normalizeTranscriptKey(transcriptFinal)}`;
           const routed = await routeTranscriptToRules(transcriptFinal, key, { eventScope });
 
@@ -1563,6 +1610,7 @@
           }
           const eventScope = event.item_id || event.response_id || event.id || '';
           logWebRtcTranscript('output', transcriptFinal, type, eventScope);
+          reportObservedRealtimeTranscript('output', transcriptFinal, type, eventScope);
 
           if (!isWebRtcMode()) {
             const parsedOutputJson = parseJsonPayload(transcriptFinal);
@@ -1670,13 +1718,18 @@
         webRtcRemoteAudioEl.autoplay = true;
         webRtcRemoteAudioEl.playsInline = true;
         webRtcRemoteAudioEl.muted = false;
-        pc.ontrack = (event) => {
-          console.info('[WebRTC Event] remote audio track received');
-          webRtcRemoteAudioEl.srcObject = event.streams[0];
+        webRtcRemoteAudioEl.addEventListener('playing', () => {
           realtimeAudioSinceResponseCreate = true;
           clearFallbackSpeakTimer();
           setTtsStatus('Realtime voice active', 'ok');
           setVoiceStatus('Voice playing response...');
+        });
+        webRtcRemoteAudioEl.addEventListener('stalled', () => {
+          setTtsStatus('Realtime audio stalled', 'warn');
+        });
+        pc.ontrack = (event) => {
+          console.info('[WebRTC Event] remote audio track received');
+          webRtcRemoteAudioEl.srcObject = event.streams[0];
           webRtcRemoteAudioEl.play().catch((error) => {
             console.info(`[WebRTC Event] remote audio play blocked :: ${error?.message || error}`);
           });
@@ -1690,6 +1743,10 @@
         webRtcDataChannel = dc;
         dc.addEventListener('open', () => {
           console.info('[WebRTC Event] datachannel.open');
+          sendWebRtcEvent({
+            type: 'session.update',
+            session: buildWebRtcSessionConfig(null)
+          });
           setVoiceStatus(`Voice listening (WebRTC direct, ${getVadPauseDescription()})...`);
         });
         dc.addEventListener('close', () => {

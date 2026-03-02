@@ -21,6 +21,8 @@
     .view-switch { margin-top: 12px; display: flex; gap: 8px; }
     .view-switch button { background: #233365; }
     .view-switch button.active { background: #4b72ff; }
+    .raw-toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: 4px; font-size: 12px; opacity: .9; }
+    .raw-toggle input { margin: 0; }
     .status { font-size: 12px; opacity: .85; }
     .status.ok { color: #9be29b; opacity: 1; }
     .status.err { color: #ff9e9e; opacity: 1; }
@@ -195,6 +197,7 @@
         <button id="treeViewBtn" class="active" type="button">Tree View</button>
         <button id="graphViewBtn" type="button">Graph View</button>
         <button id="rawViewBtn" type="button">Raw JSON</button>
+        <label class="raw-toggle" for="augmentedRawToggle"><input id="augmentedRawToggle" type="checkbox" />Augmented Raw</label>
         <button id="agentMdViewBtn" type="button">Agent.md</button>
         <button id="copilotKitViewBtn" type="button">CopilotKit</button>
       </div>
@@ -248,6 +251,7 @@
     const graphViewBtnEl = document.getElementById('graphViewBtn');
     const treeViewBtnEl = document.getElementById('treeViewBtn');
     const agentMdViewBtnEl = document.getElementById('agentMdViewBtn');
+    const augmentedRawToggleEl = document.getElementById('augmentedRawToggle');
     const copilotKitViewBtnEl = document.getElementById('copilotKitViewBtn');
     const statusEl = document.getElementById('status');
     const resultEl = document.getElementById('result');
@@ -270,6 +274,7 @@
     let lastCopilotKit = null;
     let lastConversationsResult = null;
     let activeView = 'raw';
+    let augmentedRawEnabled = false;
     let mcpSessionId = '';
     let mcpRequestSeq = 1;
     const MCP_ENDPOINT = '/mcp/admin';
@@ -706,6 +711,19 @@
       window.history.replaceState(null, '', nextUrl);
     }
 
+    function syncAugmentedRawStateToUrl(enabled) {
+      const url = new URL(window.location.href);
+      const params = url.searchParams;
+      if (enabled) {
+        params.set('augmentedRaw', '1');
+      } else {
+        params.delete('augmentedRaw');
+      }
+      const query = params.toString();
+      const nextUrl = `${url.pathname}${query ? `?${query}` : ''}${url.hash || ''}`;
+      window.history.replaceState(null, '', nextUrl);
+    }
+
     function escapeHtml(text) {
       return String(text || '')
         .replaceAll('&', '&amp;')
@@ -718,10 +736,43 @@
     function summarizeTypeCounts(events) {
       const counts = new Map();
       for (const event of events || []) {
-        const type = String(event?.type || 'unknown');
+        const type = eventTypeLabel(event);
         counts.set(type, (counts.get(type) || 0) + 1);
       }
       return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    }
+
+    function inferObservedTranscriptDirection(event) {
+      const payload = event?.payload;
+      if (!payload || typeof payload !== 'object') {
+        return '';
+      }
+
+      const direction = String(payload.direction || '').trim().toLowerCase();
+      if (direction === 'input' || direction === 'output') {
+        return direction;
+      }
+
+      const observedType = String(payload.observedEventType || payload.eventType || payload.type || '').toLowerCase();
+      if (!observedType) {
+        return '';
+      }
+      if (observedType.includes('input_audio_transcription') || observedType.includes('conversation.item.input_audio_transcription')) {
+        return 'input';
+      }
+      if (observedType.includes('output_audio_transcript') || observedType.includes('output_text') || observedType.startsWith('response.')) {
+        return 'output';
+      }
+      return '';
+    }
+
+    function eventTypeLabel(event) {
+      const baseType = String(event?.type || 'unknown');
+      if (baseType !== 'realtime.transcript.observed') {
+        return baseType;
+      }
+      const direction = inferObservedTranscriptDirection(event);
+      return direction ? `${baseType}.${direction}` : baseType;
     }
 
     function payloadPreview(payload) {
@@ -766,7 +817,7 @@
       const eventsHtml = events.map((event) => `
         <div class="event-card">
           <div class="event-top">
-            <div class="event-type">${escapeHtml(event.type || 'unknown')}</div>
+            <div class="event-type">${escapeHtml(eventTypeLabel(event))}</div>
             <div class="event-time">${escapeHtml(event.timestamp || '')}</div>
           </div>
           <div class="event-meta">conversationId=${escapeHtml(event.conversationId || '')} | taskId=${escapeHtml(event.taskId || '')}</div>
@@ -838,7 +889,36 @@
         treeViewEl.innerHTML = '<div class="tree-line"><span class="tree-meta">No structured JSON result to visualize yet.</span></div>';
         return;
       }
-      treeViewEl.innerHTML = renderTreeNode(data, 'root', 0);
+      const treeModel = enrichTreeViewModel(data);
+      treeViewEl.innerHTML = renderTreeNode(treeModel, 'root', 0);
+    }
+
+    function enrichTreeViewModel(data) {
+      const root = JSON.parse(JSON.stringify(data || {}));
+      const events = Array.isArray(root.events) ? root.events : [];
+      for (const event of events) {
+        if (!event || typeof event !== 'object') {
+          continue;
+        }
+        event.eventTypeLabel = eventTypeLabel(event);
+      }
+      return root;
+    }
+
+    function enrichRawViewModel(data) {
+      if (!augmentedRawEnabled || !data || typeof data !== 'object') {
+        return data;
+      }
+      return enrichTreeViewModel(data);
+    }
+
+    function renderRawView(data) {
+      if (!data || typeof data !== 'object') {
+        resultEl.textContent = '{ "hint": "Run a query to view audit events." }';
+        return;
+      }
+      const rawModel = enrichRawViewModel(data);
+      resultEl.textContent = JSON.stringify(rawModel, null, 2);
     }
 
     async function loadAgentMd(conversationId) {
@@ -971,12 +1051,12 @@
         if (!parsed) {
           lastResultJson = null;
           setStatus('Error: empty MCP result', 'err');
-          resultEl.textContent = '{ "error": "empty_mcp_result" }';
+          renderRawView({ error: 'empty_mcp_result' });
           renderGraphView(null);
           renderTreeView(null);
           return;
         }
-        resultEl.textContent = JSON.stringify(parsed, null, 2);
+        renderRawView(parsed);
         renderGraphView(parsed);
         renderTreeView(parsed);
         lastResultJson = parsed;
@@ -1022,6 +1102,7 @@
       const to = (params.get('to') || '').trim();
       const q = (params.get('q') || '').trim();
       const view = (params.get('view') || '').trim().toLowerCase();
+      const augmentedRaw = (params.get('augmentedRaw') || '').trim().toLowerCase();
       const requestedView = (view === 'raw' || view === 'graph' || view === 'tree' || view === 'agent-md' || view === 'copilot') ? view : '';
 
       const listQ = (params.get('listQ') || '').trim();
@@ -1045,6 +1126,11 @@
       }
       if (listOrder && ['asc', 'desc'].includes(listOrder)) {
         conversationSortOrderEl.value = listOrder;
+      }
+
+      augmentedRawEnabled = augmentedRaw === '1' || augmentedRaw === 'true' || augmentedRaw === 'yes';
+      if (augmentedRawToggleEl) {
+        augmentedRawToggleEl.checked = augmentedRawEnabled;
       }
 
       const auto = (params.get('auto') || '').trim().toLowerCase();
@@ -1086,6 +1172,13 @@
     rawViewBtnEl.addEventListener('click', () => setView('raw'));
     graphViewBtnEl.addEventListener('click', () => setView('graph'));
     treeViewBtnEl.addEventListener('click', () => setView('tree'));
+    augmentedRawToggleEl.addEventListener('change', () => {
+      augmentedRawEnabled = !!augmentedRawToggleEl.checked;
+      syncAugmentedRawStateToUrl(augmentedRawEnabled);
+      if (lastResultJson) {
+        renderRawView(lastResultJson);
+      }
+    });
     agentMdViewBtnEl.addEventListener('click', () => {
       const conversationId = (conversationIdEl.value || '').trim();
       loadAgentMd(conversationId);

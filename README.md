@@ -112,6 +112,29 @@ agent:
         url: jdbc:postgresql://localhost:5432/agent_audit
 ```
 
+### JDBC Schema DDL Resource Override
+
+For scripted JDBC store initialization, schema DDL is loaded from classpath resources by JDBC URL vendor:
+
+- PostgreSQL -> `classpath:db/persistence/postgres-flow-state.sql`
+- Snowflake -> `classpath:db/persistence/snowflake-flow-state.sql`
+
+You can override this with:
+
+```yaml
+camel:
+  persistence:
+    jdbc:
+      schema:
+        ddl-resource: classpath:db/persistence/postgres-flow-state.sql
+```
+
+Equivalent system property:
+
+```bash
+-Dcamel.persistence.jdbc.schema.ddl-resource=classpath:db/persistence/postgres-flow-state.sql
+```
+
 ## Load-Balanced Task Ownership (redis_jdbc)
 
 Distributed task ownership is implemented via persistence-backed lease locks (`flowType=agent.task.lock`):

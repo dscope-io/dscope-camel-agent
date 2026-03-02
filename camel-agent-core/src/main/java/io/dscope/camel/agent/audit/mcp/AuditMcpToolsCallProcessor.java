@@ -5,9 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dscope.camel.agent.audit.AuditAgentBlueprintProcessor;
 import io.dscope.camel.agent.audit.AuditConversationAgentMessageProcessor;
 import io.dscope.camel.agent.audit.AuditConversationListProcessor;
+import io.dscope.camel.agent.audit.AuditConversationSessionDataProcessor;
 import io.dscope.camel.agent.audit.AuditConversationViewProcessor;
 import io.dscope.camel.agent.audit.AuditTrailSearchProcessor;
+import io.dscope.camel.agent.runtime.RuntimeAuditGranularityProcessor;
 import io.dscope.camel.agent.runtime.RuntimeConversationCloseProcessor;
+import io.dscope.camel.agent.runtime.RuntimeConversationPersistenceProcessor;
 import io.dscope.camel.agent.runtime.RuntimePurgePreviewProcessor;
 import io.dscope.camel.agent.runtime.RuntimeResourceRefreshProcessor;
 import io.dscope.camel.mcp.processor.AbstractMcpResponseProcessor;
@@ -29,9 +32,12 @@ public class AuditMcpToolsCallProcessor extends AbstractMcpResponseProcessor {
     private final AuditTrailSearchProcessor auditTrailSearchProcessor;
     private final AuditConversationListProcessor auditConversationListProcessor;
     private final AuditConversationViewProcessor auditConversationViewProcessor;
+    private final AuditConversationSessionDataProcessor auditConversationSessionDataProcessor;
     private final AuditConversationAgentMessageProcessor auditConversationAgentMessageProcessor;
     private final AuditAgentBlueprintProcessor auditAgentBlueprintProcessor;
+    private final RuntimeAuditGranularityProcessor runtimeAuditGranularityProcessor;
     private final RuntimeResourceRefreshProcessor runtimeResourceRefreshProcessor;
+    private final RuntimeConversationPersistenceProcessor runtimeConversationPersistenceProcessor;
     private final RuntimeConversationCloseProcessor runtimeConversationCloseProcessor;
     private final RuntimePurgePreviewProcessor runtimePurgePreviewProcessor;
 
@@ -39,18 +45,24 @@ public class AuditMcpToolsCallProcessor extends AbstractMcpResponseProcessor {
                                       AuditTrailSearchProcessor auditTrailSearchProcessor,
                                       AuditConversationListProcessor auditConversationListProcessor,
                                       AuditConversationViewProcessor auditConversationViewProcessor,
+                                      AuditConversationSessionDataProcessor auditConversationSessionDataProcessor,
                                       AuditConversationAgentMessageProcessor auditConversationAgentMessageProcessor,
                                       AuditAgentBlueprintProcessor auditAgentBlueprintProcessor,
+                                      RuntimeAuditGranularityProcessor runtimeAuditGranularityProcessor,
                                       RuntimeResourceRefreshProcessor runtimeResourceRefreshProcessor,
+                                      RuntimeConversationPersistenceProcessor runtimeConversationPersistenceProcessor,
                                       RuntimeConversationCloseProcessor runtimeConversationCloseProcessor,
                                       RuntimePurgePreviewProcessor runtimePurgePreviewProcessor) {
         this.objectMapper = objectMapper;
         this.auditTrailSearchProcessor = auditTrailSearchProcessor;
         this.auditConversationListProcessor = auditConversationListProcessor;
         this.auditConversationViewProcessor = auditConversationViewProcessor;
+        this.auditConversationSessionDataProcessor = auditConversationSessionDataProcessor;
         this.auditConversationAgentMessageProcessor = auditConversationAgentMessageProcessor;
         this.auditAgentBlueprintProcessor = auditAgentBlueprintProcessor;
+        this.runtimeAuditGranularityProcessor = runtimeAuditGranularityProcessor;
         this.runtimeResourceRefreshProcessor = runtimeResourceRefreshProcessor;
+        this.runtimeConversationPersistenceProcessor = runtimeConversationPersistenceProcessor;
         this.runtimeConversationCloseProcessor = runtimeConversationCloseProcessor;
         this.runtimePurgePreviewProcessor = runtimePurgePreviewProcessor;
     }
@@ -73,6 +85,8 @@ public class AuditMcpToolsCallProcessor extends AbstractMcpResponseProcessor {
                 message -> setHeaders(message, effectiveArguments, "q", "topic", "sortBy", "order", "limit")));
             case "audit.conversation.view" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, auditConversationViewProcessor,
                 message -> setHeaders(message, effectiveArguments, "conversationId", "limit")));
+            case "audit.conversation.sessionData" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, auditConversationSessionDataProcessor,
+                message -> setHeaders(message, effectiveArguments, "conversationId", "sessionId", "type", "q", "from", "to", "limit")));
             case "audit.conversation.agentMessage" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, auditConversationAgentMessageProcessor,
                 message -> {
                     setHeaders(message, effectiveArguments, "conversationId", "message", "text", "sessionId", "runId", "threadId");
@@ -81,6 +95,16 @@ public class AuditMcpToolsCallProcessor extends AbstractMcpResponseProcessor {
                 }));
             case "audit.agent.blueprint" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, auditAgentBlueprintProcessor,
                 message -> setHeaders(message, effectiveArguments, "conversationId")));
+            case "runtime.audit.granularity.get" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, runtimeAuditGranularityProcessor,
+                message -> {
+                }));
+            case "runtime.audit.granularity.set" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, runtimeAuditGranularityProcessor,
+                message -> setHeaders(message, effectiveArguments, "granularity", "auditGranularity")));
+            case "runtime.conversation.persistence.get" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, runtimeConversationPersistenceProcessor,
+                message -> {
+                }));
+            case "runtime.conversation.persistence.set" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, runtimeConversationPersistenceProcessor,
+                message -> setHeaders(message, effectiveArguments, "enabled", "conversationPersistenceEnabled")));
             case "runtime.refresh" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, runtimeResourceRefreshProcessor,
                 message -> {
                     setHeaders(message, effectiveArguments, "conversationId");

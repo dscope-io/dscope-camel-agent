@@ -13,6 +13,7 @@ The output of this skill is a practical, execution-ready plan that covers:
 - testing strategy (unit, integration, smoke)
 - rollout, observability, and rollback
 - required Maven dependencies (runtime/test/optional)
+- runtime MCP control surface (discovery, live config updates, conversation archive reads)
 
 ## When to Use
 
@@ -48,6 +49,8 @@ Collect these inputs before writing the plan:
 - runtime store mode: in-memory, jdbc, redis, redis_jdbc
 - audit granularity: none, info, debug
 - split audit store needed or not
+- separate conversation archive persistence needed or not
+- conversation archive default enablement in configuration
 - retention/purge policy requirements
 
 5. Environment and delivery constraints
@@ -71,6 +74,65 @@ When requirements are ambiguous, use these defaults:
 - audit granularity: info by default, debug in test/staging
 - AGUI enabled for human-facing workflows
 - runtime admin endpoints enabled for refresh/close/purge preview
+- conversation archive persistence default disabled via `agent.conversation.persistence.enabled=false`
+- MCP Streamable HTTP usage with `Accept: application/json, text/event-stream`
+
+## Recent Platform Changes (March 2026)
+
+Use these as current-state anchors when drafting plans:
+
+- Runtime MCP control methods are available and should be considered in operational design:
+  - `runtime.audit.granularity.get`
+  - `runtime.audit.granularity.set`
+  - `runtime.conversation.persistence.get`
+  - `runtime.conversation.persistence.set`
+  - `audit.conversation.sessionData`
+
+- Conversation archive persistence is now a separate capability from core audit trail:
+  - default flag: `agent.conversation.persistence.enabled`
+  - optional dedicated backend mapping: `agent.conversation.persistence.*`
+  - archive write/read service: `camel-agent-core/src/main/java/io/dscope/camel/agent/runtime/ConversationArchiveService.java`
+
+- Runtime bootstrap wires mutable control state and MCP processors:
+  - `camel-agent-core/src/main/java/io/dscope/camel/agent/runtime/AgentRuntimeBootstrap.java`
+  - `camel-agent-core/src/main/java/io/dscope/camel/agent/runtime/RuntimeControlState.java`
+  - `camel-agent-core/src/main/java/io/dscope/camel/agent/runtime/RuntimeAuditGranularityProcessor.java`
+  - `camel-agent-core/src/main/java/io/dscope/camel/agent/runtime/RuntimeConversationPersistenceProcessor.java`
+
+- MCP method catalog/dispatch include new control and archive-read methods:
+  - `camel-agent-core/src/main/resources/mcp/audit-methods.yaml`
+  - `camel-agent-core/src/main/java/io/dscope/camel/agent/audit/mcp/AuditMcpToolsCallProcessor.java`
+  - `camel-agent-core/src/main/java/io/dscope/camel/agent/audit/AuditConversationSessionDataProcessor.java`
+
+- Realtime and AGUI paths append archive events when enabled:
+  - AGUI pre-run append: `camel-agent-core/src/main/java/io/dscope/camel/agent/agui/AgentAgUiPreRunTextProcessor.java`
+  - realtime observed/final append: `camel-agent-core/src/main/java/io/dscope/camel/agent/realtime/RealtimeEventProcessor.java`
+
+- JDBC persistence bootstrap supports scripted vendor DDL selection and overrides:
+  - `camel-agent-persistence-dscope/src/main/java/io/dscope/camel/agent/persistence/dscope/DscopePersistenceFactory.java`
+  - `camel-agent-persistence-dscope/src/main/java/io/dscope/camel/agent/persistence/dscope/ScriptedJdbcFlowStateStore.java`
+  - `camel-agent-persistence-dscope/src/main/resources/db/persistence/postgres-flow-state.sql`
+  - `camel-agent-persistence-dscope/src/main/resources/db/persistence/snowflake-flow-state.sql`
+
+### Decision Guide: Audit Trail vs Conversation Archive
+
+Use this table during planning when deciding where events should go:
+
+| Need | Prefer Audit Trail (`user.message`, `tool.*`, `realtime.*`) | Prefer Conversation Archive (`conversation.*`) |
+|---|---|---|
+| Execution debugging and step-by-step diagnostics | ✅ Yes | ❌ Not primary |
+| Human-readable conversational transcript history | ⚠️ Possible but noisy | ✅ Yes |
+| Include tool lifecycle and orchestration internals | ✅ Yes | ❌ No |
+| Store only user/assistant turns (plus observed transcript snapshots) | ❌ No | ✅ Yes |
+| Runtime verbosity control via granularity | ✅ `runtime.audit.granularity.*` | ❌ Not granularity-based |
+| Runtime on/off control for conversation transcript persistence | ❌ No | ✅ `runtime.conversation.persistence.*` |
+| MCP retrieval for session-focused conversation feed | ⚠️ Use search/view methods | ✅ `audit.conversation.sessionData` |
+
+Practical rule:
+
+- If the requirement is **operator diagnostics**, plan on audit trail first.
+- If the requirement is **conversation replay/transcript UX**, plan on conversation archive first.
+- For mature agents, use **both** with distinct retention policies.
 
 ## Planning Workflow
 
@@ -123,11 +185,15 @@ Plan:
   - refresh all/single
   - close conversation instance
   - purge preview and purge criteria
+  - runtime audit granularity get/set
+  - runtime conversation archive persistence get/set
+  - session conversation archive read via MCP
 
 Output:
 
 - configuration matrix by environment
 - retention/purge policy mapping
+- MCP runtime control matrix (method name, inputs, expected state transition)
 
 ### Phase 5: Integration and UX
 
@@ -136,11 +202,18 @@ If AGUI or realtime is needed, define:
 - AGUI routes/endpoints and expected UI controls
 - realtime session init/token/event behavior
 - session metadata/context update rules
+- audit explorer behavior for archived `conversation.*` events
 
 Output:
 
 - endpoint list
 - UX behavior notes tied to endpoints
+- MCP method list for UI/ops integration:
+  - `runtime.audit.granularity.get`
+  - `runtime.audit.granularity.set`
+  - `runtime.conversation.persistence.get`
+  - `runtime.conversation.persistence.set`
+  - `audit.conversation.sessionData`
 
 ### Phase 6: Test Strategy
 
@@ -153,10 +226,13 @@ Plan tests at three levels:
 - route invocation
 - persistence/audit verification
 - close/refresh behavior
+- runtime MCP control verification (`get/set/get` flows)
+- archived conversation read verification (`audit.conversation.sessionData` non-empty after fresh turn)
 
 3. Environment smoke tests
 - script-driven local checks
 - optional Docker-backed Postgres flow
+- MCP Streamable HTTP checks with required `Accept` header
 
 Output:
 
@@ -222,6 +298,8 @@ A valid plan must:
 - avoid broad placeholders such as "implement feature" without file/component targets
 - include an explicit Maven dependency decision for each major feature area (reuse existing vs add new)
 - include target module `pom.xml` for every new dependency
+- include explicit runtime control plan when audit or conversation persistence is in scope
+- include at least one MCP smoke step that proves `tools/list` and one `tools/call` path
 
 ## Suggested Commands Reference
 
@@ -236,6 +314,27 @@ Use these as planning anchors (adapt per scope):
 
 - Sample run:
   samples/agent-support-service/run-sample.sh
+
+- MCP tools discovery (Streamable HTTP headers required):
+  curl -sS -X POST http://localhost:8082/mcp/admin \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' \
+    -H 'MCP-Protocol-Version: 2025-06-18' \
+    -d '{"jsonrpc":"2.0","id":"tools-list","method":"tools/list","params":{}}'
+
+- MCP runtime controls:
+  curl -sS -X POST http://localhost:8082/mcp/admin \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' \
+    -H 'MCP-Protocol-Version: 2025-06-18' \
+    -d '{"jsonrpc":"2.0","id":"set-gran","method":"tools/call","params":{"name":"runtime.audit.granularity.set","arguments":{"granularity":"debug"}}}'
+
+- MCP archived conversation read:
+  curl -sS -X POST http://localhost:8082/mcp/admin \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' \
+    -H 'MCP-Protocol-Version: 2025-06-18' \
+    -d '{"jsonrpc":"2.0","id":"session-read","method":"tools/call","params":{"name":"audit.conversation.sessionData","arguments":{"conversationId":"<id>","limit":20}}}'
 
 - Postgres integration flow:
   bash scripts/postgres-it.sh local
@@ -252,3 +351,4 @@ The planning task is complete when:
 - known risks and unknowns are documented
 - next implementation action can start without additional clarification
 - Maven dependency plan is complete with module targets and scopes
+- runtime control and archive-read verification steps are explicitly defined when applicable

@@ -11,6 +11,13 @@ import io.dscope.camel.persistence.core.RehydratedState;
 import io.dscope.camel.persistence.core.StateEnvelope;
 import io.dscope.camel.persistence.core.exception.BackendUnavailableException;
 import io.dscope.camel.persistence.core.exception.OptimisticConflictException;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -22,55 +29,21 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-final class PostgresTextJdbcFlowStateStore implements FlowStateStore {
+final class ScriptedJdbcFlowStateStore implements FlowStateStore {
 
     private static final int DEFAULT_REHYDRATE_LIMIT = 100_000;
-
-    private static final String CREATE_SNAPSHOT = """
-        CREATE TABLE IF NOT EXISTS camel_flow_snapshot (
-            flow_type       VARCHAR(128) NOT NULL,
-            flow_id         VARCHAR(256) NOT NULL,
-            version         BIGINT NOT NULL,
-            snapshot_json   TEXT NOT NULL,
-            metadata_json   TEXT NOT NULL,
-            last_updated_at VARCHAR(64) NOT NULL,
-            PRIMARY KEY (flow_type, flow_id)
-        )
-        """;
-
-    private static final String CREATE_EVENT = """
-        CREATE TABLE IF NOT EXISTS camel_flow_event (
-            flow_type        VARCHAR(128) NOT NULL,
-            flow_id          VARCHAR(256) NOT NULL,
-            sequence         BIGINT NOT NULL,
-            event_id         VARCHAR(128) NOT NULL,
-            event_type       VARCHAR(128) NOT NULL,
-            payload_json     TEXT NOT NULL,
-            occurred_at      VARCHAR(64) NOT NULL,
-            idempotency_key  VARCHAR(256),
-            PRIMARY KEY (flow_type, flow_id, sequence)
-        )
-        """;
-
-    private static final String CREATE_IDEMPOTENCY = """
-        CREATE TABLE IF NOT EXISTS camel_flow_idempotency (
-            flow_type       VARCHAR(128) NOT NULL,
-            flow_id         VARCHAR(256) NOT NULL,
-            idempotency_key VARCHAR(256) NOT NULL,
-            applied_version BIGINT NOT NULL,
-            PRIMARY KEY (flow_type, flow_id, idempotency_key)
-        )
-        """;
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final String jdbcUrl;
     private final String jdbcUser;
     private final String jdbcPassword;
+    private final String schemaResource;
 
-    PostgresTextJdbcFlowStateStore(String jdbcUrl, String jdbcUser, String jdbcPassword) {
+    ScriptedJdbcFlowStateStore(String jdbcUrl, String jdbcUser, String jdbcPassword, String schemaResource) {
         this.jdbcUrl = jdbcUrl;
         this.jdbcUser = jdbcUser == null ? "" : jdbcUser;
         this.jdbcPassword = jdbcPassword == null ? "" : jdbcPassword;
+        this.schemaResource = schemaResource;
         initializeSchema();
     }
 
@@ -131,25 +104,65 @@ final class PostgresTextJdbcFlowStateStore implements FlowStateStore {
                               long version,
                               JsonNode snapshot,
                               Map<String, Object> metadata) {
-        String sql = """
+        String snapshotJson;
+        String metadataJson;
+        try {
+            snapshotJson = mapper.writeValueAsString(snapshot == null ? NullNode.instance : snapshot);
+            metadataJson = mapper.writeValueAsString(metadata == null ? Map.of() : metadata);
+        } catch (Exception ex) {
+            throw new BackendUnavailableException("Failed to serialize snapshot payload for " + flowType + "/" + flowId, ex);
+        }
+
+        String timestamp = Instant.now().toString();
+        String updateSql = """
+            UPDATE camel_flow_snapshot
+               SET version = ?, snapshot_json = ?, metadata_json = ?, last_updated_at = ?
+             WHERE flow_type = ? AND flow_id = ?
+            """;
+        String insertSql = """
             INSERT INTO camel_flow_snapshot (flow_type, flow_id, version, snapshot_json, metadata_json, last_updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT (flow_type, flow_id)
-            DO UPDATE SET
-              version = EXCLUDED.version,
-              snapshot_json = EXCLUDED.snapshot_json,
-              metadata_json = EXCLUDED.metadata_json,
-              last_updated_at = EXCLUDED.last_updated_at
             """;
 
-        try (Connection connection = newConnection(); PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, flowType);
-            statement.setString(2, flowId);
-            statement.setLong(3, version);
-            statement.setString(4, mapper.writeValueAsString(snapshot == null ? NullNode.instance : snapshot));
-            statement.setString(5, mapper.writeValueAsString(metadata == null ? Map.of() : metadata));
-            statement.setString(6, Instant.now().toString());
-            statement.executeUpdate();
+        try (Connection connection = newConnection()) {
+            connection.setAutoCommit(false);
+            int updated;
+            try (PreparedStatement update = connection.prepareStatement(updateSql)) {
+                update.setLong(1, version);
+                update.setString(2, snapshotJson);
+                update.setString(3, metadataJson);
+                update.setString(4, timestamp);
+                update.setString(5, flowType);
+                update.setString(6, flowId);
+                updated = update.executeUpdate();
+            }
+
+            if (updated == 0) {
+                try (PreparedStatement insert = connection.prepareStatement(insertSql)) {
+                    insert.setString(1, flowType);
+                    insert.setString(2, flowId);
+                    insert.setLong(3, version);
+                    insert.setString(4, snapshotJson);
+                    insert.setString(5, metadataJson);
+                    insert.setString(6, timestamp);
+                    insert.executeUpdate();
+                } catch (SQLException insertException) {
+                    try (PreparedStatement retryUpdate = connection.prepareStatement(updateSql)) {
+                        retryUpdate.setLong(1, version);
+                        retryUpdate.setString(2, snapshotJson);
+                        retryUpdate.setString(3, metadataJson);
+                        retryUpdate.setString(4, timestamp);
+                        retryUpdate.setString(5, flowType);
+                        retryUpdate.setString(6, flowId);
+                        int retried = retryUpdate.executeUpdate();
+                        if (retried == 0) {
+                            throw insertException;
+                        }
+                    }
+                }
+            }
+
+            connection.commit();
         } catch (Exception ex) {
             throw new BackendUnavailableException("Failed to write snapshot for " + flowType + "/" + flowId, ex);
         }
@@ -165,16 +178,98 @@ final class PostgresTextJdbcFlowStateStore implements FlowStateStore {
     }
 
     private void initializeSchema() {
-        try (Connection connection = newConnection(); Statement statement = connection.createStatement()) {
-            statement.executeUpdate(CREATE_SNAPSHOT);
-            statement.executeUpdate(CREATE_EVENT);
-            statement.executeUpdate(CREATE_IDEMPOTENCY);
-            statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_camel_flow_event_type_time ON camel_flow_event (event_type, occurred_at)");
-            statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_camel_flow_event_flow ON camel_flow_event (flow_type, flow_id)");
-            statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_camel_flow_snapshot_flow ON camel_flow_snapshot (flow_type, flow_id)");
-        } catch (Exception ex) {
-            throw new BackendUnavailableException("Failed to initialize PostgreSQL JDBC persistence schema", ex);
+        if (schemaResource == null || schemaResource.isBlank()) {
+            throw new BackendUnavailableException("Missing JDBC schema resource for flow-state store");
         }
+        try (Connection connection = newConnection(); Statement statement = connection.createStatement()) {
+            for (String sql : loadSqlStatements(schemaResource)) {
+                if (sql == null || sql.isBlank()) {
+                    continue;
+                }
+                statement.executeUpdate(sql);
+            }
+        } catch (Exception ex) {
+            throw new BackendUnavailableException("Failed to initialize JDBC persistence schema from resource: " + schemaResource, ex);
+        }
+    }
+
+    private List<String> loadSqlStatements(String resource) throws Exception {
+        String sqlText;
+        try (InputStream inputStream = openResource(resource);
+             BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+            StringBuilder builder = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("--")) {
+                    continue;
+                }
+                builder.append(line).append('\n');
+            }
+            sqlText = builder.toString();
+        }
+
+        List<String> statements = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inSingleQuote = false;
+        for (int index = 0; index < sqlText.length(); index++) {
+            char ch = sqlText.charAt(index);
+            if (ch == '\'') {
+                boolean escaped = index + 1 < sqlText.length() && sqlText.charAt(index + 1) == '\'';
+                if (!escaped) {
+                    inSingleQuote = !inSingleQuote;
+                }
+                current.append(ch);
+                continue;
+            }
+            if (ch == ';' && !inSingleQuote) {
+                String statement = current.toString().trim();
+                if (!statement.isBlank()) {
+                    statements.add(statement);
+                }
+                current.setLength(0);
+                continue;
+            }
+            current.append(ch);
+        }
+
+        String tail = current.toString().trim();
+        if (!tail.isBlank()) {
+            statements.add(tail);
+        }
+        return statements;
+    }
+
+    private InputStream openResource(String resource) throws Exception {
+        if (resource.startsWith("classpath:")) {
+            String path = resource.substring("classpath:".length());
+            InputStream stream = Thread.currentThread().getContextClassLoader().getResourceAsStream(stripLeadingSlash(path));
+            if (stream == null) {
+                throw new IllegalStateException("Classpath resource not found: " + resource);
+            }
+            return stream;
+        }
+        if (resource.startsWith("file:")) {
+            return Files.newInputStream(Path.of(URI.create(resource)));
+        }
+
+        InputStream classpathStream = Thread.currentThread().getContextClassLoader().getResourceAsStream(stripLeadingSlash(resource));
+        if (classpathStream != null) {
+            return classpathStream;
+        }
+
+        Path path = Path.of(resource);
+        if (Files.exists(path)) {
+            return Files.newInputStream(path);
+        }
+        throw new IllegalStateException("Schema resource not found: " + resource);
+    }
+
+    private String stripLeadingSlash(String value) {
+        if (value == null || value.isEmpty()) {
+            return value;
+        }
+        return value.startsWith("/") ? value.substring(1) : value;
     }
 
     private Connection newConnection() throws SQLException {

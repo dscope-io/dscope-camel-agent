@@ -20,9 +20,12 @@ import io.dscope.camel.agent.api.PersistenceFacade;
 import io.dscope.camel.agent.blueprint.MarkdownBlueprintLoader;
 import io.dscope.camel.agent.config.AgentHeaders;
 import io.dscope.camel.agent.model.AgentBlueprint;
+import io.dscope.camel.agent.model.AuditGranularity;
 import io.dscope.camel.agent.model.AgentEvent;
 import io.dscope.camel.agent.model.RealtimeSpec;
+import io.dscope.camel.agent.runtime.ConversationArchiveService;
 import io.dscope.camel.agent.runtime.RealtimeConfigResolver;
+import io.dscope.camel.agent.runtime.RuntimeControlState;
 
 public class RealtimeEventProcessor implements Processor {
 
@@ -81,7 +84,14 @@ public class RealtimeEventProcessor implements Processor {
             .put("accepted", true);
 
         ResolvedRealtimeConfig config = resolveRealtimeConfig(exchange);
-        persistRealtimeIngressEvent(exchange, conversationId, eventType, root);
+        AuditGranularity auditGranularity = resolveAuditGranularity(exchange);
+        if (shouldPersistRealtimeIngress(eventType, auditGranularity)) {
+            persistRealtimeIngressEvent(exchange, conversationId, eventType, root);
+        }
+
+        if ("transcript.observed".equals(eventType)) {
+            archiveObservedRealtimeTranscript(exchange, conversationId, root);
+        }
 
         if ("session.start".equals(eventType)) {
             try {
@@ -174,6 +184,10 @@ public class RealtimeEventProcessor implements Processor {
             ProducerTemplate template = exchange.getContext().createProducerTemplate();
             RouteAssistantResult routeResult = routeTranscriptToAssistant(exchange, template, conversationId, transcript);
             String assistant = routeResult.assistantMessage();
+            if (shouldPersistRealtimeTurns(auditGranularity)) {
+                persistRealtimeTurnEvents(exchange, conversationId, transcript, assistant);
+            }
+            archiveRealtimeTurn(exchange, conversationId, transcript, assistant);
             response.put("assistantMessage", assistant == null ? "" : assistant);
             ObjectNode realtimeSessionUpdate = composeRealtimeSessionUpdate(routeResult.sessionUpdate(), transcript, assistant);
             LOGGER.info("Realtime context update composed: conversationId={}, routePatchPresent={}, keys={}, transcriptChars={}, assistantChars={}",
@@ -216,6 +230,80 @@ public class RealtimeEventProcessor implements Processor {
         }
 
         writeJson(exchange, response);
+    }
+
+    private void persistRealtimeTurnEvents(Exchange exchange,
+                                           String conversationId,
+                                           String transcript,
+                                           String assistant) {
+        persistRealtimeMessageEvent(exchange, conversationId, "user.message", transcript);
+        persistRealtimeMessageEvent(exchange, conversationId, "assistant.message", assistant);
+    }
+
+    private void persistRealtimeMessageEvent(Exchange exchange,
+                                             String conversationId,
+                                             String eventType,
+                                             String payloadText) {
+        if (payloadText == null || payloadText.isBlank()) {
+            return;
+        }
+        PersistenceFacade persistenceFacade = lookupPersistenceFacade(exchange);
+        if (persistenceFacade == null) {
+            return;
+        }
+        try {
+            persistenceFacade.appendEvent(
+                new AgentEvent(
+                    conversationId,
+                    null,
+                    eventType,
+                    objectMapper.getNodeFactory().textNode(payloadText),
+                    Instant.now()
+                ),
+                UUID.randomUUID().toString()
+            );
+        } catch (Exception persistenceFailure) {
+            LOGGER.warn("Realtime message event persistence failed: conversationId={}, eventType={}, error={}",
+                conversationId,
+                eventType,
+                persistenceFailure.getMessage() == null
+                    ? persistenceFailure.getClass().getSimpleName()
+                    : persistenceFailure.getMessage());
+        }
+    }
+
+    private void archiveObservedRealtimeTranscript(Exchange exchange, String conversationId, JsonNode root) {
+        ConversationArchiveService archiveService = lookupConversationArchiveService(exchange);
+        if (archiveService == null) {
+            return;
+        }
+        String transcript = firstNonBlank(
+            text(root, "transcript"),
+            text(root, "text"),
+            text(root.path("payload"), "transcript"),
+            text(root.path("payload"), "text")
+        );
+        String direction = firstNonBlank(text(root, "direction"), text(root.path("payload"), "direction"));
+        String observedType = firstNonBlank(
+            text(root, "observedEventType"),
+            text(root, "eventType"),
+            text(root.path("payload"), "observedEventType"),
+            text(root.path("payload"), "eventType")
+        );
+        archiveService.appendRealtimeTranscriptObserved(conversationId, direction, transcript, observedType);
+    }
+
+    private void archiveRealtimeTurn(Exchange exchange, String conversationId, String transcript, String assistant) {
+        ConversationArchiveService archiveService = lookupConversationArchiveService(exchange);
+        if (archiveService == null) {
+            return;
+        }
+        archiveService.appendRealtimeTurn(conversationId, transcript, assistant);
+    }
+
+    private ConversationArchiveService lookupConversationArchiveService(Exchange exchange) {
+        return exchange.getContext().getRegistry()
+            .lookupByNameAndType("conversationArchiveService", ConversationArchiveService.class);
     }
 
     private JsonNode buildAssistantAgUiMessage(String assistantContent) {
@@ -791,6 +879,34 @@ public class RealtimeEventProcessor implements Processor {
 
     private long longOrDefault(Long value, long defaultValue) {
         return value == null ? defaultValue : value;
+    }
+
+    private AuditGranularity resolveAuditGranularity(Exchange exchange) {
+        RuntimeControlState runtimeControlState = exchange.getContext().getRegistry()
+            .lookupByNameAndType("runtimeControlState", RuntimeControlState.class);
+        if (runtimeControlState != null) {
+            return runtimeControlState.auditGranularity();
+        }
+        return AuditGranularity.from(property(exchange, "agent.audit.granularity", "debug"));
+    }
+
+    private boolean shouldPersistRealtimeTurns(AuditGranularity granularity) {
+        return granularity == AuditGranularity.INFO || granularity == AuditGranularity.DEBUG;
+    }
+
+    private boolean shouldPersistRealtimeIngress(String eventType, AuditGranularity granularity) {
+        String normalizedType = eventType == null ? "" : eventType.toLowerCase();
+        return switch (granularity) {
+            case NONE -> false;
+            case ERROR -> normalizedType.contains("error") || normalizedType.contains("failed");
+            case INFO -> "transcript.final".equals(normalizedType)
+                || "transcript.observed".equals(normalizedType)
+                || "session.start".equals(normalizedType)
+                || "session.stop".equals(normalizedType)
+                || "session.close".equals(normalizedType)
+                || normalizedType.contains("error");
+            case DEBUG -> true;
+        };
     }
 
     private record ResolvedRealtimeConfig(

@@ -510,6 +510,22 @@ agent:
             url: jdbc:postgresql://localhost:5432/agent_audit
 ```
 
+### Optional: Override JDBC Schema DDL Resource
+
+The JDBC scripted store picks a default DDL resource by JDBC URL vendor:
+
+- PostgreSQL -> `classpath:db/persistence/postgres-flow-state.sql`
+- Snowflake -> `classpath:db/persistence/snowflake-flow-state.sql`
+
+To force a specific DDL file while running the sample, pass:
+
+```bash
+samples/agent-support-service/run-sample.sh \
+   -Dcamel.persistence.jdbc.schema.ddl-resource=classpath:db/persistence/postgres-flow-state.sql
+```
+
+You can combine it with other persistence args (for example custom JDBC URL/backend).
+
 ## Troubleshooting
 
 - `401` from OpenAI API calls

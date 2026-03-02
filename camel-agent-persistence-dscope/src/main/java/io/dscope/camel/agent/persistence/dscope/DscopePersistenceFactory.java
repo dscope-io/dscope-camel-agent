@@ -12,6 +12,9 @@ import java.util.Properties;
 public final class DscopePersistenceFactory {
 
     static final String AUDIT_PERSISTENCE_PREFIX = "agent.audit.persistence.";
+    static final String SCHEMA_DDL_RESOURCE_PROPERTY = "camel.persistence.jdbc.schema.ddl-resource";
+    static final String DEFAULT_POSTGRES_DDL_RESOURCE = "classpath:db/persistence/postgres-flow-state.sql";
+    static final String DEFAULT_SNOWFLAKE_DDL_RESOURCE = "classpath:db/persistence/snowflake-flow-state.sql";
 
     private DscopePersistenceFactory() {
     }
@@ -27,29 +30,49 @@ public final class DscopePersistenceFactory {
 
         PersistenceConfiguration configuration = PersistenceConfiguration.fromProperties(effective);
         AuditGranularity auditGranularity = AuditGranularity.from(effective.getProperty("agent.audit.granularity"));
-        var flowStateStore = createFlowStateStore(configuration);
+        var flowStateStore = createFlowStateStore(configuration, effective);
         if (auditEffective == null) {
             return new DscopePersistenceFacade(flowStateStore, objectMapper, auditGranularity);
         }
-        var auditStore = createFlowStateStore(PersistenceConfiguration.fromProperties(auditEffective));
+        var auditStore = createFlowStateStore(PersistenceConfiguration.fromProperties(auditEffective), auditEffective);
         return new DscopePersistenceFacade(flowStateStore, auditStore, objectMapper, auditGranularity);
     }
 
-    static FlowStateStore createFlowStateStore(PersistenceConfiguration configuration) {
+    static FlowStateStore createFlowStateStore(PersistenceConfiguration configuration, Properties effective) {
         if (configuration == null) {
             throw new IllegalArgumentException("Persistence configuration cannot be null");
         }
 
         PersistenceBackend backend = configuration.backend();
-        if (backend == PersistenceBackend.JDBC && isPostgres(configuration.jdbcUrl())) {
-            return new PostgresTextJdbcFlowStateStore(configuration.jdbcUrl(), configuration.jdbcUser(), configuration.jdbcPassword());
-        }
-
-        if (backend == PersistenceBackend.REDIS_JDBC && isPostgres(configuration.jdbcUrl())) {
-            return new PostgresTextJdbcFlowStateStore(configuration.jdbcUrl(), configuration.jdbcUser(), configuration.jdbcPassword());
+        if (backend == PersistenceBackend.JDBC || backend == PersistenceBackend.REDIS_JDBC) {
+            String ddlResource = resolveSchemaDdlResource(effective, configuration.jdbcUrl());
+            if (ddlResource != null && !ddlResource.isBlank()) {
+                return new ScriptedJdbcFlowStateStore(
+                    configuration.jdbcUrl(),
+                    configuration.jdbcUser(),
+                    configuration.jdbcPassword(),
+                    ddlResource
+                );
+            }
         }
 
         return FlowStateStoreFactory.create(configuration);
+    }
+
+    static String resolveSchemaDdlResource(Properties effective, String jdbcUrl) {
+        if (effective != null) {
+            String override = effective.getProperty(SCHEMA_DDL_RESOURCE_PROPERTY);
+            if (override != null && !override.isBlank()) {
+                return override;
+            }
+        }
+        if (isPostgresJdbcUrl(jdbcUrl)) {
+            return DEFAULT_POSTGRES_DDL_RESOURCE;
+        }
+        if (isSnowflakeJdbcUrl(jdbcUrl)) {
+            return DEFAULT_SNOWFLAKE_DDL_RESOURCE;
+        }
+        return null;
     }
 
     static Properties buildAuditPersistenceProperties(Properties effective) {
@@ -94,7 +117,11 @@ public final class DscopePersistenceFactory {
         }
     }
 
-    private static boolean isPostgres(String jdbcUrl) {
+    private static boolean isPostgresJdbcUrl(String jdbcUrl) {
         return jdbcUrl != null && jdbcUrl.trim().toLowerCase().startsWith("jdbc:postgresql:");
+    }
+
+    private static boolean isSnowflakeJdbcUrl(String jdbcUrl) {
+        return jdbcUrl != null && jdbcUrl.trim().toLowerCase().startsWith("jdbc:snowflake:");
     }
 }

@@ -13,6 +13,11 @@
    - append `assistant.message` and `snapshot.written`
 4. Events are persisted via `PersistenceFacade` implementation.
 
+Runtime bootstrap also binds mutable operational controls and optional archive services:
+
+- `RuntimeControlState` for live audit granularity updates
+- `ConversationArchiveService` for optional transcript-focused persistence (`conversation.*`)
+
 ## Persistence Mapping
 
 - `agent.conversation` => conversation event stream
@@ -66,6 +71,31 @@ Correlation between agent conversations and transport identifiers is handled in 
 - correlation keys: `agui.sessionId`, `agui.runId`, `agui.threadId`
 
 Debug audit trail includes available correlation metadata in payload (`payload._correlation`).
+
+## Conversation Archive Persistence (Separate from Audit Trail)
+
+Conversation archive persistence is an optional, transcript-focused stream designed for replay/UX use cases.
+
+- default flag: `agent.conversation.persistence.enabled=false`
+- optional dedicated store mapping prefix: `agent.conversation.persistence.*`
+- event family:
+  - `conversation.user.message`
+  - `conversation.assistant.message`
+  - `conversation.realtime.observed`
+
+Write paths:
+
+- AGUI pre-run turns (`AgentAgUiPreRunTextProcessor`) append user/assistant archive events
+- realtime transcript flows (`RealtimeEventProcessor`) append observed and final turn archive events
+
+Read path:
+
+- MCP tool `audit.conversation.sessionData` returns filtered archive events for a conversation (and optional `sessionId`)
+
+Design intent:
+
+- use audit trail (`user.message`, `tool.*`, `realtime.*`) for diagnostics/operations
+- use archive trail (`conversation.*`) for transcript playback and conversation-centric UX
 
 ### Realtime Voice Frontend Behavior (Sample)
 
@@ -155,9 +185,9 @@ sequenceDiagram
   REP->>AR: route transcript to agent endpoint
   AR-->>REP: assistant result + optional realtimeSessionUpdate
   REP->>REG: merge session context update
-  alt sessionContextUpdated == true
+  alt sessionContextUpdated true
     REP->>RR: send response.create
-  else sessionContextUpdated == false
+  else sessionContextUpdated false
     REP-->>FE: realtimeVoiceBranchStarted=false
   end
   REP-->>FE: assistantMessage + aguiMessages + flags
@@ -170,39 +200,39 @@ sequenceDiagram
 sequenceDiagram
   autonumber
   participant U as User
-  participant FE as Browser UI (WebRTC mode)
-  participant OAI as OpenAI Realtime API
+  participant FE as Browser WebRTC UI
+  participant OAI as OpenAI Realtime
   participant REP as RealtimeEventProcessor
-  participant AR as Agent Route(s)
+  participant AR as Agent Routes
   participant REG as RealtimeBrowserSessionRegistry
   participant PF as PersistenceFacade
 
   U->>FE: Speak utterance
-  FE->>OAI: Send audio over WebRTC data/media channels
+  FE->>OAI: Send audio over WebRTC channels
   OAI-->>FE: input transcript events
-  FE->>REP: POST transcript.final
-  REP->>PF: append realtime.transcript.final
-  REP->>AR: route transcript (Camel agent route)
+  FE->>REP: POST transcript final
+  REP->>PF: append realtime transcript final
+  REP->>AR: route transcript
   AR-->>REP: assistant result + optional session patch
   REP->>REG: merge route + transcript + assistant context
   alt session context updated
-    REP-->>FE: realtimeVoiceBranchStarted=true
-  else session context not updated
-    REP-->>FE: realtimeVoiceBranchStarted=false
+    REP-->>FE: voice branch started true
+  else
+    REP-->>FE: voice branch started false
   end
 
-  alt realtimeVoiceBranchStarted == true
-    FE->>OAI: response.create (or backend may trigger via relay path)
+  alt voice branch started true
+    FE->>OAI: create response
     OAI-->>FE: audio + output transcript
     FE-->>U: Play voice response + render text
-  else realtimeVoiceBranchStarted == false
-    FE-->>U: No response.create; waits/retries by policy
+  else
+    FE-->>U: No response create, wait or retry
   end
 ```
 
 Operational guarantee for voice transcript routing:
 
-1. Realtime event ingress is persisted (`realtime.<eventType>`) for audit trail visibility.
+1. Realtime ingress persistence (`realtime.<eventType>`) is governed by current audit granularity (`none|error|info|debug`) and can be changed live.
 2. Transcript is routed through agent/Camel routes first.
 3. Realtime session context is merged with route result + transcript/assistant metadata.
 4. `response.create` is allowed only after step 3 succeeds.
@@ -212,8 +242,8 @@ Operational guarantee for voice transcript routing:
 | Scenario | Primary input trigger | Agent route execution point | Realtime session context update point | `response.create` initiator | Audit event type coverage |
 | --- | --- | --- | --- | --- | --- |
 | No voice agent (text-only AGUI) | `POST /agui/agent` with user text | `DefaultAgentKernel` routes tool calls after model decision | Not applicable (no realtime voice session) | Not applicable | `user.message`, tool/assistant/snapshot events via `PersistenceFacade` |
-| Voice via Camel Relay | `POST /realtime/session/{id}/event` (`input_audio_buffer.*`, `transcript.final`) | `RealtimeEventProcessor` routes transcript to agent endpoint | `RealtimeEventProcessor` merges route/session patch into `RealtimeBrowserSessionRegistry` before voice branch | Backend relay path (`RealtimeEventProcessor -> OpenAiRealtimeRelayClient`) when `sessionContextUpdated=true` | Ingress `realtime.<eventType>` persisted for all received realtime events + route/assistant events |
-| Voice via Browser WebRTC (direct) | Browser sends audio directly to OpenAI; frontend posts `transcript.final` to Camel | `RealtimeEventProcessor` routes transcript to agent endpoint | `RealtimeEventProcessor` merges route + transcript/assistant metadata before branch flag | Frontend WebRTC data channel when backend returns `realtimeVoiceBranchStarted=true` (backend remains gatekeeper) | Ingress `realtime.<eventType>` persisted for all events received by Camel realtime endpoint |
+| Voice via Camel Relay | `POST /realtime/session/{id}/event` (`input_audio_buffer.*`, `transcript.final`) | `RealtimeEventProcessor` routes transcript to agent endpoint | `RealtimeEventProcessor` merges route/session patch into `RealtimeBrowserSessionRegistry` before voice branch | Backend relay path (`RealtimeEventProcessor -> OpenAiRealtimeRelayClient`) when `sessionContextUpdated=true` | Ingress `realtime.<eventType>` persisted according to active audit granularity; route/assistant events persisted; optional `conversation.*` archive events when enabled |
+| Voice via Browser WebRTC (direct) | Browser sends audio directly to OpenAI; frontend posts `transcript.final` to Camel | `RealtimeEventProcessor` routes transcript to agent endpoint | `RealtimeEventProcessor` merges route + transcript/assistant metadata before branch flag | Frontend WebRTC data channel when backend returns `realtimeVoiceBranchStarted=true` (backend remains gatekeeper) | Events received by Camel realtime endpoint persisted according to active audit granularity; optional `conversation.*` archive events when enabled |
 
 Legend:
 
@@ -255,3 +285,29 @@ Persistence adapter supports `agent.audit.granularity`:
 - `info`: process step persistence
 - `error`: process step persistence + error data payload for error events
 - `debug`: process step persistence + full payloads and metadata
+
+Granularity can be changed at runtime through MCP admin tools:
+
+- `runtime.audit.granularity.get`
+- `runtime.audit.granularity.set`
+
+## MCP Admin Runtime Controls
+
+Sample admin MCP endpoint supports Streamable HTTP and runtime operations.
+
+Transport requirement:
+
+- `Accept: application/json, text/event-stream`
+
+Runtime control methods:
+
+- `runtime.audit.granularity.get`
+- `runtime.audit.granularity.set`
+- `runtime.conversation.persistence.get`
+- `runtime.conversation.persistence.set`
+
+Archive read method:
+
+- `audit.conversation.sessionData`
+
+These methods are listed via `tools/list` and executed via `tools/call`.

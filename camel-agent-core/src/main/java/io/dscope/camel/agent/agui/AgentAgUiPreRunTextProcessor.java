@@ -5,6 +5,7 @@ import io.dscope.camel.agent.model.AgUiPreRunSpec;
 import io.dscope.camel.agent.config.AgentHeaders;
 import io.dscope.camel.agent.model.AgentBlueprint;
 import io.dscope.camel.agent.model.ToolSpec;
+import io.dscope.camel.agent.runtime.ConversationArchiveService;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -105,6 +106,12 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
         params.put("sessionId", sessionId);
         params.put("threadId", threadId);
         exchange.setProperty(AgentAgUiExchangeProperties.PARAMS, params);
+
+        ConversationArchiveService archiveService = exchange.getContext().getRegistry().findSingleByType(ConversationArchiveService.class);
+        if (archiveService != null) {
+            archiveService.appendAgUiTurn(threadId, prompt, outputText, sessionId, runId);
+        }
+
         LOGGER.info("AGUI pre-run completed: threadId={}, outputChars={}",
             threadId,
             outputText == null ? 0 : outputText.length());

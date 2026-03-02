@@ -42,6 +42,29 @@ USE DATABASE <database>;
 
 Use one backend for both state and audit, or split audit into a dedicated JDBC target.
 
+### Schema DDL resource selection
+
+JDBC schema initialization uses vendor-based defaults:
+
+- PostgreSQL: `classpath:db/persistence/postgres-flow-state.sql`
+- Snowflake: `classpath:db/persistence/snowflake-flow-state.sql`
+
+To force a specific DDL resource (for custom schemas or non-default locations), set:
+
+```yaml
+camel:
+  persistence:
+    jdbc:
+      schema:
+        ddl-resource: classpath:db/persistence/postgres-flow-state.sql
+```
+
+Equivalent JVM/system property:
+
+```bash
+-Dcamel.persistence.jdbc.schema.ddl-resource=classpath:db/persistence/postgres-flow-state.sql
+```
+
 ### Postgres runtime + audit (single store)
 
 ```yaml
