@@ -421,7 +421,9 @@ public class DscopePersistenceFacade implements PersistenceFacade {
 
     private long resolveConversationIndexVersion() {
         var rehydrated = auditFlowStateStore.rehydrate(FLOW_CONVERSATION_INDEX, CONVERSATION_INDEX_STREAM);
-        return rehydrated.envelope() == null ? 0L : rehydrated.envelope().version();
+        long envelopeVersion = rehydrated.envelope() == null ? 0L : rehydrated.envelope().version();
+        long eventVersion = auditFlowStateStore.readEvents(FLOW_CONVERSATION_INDEX, CONVERSATION_INDEX_STREAM, 0L, 10_000).size();
+        return Math.max(envelopeVersion, eventVersion);
     }
 
     private record TaskLockState(String ownerId, Instant leaseUntil) {

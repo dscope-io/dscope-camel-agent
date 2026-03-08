@@ -22,9 +22,6 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.SimpleApiKey;
-import org.springframework.ai.ollama.OllamaChatModel;
-import org.springframework.ai.ollama.api.OllamaApi;
-import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
@@ -63,7 +60,6 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
             return switch (provider) {
                 case "gemini" -> generateGemini(systemPrompt, userContext, tools, model, temperature, maxTokens, streamingTokenCallback);
                 case "claude", "anthropic" -> generateClaude(systemPrompt, userContext, tools, model, temperature, maxTokens, streamingTokenCallback);
-                case "ollama" -> generateOllama(systemPrompt, userContext, tools, model, temperature, maxTokens, streamingTokenCallback);
                 default -> generateOpenAi(systemPrompt, userContext, tools, model, temperature, maxTokens, streamingTokenCallback);
             };
         } catch (Exception e) {
@@ -250,43 +246,6 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
             return invokeSpringAiChat(chatModel, options, systemPrompt, userContext, callback);
         } catch (Exception e) {
             return terminal("CLAUDE invocation error: " + exceptionSummary(e), callback);
-        }
-    }
-
-    private SpringAiChatResult generateOllama(String systemPrompt,
-                                              String userContext,
-                                              List<ToolSpec> tools,
-                                              String model,
-                                              Double temperature,
-                                              Integer maxTokens,
-                                              Consumer<String> callback) {
-        String baseUrl = prop(properties, "agent.runtime.spring-ai.ollama.base-url", "http://localhost:11434");
-        String selectedModel = firstNonBlank(model,
-            prop(properties, "agent.runtime.spring-ai.ollama.model",
-                prop(properties, "agent.runtime.spring-ai.model", "llama3.1")));
-        double selectedTemperature = temperature != null ? temperature : doubleProp(properties, "agent.runtime.spring-ai.temperature", 0.2d);
-
-        try {
-            OllamaApi ollamaApi = OllamaApi.builder()
-                .baseUrl(toOllamaApiBaseUrl(baseUrl))
-                .build();
-
-            OllamaOptions options = OllamaOptions.builder()
-                .model(selectedModel)
-                .temperature(selectedTemperature)
-                .numPredict(maxTokens != null ? maxTokens : intProp(properties, "agent.runtime.spring-ai.max-tokens", 800))
-                .toolCallbacks(toolCallbacksFor(tools))
-                .internalToolExecutionEnabled(false)
-                .build();
-
-            OllamaChatModel chatModel = OllamaChatModel.builder()
-                .ollamaApi(ollamaApi)
-                .defaultOptions(options)
-                .build();
-
-            return invokeSpringAiChat(chatModel, options, systemPrompt, userContext, callback);
-        } catch (Exception e) {
-            return terminal("OLLAMA invocation error: " + exceptionSummary(e), callback);
         }
     }
 
@@ -502,17 +461,6 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
         }
         if (normalized.endsWith("/v1/messages")) {
             return normalized.substring(0, normalized.length() - "/v1/messages".length());
-        }
-        if (normalized.endsWith("/")) {
-            return normalized.substring(0, normalized.length() - 1);
-        }
-        return normalized;
-    }
-
-    private static String toOllamaApiBaseUrl(String baseUrl) {
-        String normalized = baseUrl == null ? "" : baseUrl.trim();
-        if (normalized.isEmpty()) {
-            return "http://localhost:11434";
         }
         if (normalized.endsWith("/")) {
             return normalized.substring(0, normalized.length() - 1);

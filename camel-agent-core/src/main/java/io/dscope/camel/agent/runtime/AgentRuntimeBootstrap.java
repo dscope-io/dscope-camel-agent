@@ -3,6 +3,7 @@ package io.dscope.camel.agent.runtime;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dscope.camel.agent.agui.AgentAgUiPreRunTextProcessor;
 import io.dscope.camel.agent.audit.AuditAgentBlueprintProcessor;
+import io.dscope.camel.agent.audit.AuditAgentCatalogProcessor;
 import io.dscope.camel.agent.audit.AuditConversationAgentMessageProcessor;
 import io.dscope.camel.agent.audit.AuditConversationListProcessor;
 import io.dscope.camel.agent.audit.AuditConversationViewProcessor;
@@ -82,20 +83,32 @@ public final class AgentRuntimeBootstrap {
         PersistenceFacade persistenceFacade = existingPersistenceFacade(main);
         if (persistenceFacade == null) {
             persistenceFacade = createPersistenceFacade(properties, objectMapper);
-            main.bind("persistenceFacade", persistenceFacade);
         }
+        persistenceFacade = maybeWrapAsyncEventPersistence(properties, persistenceFacade, "main");
+        main.bind("persistenceFacade", persistenceFacade);
 
         ConversationArchiveService conversationArchiveService = createConversationArchiveService(properties, objectMapper);
         main.bind("conversationArchiveService", conversationArchiveService);
+        String plansConfig = properties.getProperty("agent.agents-config");
         String blueprintUri = properties.getProperty("agent.blueprint");
+        AgentPlanSelectionResolver planSelectionResolver = new AgentPlanSelectionResolver(persistenceFacade, objectMapper);
+        main.bind("agentPlanSelectionResolver", planSelectionResolver);
 
         RuntimeControlState runtimeControlState = new RuntimeControlState(
             AuditGranularity.from(properties.getProperty("agent.audit.granularity", "debug"))
         );
         main.bind("runtimeControlState", runtimeControlState);
-        AuditTrailSearchProcessor auditTrailSearchProcessor = new AuditTrailSearchProcessor(persistenceFacade, objectMapper, blueprintUri);
-        AuditConversationListProcessor auditConversationListProcessor = new AuditConversationListProcessor(persistenceFacade, objectMapper, blueprintUri);
-        AuditConversationViewProcessor auditConversationViewProcessor = new AuditConversationViewProcessor(persistenceFacade, objectMapper);
+        AuditTrailSearchProcessor auditTrailSearchProcessor =
+            new AuditTrailSearchProcessor(persistenceFacade, objectMapper, planSelectionResolver, plansConfig, blueprintUri);
+        AuditConversationListProcessor auditConversationListProcessor =
+            new AuditConversationListProcessor(persistenceFacade, objectMapper, planSelectionResolver, plansConfig, blueprintUri);
+        AuditConversationViewProcessor auditConversationViewProcessor = new AuditConversationViewProcessor(
+            persistenceFacade,
+            objectMapper,
+            planSelectionResolver,
+            plansConfig,
+            blueprintUri
+        );
         AuditConversationAgentMessageProcessor auditConversationAgentMessageProcessor = new AuditConversationAgentMessageProcessor(persistenceFacade, objectMapper);
         AuditConversationSessionDataProcessor auditConversationSessionDataProcessor =
             new AuditConversationSessionDataProcessor(conversationArchiveService, objectMapper);
@@ -109,6 +122,14 @@ public final class AgentRuntimeBootstrap {
         AuditAgentBlueprintProcessor auditAgentBlueprintProcessor = new AuditAgentBlueprintProcessor(
             persistenceFacade,
             objectMapper,
+            planSelectionResolver,
+            plansConfig,
+            blueprintUri
+        );
+        AuditAgentCatalogProcessor auditAgentCatalogProcessor = new AuditAgentCatalogProcessor(
+            objectMapper,
+            planSelectionResolver,
+            plansConfig,
             blueprintUri
         );
 
@@ -124,6 +145,7 @@ public final class AgentRuntimeBootstrap {
         main.bind("runtimePurgePreviewProcessor", runtimePurgePreviewProcessor);
         main.bind("runtimeConversationCloseProcessor", runtimeConversationCloseProcessor);
         main.bind("auditAgentBlueprintProcessor", auditAgentBlueprintProcessor);
+        main.bind("auditAgentCatalogProcessor", auditAgentCatalogProcessor);
 
         bindMcpProcessors(
             main,
@@ -134,6 +156,7 @@ public final class AgentRuntimeBootstrap {
             auditConversationSessionDataProcessor,
             auditConversationAgentMessageProcessor,
             auditAgentBlueprintProcessor,
+            auditAgentCatalogProcessor,
             runtimeAuditGranularityProcessor,
             runtimeResourceRefreshProcessor,
             runtimeConversationPersistenceProcessor,
@@ -162,6 +185,7 @@ public final class AgentRuntimeBootstrap {
                                           AuditConversationSessionDataProcessor auditConversationSessionDataProcessor,
                                           AuditConversationAgentMessageProcessor auditConversationAgentMessageProcessor,
                                           AuditAgentBlueprintProcessor auditAgentBlueprintProcessor,
+                                          AuditAgentCatalogProcessor auditAgentCatalogProcessor,
                                           RuntimeAuditGranularityProcessor runtimeAuditGranularityProcessor,
                                           RuntimeResourceRefreshProcessor runtimeResourceRefreshProcessor,
                                           RuntimeConversationPersistenceProcessor runtimeConversationPersistenceProcessor,
@@ -197,6 +221,7 @@ public final class AgentRuntimeBootstrap {
             auditConversationSessionDataProcessor,
             auditConversationAgentMessageProcessor,
             auditAgentBlueprintProcessor,
+            auditAgentCatalogProcessor,
             runtimeAuditGranularityProcessor,
             runtimeResourceRefreshProcessor,
             runtimeConversationPersistenceProcessor,
@@ -261,8 +286,71 @@ public final class AgentRuntimeBootstrap {
     private static ConversationArchiveService createConversationArchiveService(Properties properties, ObjectMapper objectMapper) {
         boolean enabled = Boolean.parseBoolean(properties.getProperty("agent.conversation.persistence.enabled", "false"));
         PersistenceFacade archivePersistence = createConversationArchivePersistence(properties, objectMapper);
+        archivePersistence = maybeWrapAsyncEventPersistence(properties, archivePersistence, "archive");
         LOGGER.info("Agent runtime conversation persistence initialized: enabled={}", enabled);
         return new ConversationArchiveService(archivePersistence, objectMapper, enabled);
+    }
+
+    private static PersistenceFacade maybeWrapAsyncEventPersistence(Properties properties,
+                                                                   PersistenceFacade persistenceFacade,
+                                                                   String name) {
+        if (persistenceFacade == null || persistenceFacade instanceof AsyncEventPersistenceFacade) {
+            return persistenceFacade;
+        }
+        boolean enabled = Boolean.parseBoolean(properties.getProperty("agent.audit.async.enabled", "false"));
+        if (!enabled) {
+            return persistenceFacade;
+        }
+        int queueCapacity = intProperty(properties, "agent.audit.async.queue-capacity", 4096);
+        long retryDelayMs = longProperty(properties, "agent.audit.async.retry-delay-ms", 250L);
+        long shutdownTimeoutMs = longProperty(properties, "agent.audit.async.shutdown-timeout-ms", 5000L);
+        long metricsLogIntervalMs = longProperty(properties, "agent.audit.async.metrics-log-interval-ms", 30000L);
+        AsyncEventPersistenceFacade asyncFacade = new AsyncEventPersistenceFacade(
+            persistenceFacade,
+            name,
+            queueCapacity,
+            retryDelayMs,
+            shutdownTimeoutMs,
+            metricsLogIntervalMs
+        );
+        Runtime.getRuntime().addShutdownHook(Thread.ofPlatform().name("agent-audit-async-shutdown-" + name).unstarted(() -> {
+            try {
+                asyncFacade.close();
+            } catch (RuntimeException shutdownFailure) {
+                LOGGER.debug("Async audit facade shutdown failed: name={}", name, shutdownFailure);
+            }
+        }));
+        LOGGER.info("Agent runtime async audit persistence enabled: name={}, queueCapacity={}, retryDelayMs={}, shutdownTimeoutMs={}, metricsLogIntervalMs={}",
+            name,
+            queueCapacity,
+            retryDelayMs,
+            shutdownTimeoutMs,
+            metricsLogIntervalMs);
+        return asyncFacade;
+    }
+
+    private static int intProperty(Properties properties, String key, int defaultValue) {
+        String value = properties.getProperty(key);
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException ignored) {
+            return defaultValue;
+        }
+    }
+
+    private static long longProperty(Properties properties, String key, long defaultValue) {
+        String value = properties.getProperty(key);
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException ignored) {
+            return defaultValue;
+        }
     }
 
     private static PersistenceFacade createConversationArchivePersistence(Properties properties, ObjectMapper objectMapper) {
@@ -392,7 +480,7 @@ public final class AgentRuntimeBootstrap {
                 properties.getProperty("agent.runtime.realtime.agentEndpointUri"),
                 properties.getProperty("agent.realtime.agent-endpoint-uri"),
                 properties.getProperty("agent.realtime.agentEndpointUri"),
-                "agent:default?blueprint={{agent.blueprint}}"
+                "agent:default?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}"
             );
             bindRealtimeProcessorIfMissing(main, beanName, agentEndpointUri);
         }

@@ -1,6 +1,7 @@
 package io.dscope.camel.agent.springai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.dscope.camel.agent.model.ToolPolicy;
@@ -86,6 +87,7 @@ class OpenAiRealtimeResponsesGatewayTest {
         Properties properties = new Properties();
         properties.setProperty("agent.runtime.spring-ai.openai.responses-ws.endpoint-uri", "wss://relay.example.test/v1/realtime");
         properties.setProperty("agent.runtime.spring-ai.openai.responses-ws.model", "gpt-realtime-custom");
+        properties.setProperty("agent.runtime.spring-ai.openai.responses-ws.reasoning-effort", "medium");
         properties.setProperty("agent.runtime.spring-ai.openai.responses-ws.request-timeout-ms", "2000");
         properties.setProperty("agent.runtime.spring-ai.openai.responses-ws.poll-interval-ms", "1");
 
@@ -110,6 +112,15 @@ class OpenAiRealtimeResponsesGatewayTest {
         Assertions.assertTrue(result.terminal());
         Assertions.assertEquals("wss://relay.example.test/v1/realtime", relay.lastEndpointUri);
         Assertions.assertEquals("gpt-realtime-custom", relay.lastModel);
+        Assertions.assertTrue(relay.sentEvents.stream().anyMatch(eventJson -> {
+            try {
+                JsonNode node = MAPPER.readTree(eventJson);
+                return "response.create".equals(node.path("type").asText())
+                    && "medium".equals(node.path("response").path("reasoning_effort").asText());
+            } catch (Exception ignored) {
+                return false;
+            }
+        }));
     }
 
     private static ObjectNode event(String type, String field, String value) {
@@ -155,6 +166,7 @@ class OpenAiRealtimeResponsesGatewayTest {
         private boolean closed;
         private String lastEndpointUri;
         private String lastModel;
+        private final List<String> sentEvents = new ArrayList<>();
 
         private void enqueue(ObjectNode node) {
             queue.add(node);
@@ -183,6 +195,7 @@ class OpenAiRealtimeResponsesGatewayTest {
 
         @Override
         public void sendEvent(String conversationId, String eventJson) {
+            sentEvents.add(eventJson);
         }
 
         @Override

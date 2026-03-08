@@ -16,7 +16,7 @@ public class AgentRuntimeRouteBuilder extends RouteBuilder {
             .routeId("sample-agent-invoke")
             .setHeader("agent.conversationId", simple("sample-${exchangeId}"))
             .setBody(constant(properties.initialPrompt()))
-            .toD("agent:support?blueprint=" + properties.blueprint())
+            .toD("agent:support?plansConfig=" + properties.agentsConfig() + "&blueprint=" + properties.blueprint())
             .log("Agent response: ${body}")
             .setHeader("conversationId", header("agent.conversationId"))
             .setHeader("limit", constant(String.valueOf(properties.auditTrailLimit())))

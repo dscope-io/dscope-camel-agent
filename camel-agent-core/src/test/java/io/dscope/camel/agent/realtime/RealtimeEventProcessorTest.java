@@ -1,9 +1,12 @@
 package io.dscope.camel.agent.realtime;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.camel.CamelContext;
@@ -25,6 +28,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import io.dscope.camel.agent.config.AgentHeaders;
 import io.dscope.camel.agent.kernel.InMemoryPersistenceFacade;
 import io.dscope.camel.agent.model.AgentEvent;
 
@@ -142,6 +146,118 @@ class RealtimeEventProcessorTest {
             Assertions.assertEquals("open ticket for login issue", aguiMessages.get(0).path("content").asText());
             Assertions.assertEquals("assistant", aguiMessages.get(1).path("role").asText());
             Assertions.assertEquals("assistant: open ticket for login issue", aguiMessages.get(1).path("content").asText());
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Test
+    void shouldRouteRelayManagedObservedInputTranscriptToAgent() throws Exception {
+        RecordingRelayClient relayClient = new RecordingRelayClient();
+        RealtimeEventProcessor processor = new RealtimeEventProcessor(relayClient, "direct:test-agent-observed-input");
+
+        RealtimeBrowserSessionRegistry sessionRegistry = new RealtimeBrowserSessionRegistry(10_000L);
+        CamelContext context = createContext(Map.of(), Map.of("supportRealtimeSessionRegistry", sessionRegistry));
+        context.addRoutes(new RouteBuilder() {
+            @Override
+            public void configure() {
+                from("direct:test-agent-observed-input")
+                    .transform(simple("assistant: ${body}"));
+            }
+        });
+
+        try {
+            String conversationId = "conv-observed-input";
+            sessionRegistry.putSession(conversationId, MAPPER.createObjectNode());
+            relayClient.forceConnected(conversationId);
+
+            Exchange exchange = new DefaultExchange(context);
+            exchange.getMessage().setHeader("conversationId", conversationId);
+            exchange.getMessage().setBody("{\"type\":\"transcript.observed\",\"direction\":\"input\",\"relayManaged\":true,\"transcript\":\"open ticket for login issue\"}");
+
+            processor.process(exchange);
+
+            JsonNode body = MAPPER.readTree(exchange.getMessage().getBody(String.class));
+            Assertions.assertTrue(body.path("routedToAgent").asBoolean());
+            Assertions.assertEquals("assistant: open ticket for login issue", body.path("assistantMessage").asText());
+            Assertions.assertTrue(body.path("sessionContextUpdated").asBoolean());
+            Assertions.assertTrue(body.path("realtimeVoiceBranchStarted").asBoolean());
+
+            JsonNode aguiMessages = body.path("aguiMessages");
+            Assertions.assertTrue(aguiMessages.isArray());
+            Assertions.assertEquals(2, aguiMessages.size());
+            Assertions.assertEquals("user", aguiMessages.get(0).path("role").asText());
+            Assertions.assertEquals("voice-transcript", aguiMessages.get(0).path("source").asText());
+            Assertions.assertEquals("assistant", aguiMessages.get(1).path("role").asText());
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Test
+    void shouldEmitAgUiOutputTranscriptForRelayManagedObservedOutput() throws Exception {
+        RecordingRelayClient relayClient = new RecordingRelayClient();
+        RealtimeEventProcessor processor = new RealtimeEventProcessor(relayClient, "direct:test-agent-observed-output");
+
+        CamelContext context = createContext(Map.of());
+
+        try {
+            Exchange exchange = new DefaultExchange(context);
+            exchange.getMessage().setHeader("conversationId", "conv-observed-output");
+            exchange.getMessage().setBody("{\"type\":\"transcript.observed\",\"direction\":\"output\",\"relayManaged\":true,\"transcript\":\"Ticket was created successfully\"}");
+
+            processor.process(exchange);
+
+            JsonNode body = MAPPER.readTree(exchange.getMessage().getBody(String.class));
+            Assertions.assertFalse(body.path("routedToAgent").asBoolean());
+            JsonNode aguiMessages = body.path("aguiMessages");
+            Assertions.assertTrue(aguiMessages.isArray());
+            Assertions.assertEquals(1, aguiMessages.size());
+            Assertions.assertEquals("assistant", aguiMessages.get(0).path("role").asText());
+            Assertions.assertEquals("voice-output-transcript", aguiMessages.get(0).path("source").asText());
+            Assertions.assertEquals("Ticket was created successfully", aguiMessages.get(0).path("content").asText());
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Test
+    void shouldCanonicalizeIssueDescriptionPayloadToTicketJson() throws Exception {
+        RecordingRelayClient relayClient = new RecordingRelayClient();
+        RealtimeEventProcessor processor = new RealtimeEventProcessor(relayClient, "direct:test-agent-issue-only");
+
+        CamelContext context = createContext(Map.of());
+        context.addRoutes(new RouteBuilder() {
+            @Override
+            public void configure() {
+                from("direct:test-agent-issue-only")
+                    .setBody(constant("{\"issueDescription\":\"My login is failing, please open support ticket.\"}"));
+
+                from("direct:support-ticket-open")
+                    .transform(simple("{\"ticketId\":\"TCK-${exchangeId}\",\"status\":\"OPEN\",\"summary\":\"${body[query]}\",\"assignedQueue\":\"L1-SUPPORT\",\"message\":\"Support ticket created successfully\"}"));
+            }
+        });
+
+        try {
+            Exchange exchange = new DefaultExchange(context);
+            exchange.getMessage().setHeader("conversationId", "conv-canonical-ticket-json");
+            exchange.getMessage().setBody("{\"type\":\"transcript.final\",\"text\":\"login is failing for the user\"}");
+
+            processor.process(exchange);
+
+            JsonNode body = MAPPER.readTree(exchange.getMessage().getBody(String.class));
+            JsonNode assistantPayload = MAPPER.readTree(body.path("assistantMessage").asText());
+            Assertions.assertTrue(assistantPayload.path("ticketId").asText().startsWith("TCK-"));
+            Assertions.assertEquals("OPEN", assistantPayload.path("status").asText());
+            Assertions.assertEquals("L1-SUPPORT", assistantPayload.path("assignedQueue").asText());
+            Assertions.assertEquals("Support ticket created successfully", assistantPayload.path("message").asText());
+
+            JsonNode aguiMessages = body.path("aguiMessages");
+            Assertions.assertTrue(aguiMessages.isArray());
+            Assertions.assertTrue(aguiMessages.size() >= 2);
+            JsonNode assistantMessage = aguiMessages.get(1);
+            Assertions.assertEquals("assistant", assistantMessage.path("role").asText());
+            Assertions.assertTrue(assistantMessage.path("widget").path("data").path("ticketId").asText().startsWith("TCK-"));
         } finally {
             context.stop();
         }
@@ -407,8 +523,93 @@ class RealtimeEventProcessorTest {
             Assertions.assertTrue(events.stream().anyMatch(event -> "realtime.transcript.final".equals(event.type())));
             Assertions.assertTrue(events.stream().anyMatch(event -> "user.message".equals(event.type())
                 && "please open ticket".equals(event.payload().asText())));
-            Assertions.assertTrue(events.stream().anyMatch(event -> "assistant.message".equals(event.type())
+            Assertions.assertTrue(events.stream().anyMatch(event -> "agent.message".equals(event.type())
                 && "assistant: please open ticket".equals(event.payload().asText())));
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Test
+    void shouldNotDuplicateTurnMessagesWhenRouteAlreadyPersistedThem() throws Exception {
+        RecordingRelayClient relayClient = new RecordingRelayClient();
+        RealtimeEventProcessor processor = new RealtimeEventProcessor(relayClient, "direct:test-agent-managed-turn-persistence");
+
+        InMemoryPersistenceFacade persistence = new InMemoryPersistenceFacade();
+        CamelContext context = createContext(Map.of(), Map.of("persistenceFacade", persistence));
+        context.addRoutes(new RouteBuilder() {
+            @Override
+            public void configure() {
+                from("direct:test-agent-managed-turn-persistence")
+                    .process(exchange -> {
+                        String conversationId = exchange.getMessage().getHeader(AgentHeaders.CONVERSATION_ID, String.class);
+                        String transcript = exchange.getMessage().getBody(String.class);
+                        persistence.appendEvent(
+                            new AgentEvent(conversationId, null, "user.message", MAPPER.getNodeFactory().textNode(transcript), Instant.now()),
+                            UUID.randomUUID().toString()
+                        );
+                        persistence.appendEvent(
+                            new AgentEvent(conversationId, null, "agent.message", MAPPER.getNodeFactory().textNode("assistant: " + transcript), Instant.now()),
+                            UUID.randomUUID().toString()
+                        );
+                        exchange.setProperty(AgentHeaders.RESPONSE_TURN_EVENTS_PERSISTED, true);
+                        exchange.getMessage().setBody("assistant: " + transcript);
+                    });
+            }
+        });
+
+        try {
+            Exchange exchange = new DefaultExchange(context);
+            exchange.getMessage().setHeader("conversationId", "conv-realtime-turn-managed");
+            exchange.getMessage().setBody("{\"type\":\"transcript.final\",\"text\":\"please open ticket\"}");
+
+            processor.process(exchange);
+
+            List<AgentEvent> events = persistence.loadConversation("conv-realtime-turn-managed", 20);
+            long userMessages = events.stream()
+                .filter(event -> "user.message".equals(event.type()))
+                .count();
+            long agentMessages = events.stream()
+                .filter(event -> "agent.message".equals(event.type()))
+                .count();
+
+            Assertions.assertEquals(1L, userMessages);
+            Assertions.assertEquals(1L, agentMessages);
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Test
+    void shouldDecodeUtf8RealtimeTranscriptWithoutMojibake() throws Exception {
+        RecordingRelayClient relayClient = new RecordingRelayClient();
+        RealtimeEventProcessor processor = new RealtimeEventProcessor(relayClient, "direct:test-agent-utf8-transcript");
+
+        InMemoryPersistenceFacade persistence = new InMemoryPersistenceFacade();
+        CamelContext context = createContext(Map.of(), Map.of("persistenceFacade", persistence));
+        context.addRoutes(new RouteBuilder() {
+            @Override
+            public void configure() {
+                from("direct:test-agent-utf8-transcript")
+                    .transform(simple("assistant: ${body}"));
+            }
+        });
+
+        try {
+            String transcript = "O 13:00. Chcel by som sa objednať na výmenu oleja a meno je Roman Dobrík.";
+            Exchange exchange = new DefaultExchange(context);
+            exchange.getMessage().setHeader("conversationId", "conv-utf8-transcript");
+            exchange.getMessage().setHeader("Content-Type", "application/json");
+            exchange.getMessage().setBody(("{\"type\":\"transcript.final\",\"text\":\"" + transcript + "\"}").getBytes(StandardCharsets.UTF_8));
+
+            processor.process(exchange);
+
+            JsonNode body = MAPPER.readTree(exchange.getMessage().getBody(String.class));
+            Assertions.assertEquals("assistant: " + transcript, body.path("assistantMessage").asText());
+
+            List<AgentEvent> events = persistence.loadConversation("conv-utf8-transcript", 20);
+            Assertions.assertTrue(events.stream().anyMatch(event -> "user.message".equals(event.type())
+                && transcript.equals(event.payload().asText())));
         } finally {
             context.stop();
         }

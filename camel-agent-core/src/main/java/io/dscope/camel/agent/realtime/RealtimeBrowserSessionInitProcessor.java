@@ -1,12 +1,15 @@
 package io.dscope.camel.agent.realtime;
 
-import io.dscope.camel.agent.blueprint.MarkdownBlueprintLoader;
-import io.dscope.camel.agent.model.AgentBlueprint;
-import io.dscope.camel.agent.model.ToolSpec;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.dscope.camel.agent.blueprint.MarkdownBlueprintLoader;
+import io.dscope.camel.agent.config.AgentHeaders;
+import io.dscope.camel.agent.model.AgentBlueprint;
+import io.dscope.camel.agent.model.ToolSpec;
+import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
+import io.dscope.camel.agent.runtime.ResolvedAgentPlan;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -71,6 +74,24 @@ public class RealtimeBrowserSessionInitProcessor implements Processor {
         return 1;
     }
 
+    public int refreshAgentProfileForConversation(String conversationId, ResolvedAgentPlan resolvedPlan, int purposeMaxChars) {
+        if (conversationId == null || conversationId.isBlank() || resolvedPlan == null) {
+            return 0;
+        }
+        AgentBlueprint blueprint = loadBlueprint(resolvedPlan.blueprint());
+        if (blueprint == null) {
+            return 0;
+        }
+        ObjectNode session = sessionRegistry.getSession(conversationId);
+        if (session == null) {
+            return 0;
+        }
+        seedBlueprintAgentProfile(session, blueprint, purposeMaxChars, true);
+        seedPlanMetadata(session, resolvedPlan);
+        sessionRegistry.putSession(conversationId, session);
+        return 1;
+    }
+
     @Override
     public void process(Exchange exchange) {
         String conversationId = firstNonBlank(
@@ -84,6 +105,7 @@ public class RealtimeBrowserSessionInitProcessor implements Processor {
         }
 
         JsonNode root = parseJson(exchange.getMessage().getBody(String.class));
+        ResolvedAgentPlan resolvedPlan = resolvePlan(exchange, conversationId, root);
         ObjectNode requestSession = root.path("session").isObject()
             ? (ObjectNode) root.path("session").deepCopy()
             : objectMapper.createObjectNode();
@@ -117,29 +139,49 @@ public class RealtimeBrowserSessionInitProcessor implements Processor {
             session.set("metadata", metadata);
         }
 
-        seedBlueprintAgentProfile(exchange, session);
+        seedBlueprintAgentProfile(exchange, session, resolvedPlan);
+        seedPlanMetadata(session, resolvedPlan);
+
+        // Add voice-specific rules to instructions
+        String language = firstNonBlank(
+            property(exchange, "agent.runtime.realtime.language", ""),
+            property(exchange, "agent.realtime.language", ""),
+            "en"
+        );
+        if (session.hasNonNull("instructions")) {
+            String langName = "sk".equalsIgnoreCase(language) ? "Slovak" : "English";
+            String voiceRules = "\n\nVoice rules:\n- Respond in " + langName + " only."
+                + "\n- Keep responses concise and conversational — suitable for voice."
+                + "\n- Do not output raw JSON. Summarize results in natural speech.";
+            session.put("instructions", session.get("instructions").asText() + voiceRules);
+        }
+
+        // Set input_audio_transcription if not already configured
+        if (!session.hasNonNull("input_audio_transcription")) {
+            ObjectNode transcription = objectMapper.createObjectNode();
+            transcription.put("model", "gpt-4o-mini-transcribe");
+            transcription.put("language", "sk".equalsIgnoreCase(language) ? "sk" : "en");
+            session.set("input_audio_transcription", transcription);
+        }
+
+        // Set turn_detection if not already configured
+        if (!session.hasNonNull("turn_detection")) {
+            ObjectNode turnDetection = objectMapper.createObjectNode();
+            turnDetection.put("type", "server_vad");
+            turnDetection.put("threshold", 0.5);
+            turnDetection.put("prefix_padding_ms", 300);
+            turnDetection.put("silence_duration_ms", 1200);
+            session.set("turn_detection", turnDetection);
+        }
 
         String configuredVoice = firstNonBlank(
+            text(session, "voice"),
             text(session.path("audio").path("output"), "voice"),
             property(exchange, "agent.runtime.realtime.voice", ""),
             property(exchange, "agent.realtime.voice", "")
         );
-        if (!configuredVoice.isBlank()) {
-            ObjectNode audio = session.path("audio").isObject()
-                ? (ObjectNode) session.path("audio")
-                : objectMapper.createObjectNode();
-            ObjectNode output = audio.path("output").isObject()
-                ? (ObjectNode) audio.path("output")
-                : objectMapper.createObjectNode();
-            if (!output.hasNonNull("voice")) {
-                output.put("voice", configuredVoice);
-            }
-            if (!audio.path("output").isObject()) {
-                audio.set("output", output);
-            }
-            if (!session.path("audio").isObject()) {
-                session.set("audio", audio);
-            }
+        if (!configuredVoice.isBlank() && !session.hasNonNull("voice")) {
+            session.put("voice", configuredVoice);
         }
 
         sessionRegistry.putSession(conversationId, session);
@@ -189,11 +231,11 @@ public class RealtimeBrowserSessionInitProcessor implements Processor {
         });
     }
 
-    private void seedBlueprintAgentProfile(Exchange exchange, ObjectNode session) {
+    private void seedBlueprintAgentProfile(Exchange exchange, ObjectNode session, ResolvedAgentPlan resolvedPlan) {
         if (session == null) {
             return;
         }
-        String blueprintLocation = property(exchange, "agent.blueprint", "");
+        String blueprintLocation = resolvedPlan == null ? "" : resolvedPlan.blueprint();
         if (blueprintLocation.isBlank()) {
             return;
         }
@@ -210,6 +252,26 @@ public class RealtimeBrowserSessionInitProcessor implements Processor {
             "agent.realtime.agentProfilePurposeMaxChars");
 
         seedBlueprintAgentProfile(session, blueprint, purposeMaxChars, false);
+
+        // Set session.instructions from the full blueprint system instruction
+        // so the browser can use it in session.update for the Realtime API.
+        String systemInstruction = blueprint.systemInstruction();
+        if (systemInstruction != null && !systemInstruction.isBlank() && !session.hasNonNull("instructions")) {
+            session.put("instructions", systemInstruction.trim());
+        }
+    }
+
+    private void seedPlanMetadata(ObjectNode session, ResolvedAgentPlan resolvedPlan) {
+        if (session == null || resolvedPlan == null || resolvedPlan.legacyMode()) {
+            return;
+        }
+        ObjectNode metadata = ensureObject(session, "metadata");
+        ObjectNode camelAgent = ensureObject(metadata, "camelAgent");
+        ObjectNode plan = ensureObject(camelAgent, "plan");
+        plan.put("name", resolvedPlan.planName());
+        plan.put("version", resolvedPlan.planVersion());
+        plan.put("blueprint", resolvedPlan.blueprint());
+        plan.put("resolvedAt", Instant.now().toString());
     }
 
     private void seedBlueprintAgentProfile(ObjectNode session, AgentBlueprint blueprint, int purposeMaxChars, boolean forceUpdate) {
@@ -344,5 +406,35 @@ public class RealtimeBrowserSessionInitProcessor implements Processor {
         } catch (Exception ignored) {
             return defaultValue;
         }
+    }
+
+    private ResolvedAgentPlan resolvePlan(Exchange exchange, String conversationId, JsonNode root) {
+        AgentPlanSelectionResolver resolver = exchange.getContext().getRegistry().findSingleByType(AgentPlanSelectionResolver.class);
+        if (resolver == null) {
+            return ResolvedAgentPlan.legacy(property(exchange, "agent.blueprint", ""));
+        }
+        String requestedPlanName = firstNonBlank(
+            exchange.getMessage().getHeader(AgentHeaders.PLAN_NAME, String.class),
+            text(root, "planName"),
+            text(root.path("session"), "planName")
+        );
+        String requestedPlanVersion = firstNonBlank(
+            exchange.getMessage().getHeader(AgentHeaders.PLAN_VERSION, String.class),
+            text(root, "planVersion"),
+            text(root.path("session"), "planVersion")
+        );
+        ResolvedAgentPlan resolved = resolver.resolve(
+            conversationId,
+            requestedPlanName.isBlank() ? null : requestedPlanName,
+            requestedPlanVersion.isBlank() ? null : requestedPlanVersion,
+            property(exchange, "agent.agents-config", ""),
+            property(exchange, "agent.blueprint", "")
+        );
+        if (!resolved.legacyMode()) {
+            exchange.getMessage().setHeader(AgentHeaders.RESOLVED_PLAN_NAME, resolved.planName());
+            exchange.getMessage().setHeader(AgentHeaders.RESOLVED_PLAN_VERSION, resolved.planVersion());
+        }
+        exchange.getMessage().setHeader(AgentHeaders.RESOLVED_BLUEPRINT, resolved.blueprint());
+        return resolved;
     }
 }

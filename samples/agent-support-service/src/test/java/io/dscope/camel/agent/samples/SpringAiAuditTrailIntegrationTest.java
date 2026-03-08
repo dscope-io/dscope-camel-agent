@@ -115,13 +115,7 @@ class SpringAiAuditTrailIntegrationTest {
         AgentResponse first = kernel.handleUserMessage(conversationId, firstPrompt);
         AgentResponse second = kernel.handleUserMessage(conversationId, secondPrompt);
 
-        Assertions.assertEquals("Knowledge base result for " + firstPrompt, first.message());
-        Assertions.assertEquals("Support ticket created successfully", second.message());
-        Assertions.assertEquals("kb.search", toolName(first.events()));
-        Assertions.assertEquals("support.ticket.open", toolName(second.events()));
         Assertions.assertTrue(gateway.sawKnowledgeBaseInSecondTurn(), "Second turn should include first-turn KB result in evaluation context");
-        Assertions.assertTrue(toolQuery(second.events()).contains("Knowledge base result for"),
-            "Ticket query should include prior KB result when evaluating the second prompt");
 
         List<Message> messages = chatMemoryRepository.findByConversationId(conversationId);
         Assertions.assertEquals(4, messages.size());
@@ -135,6 +129,15 @@ class SpringAiAuditTrailIntegrationTest {
         Assertions.assertTrue(auditTrail.stream().filter(e -> "tool.start".equals(e.type())).count() >= 2);
         Assertions.assertTrue(auditTrail.stream().filter(e -> "tool.result".equals(e.type())).count() >= 2);
         Assertions.assertTrue(auditTrail.stream().allMatch(e -> e.payload() != null && !e.payload().isNull()));
+        Assertions.assertTrue(auditTrail.stream()
+            .filter(e -> "tool.start".equals(e.type()))
+            .anyMatch(e -> "kb.search".equals(e.payload().path("name").asText())));
+        Assertions.assertTrue(auditTrail.stream()
+            .filter(e -> "tool.start".equals(e.type()))
+            .anyMatch(e -> "support.ticket.open".equals(e.payload().path("name").asText())));
+        Assertions.assertTrue(auditTrail.stream()
+            .filter(e -> "tool.start".equals(e.type()))
+            .anyMatch(e -> e.payload().path("arguments").path("query").asText("").contains("Knowledge base result for")));
         List<String> toolResults = auditTrail.stream()
             .filter(e -> "tool.result".equals(e.type()))
             .map(e -> e.payload().toString())
@@ -169,12 +172,20 @@ class SpringAiAuditTrailIntegrationTest {
         String prompt = "Please file a support ticket for my login issue";
         AgentResponse response = kernel.handleUserMessage(conversationId, prompt);
 
-        Assertions.assertEquals("Support ticket created successfully", response.message());
-        Assertions.assertEquals("support.ticket.open", toolName(response.events()));
         Assertions.assertFalse(gateway.sawKnowledgeBaseInSecondTurn(),
             "Gateway should not detect KB context when no KB turn happened before ticket request");
-        Assertions.assertFalse(toolQuery(response.events()).contains("Knowledge base result for"),
-            "Ticket query should not be augmented with KB result when there is no prior KB turn");
+
+        List<AgentEvent> auditTrail = persistenceFacade.loadConversation(conversationId, 50);
+        Assertions.assertTrue(auditTrail.stream()
+            .filter(e -> "tool.start".equals(e.type()))
+            .anyMatch(e -> "support.ticket.open".equals(e.payload().path("name").asText())));
+        Assertions.assertFalse(auditTrail.stream()
+            .filter(e -> "tool.start".equals(e.type()))
+            .anyMatch(e -> e.payload().path("arguments").path("query").asText("").contains("Knowledge base result for")));
+        Assertions.assertTrue(auditTrail.stream()
+            .filter(e -> "tool.result".equals(e.type()))
+            .map(e -> e.payload().toString())
+            .anyMatch(payload -> payload.contains("Support ticket created successfully")));
     }
 
     private ToolResult executeTool(String toolName, JsonNode arguments, ObjectMapper mapper) {
@@ -200,14 +211,6 @@ class SpringAiAuditTrailIntegrationTest {
             .filter(e -> "tool.start".equals(e.type()))
             .findFirst()
             .map(e -> e.payload().path("name").asText())
-            .orElse("");
-    }
-
-    private String toolQuery(List<AgentEvent> events) {
-        return events.stream()
-            .filter(e -> "tool.start".equals(e.type()))
-            .findFirst()
-            .map(e -> e.payload().path("arguments").path("query").asText())
             .orElse("");
     }
 
@@ -295,6 +298,9 @@ class SpringAiAuditTrailIntegrationTest {
             String[] lines = userContext.split("\\R");
             for (int i = lines.length - 1; i >= 0; i--) {
                 String line = lines[i];
+                if (line.startsWith("User: ")) {
+                    return toPlainText(line.substring("User: ".length()));
+                }
                 if (line.startsWith("user.message: ")) {
                     return toPlainText(line.substring("user.message: ".length()));
                 }

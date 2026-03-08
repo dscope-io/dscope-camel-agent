@@ -1,0 +1,711 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ---------------< io.dscope.camel:agent-support-service >----------------
+[INFO] Building Camel Agent Support Sample Service 0.5.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ agent-support-service ---
+[INFO] Deleting /Users/roman/Projects/DScope/CamelAIAgentComponent/samples/agent-support-service/target
+[INFO] 
+[INFO] --- resources:3.3.0:resources (default-resources) @ agent-support-service ---
+[INFO] Copying 12 resources
+[INFO] 
+[INFO] --- compiler:3.11.0:compile (default-compile) @ agent-support-service ---
+[INFO] Changes detected - recompiling the module! :source
+[INFO] Compiling 1 source file with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- exec:3.3.0:java (default-cli) @ agent-support-service ---
+[io.dscope.camel.agent.samples.Main.main()] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime bootstrap started: applicationYamlPath=application.yaml, propertiesLoaded=73
+[io.dscope.camel.agent.samples.Main.main()] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime routes include pattern applied: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/admin-platform.camel.yaml
+[io.dscope.camel.agent.samples.Main.main()] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime persistence selected: dscope factory
+[io.dscope.camel.agent.samples.Main.main()] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime conversation persistence initialized: enabled=false
+[io.dscope.camel.agent.samples.Main.main()] INFO io.dscope.camel.mcp.service.McpUiSessionRegistry - MCP UI Session Registry started with timeout=3600000ms
+[io.dscope.camel.agent.samples.Main.main()] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime AI model client bound: spring-ai mode
+[io.dscope.camel.agent.samples.Main.main()] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime AGUI default beans bound
+[io.dscope.camel.agent.samples.Main.main()] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime AGUI pre-run processor bound: beanName=agUiAgentPreRunTextProcessor
+[io.dscope.camel.agent.samples.Main.main()] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime realtime relay bound: openAiRealtimeRelayClient
+[io.dscope.camel.agent.samples.Main.main()] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime realtime processor bound: beanName=supportRealtimeEventProcessorCore, endpointUri=agent:support?blueprint={{agent.blueprint}}
+[io.dscope.camel.agent.samples.Main.main()] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime realtime session registry bound: beanName=supportRealtimeSessionRegistry, ttlMs=600000
+[io.dscope.camel.agent.samples.Main.main()] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime realtime init processor bound: beanName=supportRealtimeSessionInitProcessor
+[io.dscope.camel.agent.samples.Main.main()] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime realtime token processor bound: beanName=supportRealtimeTokenProcessor
+[io.dscope.camel.agent.samples.Main.main()] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime route builder enabled
+[io.dscope.camel.agent.samples.Main.main()] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime bootstrap completed
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.main.MainSupport - Apache Camel (Main) 4.15.0 is starting
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext - Apache Camel 4.15.0 (agent-support-service) is starting
+Mar 02, 2026 8:48:25 PM org.xnio.Xnio <clinit>
+INFO: XNIO version 3.8.16.Final
+Mar 02, 2026 8:48:25 PM org.xnio.nio.NioXnio <clinit>
+INFO: XNIO NIO Implementation Version 3.8.16.Final
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.component.undertow.DefaultUndertowHost - Starting Undertow server on http://0.0.0.0:8080
+Mar 02, 2026 8:48:26 PM io.undertow.Undertow start
+INFO: starting server: Undertow - 2.3.19.Final
+[io.dscope.camel.agent.samples.Main.main()] WARN org.apache.camel.component.undertow.DefaultUndertowHost - Failed to start Undertow server on http://0.0.0.0:8080, reason: java.net.BindException: Address already in use
+Mar 02, 2026 8:48:27 PM io.undertow.Undertow stop
+INFO: stopping server: Undertow - 2.3.19.Final
+[io.dscope.camel.agent.samples.Main.main()] ERROR org.apache.camel.impl.engine.AbstractCamelContext - Error starting CamelContext (agent-support-service) due to exception thrown: Failed to start route: agui-agent-rpc-websocket (source: ag-ui-platform.camel.yaml:98) because: java.net.BindException: Address already in use
+org.apache.camel.FailedToStartRouteException: Failed to start route: agui-agent-rpc-websocket (source: ag-ui-platform.camel.yaml:98) because: java.net.BindException: Address already in use
+	at org.apache.camel.impl.engine.RouteService.warmUp(RouteService.java:129)
+	at org.apache.camel.impl.engine.InternalRouteStartupManager.doWarmUpRoutes(InternalRouteStartupManager.java:329)
+	at org.apache.camel.impl.engine.InternalRouteStartupManager.safelyStartRouteServices(InternalRouteStartupManager.java:198)
+	at org.apache.camel.impl.engine.InternalRouteStartupManager.doStartOrResumeRoutes(InternalRouteStartupManager.java:132)
+	at org.apache.camel.impl.engine.AbstractCamelContext.doStartCamel(AbstractCamelContext.java:3114)
+	at org.apache.camel.impl.engine.AbstractCamelContext.doStartContext(AbstractCamelContext.java:2726)
+	at org.apache.camel.impl.engine.AbstractCamelContext.doStart(AbstractCamelContext.java:2681)
+	at org.apache.camel.support.service.BaseService.start(BaseService.java:123)
+	at org.apache.camel.impl.engine.AbstractCamelContext.start(AbstractCamelContext.java:2268)
+	at org.apache.camel.impl.DefaultCamelContext.start(DefaultCamelContext.java:211)
+	at org.apache.camel.main.Main.doStart(Main.java:142)
+	at org.apache.camel.support.service.BaseService.start(BaseService.java:123)
+	at org.apache.camel.main.MainSupport.run(MainSupport.java:94)
+	at org.apache.camel.main.MainCommandLineSupport.run(MainCommandLineSupport.java:238)
+	at io.dscope.camel.agent.starter.Main.run(Main.java:14)
+	at io.dscope.camel.agent.starter.AgentStarterMain.run(AgentStarterMain.java:10)
+	at io.dscope.camel.agent.samples.Main.main(Main.java:11)
+	at org.codehaus.mojo.exec.ExecJavaMojo.doMain(ExecJavaMojo.java:385)
+	at org.codehaus.mojo.exec.ExecJavaMojo.doExec(ExecJavaMojo.java:374)
+	at org.codehaus.mojo.exec.ExecJavaMojo.lambda$execute$0(ExecJavaMojo.java:296)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.RuntimeException: java.net.BindException: Address already in use
+	at io.undertow.Undertow.start(Undertow.java:254)
+	at org.apache.camel.component.undertow.DefaultUndertowHost.registerHandler(DefaultUndertowHost.java:116)
+	at org.apache.camel.component.undertow.UndertowComponent.registerEndpoint(UndertowComponent.java:377)
+	at org.apache.camel.component.undertow.UndertowProducer.doStart(UndertowProducer.java:252)
+	at org.apache.camel.support.service.BaseService.start(BaseService.java:123)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:127)
+	at org.apache.camel.impl.engine.InternalServiceManager.doAddService(InternalServiceManager.java:144)
+	at org.apache.camel.impl.engine.AbstractCamelContext.addService(AbstractCamelContext.java:1545)
+	at org.apache.camel.processor.SendProcessor.doStart(SendProcessor.java:332)
+	at org.apache.camel.support.service.BaseService.start(BaseService.java:123)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:127)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:114)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:153)
+	at org.apache.camel.impl.engine.DefaultChannel.doStart(DefaultChannel.java:130)
+	at org.apache.camel.support.service.BaseService.start(BaseService.java:123)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:127)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:114)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:139)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:116)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:153)
+	at org.apache.camel.processor.Pipeline.doStart(Pipeline.java:204)
+	at org.apache.camel.support.service.BaseService.start(BaseService.java:123)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:127)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:114)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:153)
+	at org.apache.camel.processor.TryProcessor.doStart(TryProcessor.java:144)
+	at org.apache.camel.support.service.BaseService.start(BaseService.java:123)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:127)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:114)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:153)
+	at org.apache.camel.impl.engine.DefaultChannel.doStart(DefaultChannel.java:130)
+	at org.apache.camel.support.service.BaseService.start(BaseService.java:123)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:127)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:114)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:139)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:116)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:153)
+	at org.apache.camel.processor.Pipeline.doStart(Pipeline.java:204)
+	at org.apache.camel.support.service.BaseService.start(BaseService.java:123)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:127)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:114)
+	at org.apache.camel.support.processor.DelegateAsyncProcessor.doStart(DelegateAsyncProcessor.java:102)
+	at org.apache.camel.support.service.BaseService.start(BaseService.java:123)
+	at org.apache.camel.support.service.ServiceHelper.startService(ServiceHelper.java:127)
+	at org.apache.camel.impl.engine.RouteService.startChildServices(RouteService.java:419)
+	at org.apache.camel.impl.engine.RouteService.doWarmUp(RouteService.java:217)
+	at org.apache.camel.impl.engine.RouteService.warmUp(RouteService.java:127)
+	... 20 more
+Caused by: java.net.BindException: Address already in use
+	at java.base/sun.nio.ch.Net.bind0(Native Method)
+	at java.base/sun.nio.ch.Net.bind(Net.java:565)
+	at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+	at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+	at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+	at org.xnio.nio.NioXnioWorker.createTcpConnectionServer(NioXnioWorker.java:178)
+	at org.xnio.XnioWorker.createStreamConnectionServer(XnioWorker.java:310)
+	at io.undertow.Undertow.start(Undertow.java:196)
+	... 66 more
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext - Apache Camel 4.15.0 (agent-support-service) is shutting down (timeout:45s)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext - Routes stopped (total:30 stopped:30 kamelets:1)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped support-ticket-open (direct://support-ticket-open)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-ui (http://0.0.0.0:8080/audit/ui)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-agent-md-api (http://0.0.0.0:8080/audit/agent-md)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-copilotkit-agent-message-alias-api (http://0.0.0.0:8080/audit/copilotkit/agent-message)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-copilotkit-view-alias-api (http://0.0.0.0:8080/audit/copilotkit)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-conversation-agent-message-api (http://0.0.0.0:8080/audit/conversation/agent-message)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-conversation-view-api (http://0.0.0.0:8080/audit/conversation/view)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-conversations-api (http://0.0.0.0:8080/audit/conversations)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-search-api (http://0.0.0.0:8080/audit/search)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-runtime-purge-preview (http://0.0.0.0:8080/runtime/purge/preview)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-runtime-close-conversation (http://0.0.0.0:8080/runtime/conversation/%7BconversationId%7D/close)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-runtime-refresh-conversation (http://0.0.0.0:8080/runtime/refresh/%7BconversationId%7D)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-runtime-refresh-all (http://0.0.0.0:8080/runtime/refresh)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-kamelet-echo-smoke (http://0.0.0.0:8080/smoke/kamelet/echo)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-admin-mcp-stream (http://0.0.0.0:8080/mcp/admin/stream)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-admin-mcp-health (http://0.0.0.0:8080/mcp/admin/health)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-admin-mcp-api (http://0.0.0.0:8080/mcp/admin)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped realtime-session-init (http://0.0.0.0:8080/realtime/session/%7BconversationId%7D/init)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped realtime-session-token (http://0.0.0.0:8080/realtime/session/%7BconversationId%7D/token)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped realtime-session-event (http://0.0.0.0:8080/realtime/session/%7BconversationId%7D/event)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-ui-static (http://0.0.0.0:8080/agui/ui/%7BassetPath%7D)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-ui (http://0.0.0.0:8080/agui/ui)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-agent-rpc-websocket (ws://0.0.0.0:8080/agui/rpc)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-stream (http://0.0.0.0:8080/agui/stream/%7BrunId%7D)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-backend-tool-rendering-post-sse (http://0.0.0.0:8080/agui/backend_tool_rendering)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-agent-post-sse (http://0.0.0.0:8080/agui/agent)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-diagnostics (http://0.0.0.0:8080/diagnostics)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped route1 (http://0.0.0.0:8080/health)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped kb-search (direct://kb-search)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-agent-invoke (timer://agent-demo)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext - Apache Camel 4.15.0 (agent-support-service) shutdown in 58ms (uptime:2s)
+[WARNING] 
+org.apache.camel.FailedToStartRouteException: Failed to start route: agui-agent-rpc-websocket (source: ag-ui-platform.camel.yaml:98) because: java.net.BindException: Address already in use
+    at org.apache.camel.impl.engine.RouteService.warmUp (RouteService.java:129)
+    at org.apache.camel.impl.engine.InternalRouteStartupManager.doWarmUpRoutes (InternalRouteStartupManager.java:329)
+    at org.apache.camel.impl.engine.InternalRouteStartupManager.safelyStartRouteServices (InternalRouteStartupManager.java:198)
+    at org.apache.camel.impl.engine.InternalRouteStartupManager.doStartOrResumeRoutes (InternalRouteStartupManager.java:132)
+    at org.apache.camel.impl.engine.AbstractCamelContext.doStartCamel (AbstractCamelContext.java:3114)
+    at org.apache.camel.impl.engine.AbstractCamelContext.doStartContext (AbstractCamelContext.java:2726)
+    at org.apache.camel.impl.engine.AbstractCamelContext.doStart (AbstractCamelContext.java:2681)
+    at org.apache.camel.support.service.BaseService.start (BaseService.java:123)
+    at org.apache.camel.impl.engine.AbstractCamelContext.start (AbstractCamelContext.java:2268)
+    at org.apache.camel.impl.DefaultCamelContext.start (DefaultCamelContext.java:211)
+    at org.apache.camel.main.Main.doStart (Main.java:142)
+    at org.apache.camel.support.service.BaseService.start (BaseService.java:123)
+    at org.apache.camel.main.MainSupport.run (MainSupport.java:94)
+    at org.apache.camel.main.MainCommandLineSupport.run (MainCommandLineSupport.java:238)
+    at io.dscope.camel.agent.starter.Main.run (Main.java:14)
+    at io.dscope.camel.agent.starter.AgentStarterMain.run (AgentStarterMain.java:10)
+    at io.dscope.camel.agent.samples.Main.main (Main.java:11)
+    at org.codehaus.mojo.exec.ExecJavaMojo.doMain (ExecJavaMojo.java:385)
+    at org.codehaus.mojo.exec.ExecJavaMojo.doExec (ExecJavaMojo.java:374)
+    at org.codehaus.mojo.exec.ExecJavaMojo.lambda$execute$0 (ExecJavaMojo.java:296)
+    at java.lang.Thread.run (Thread.java:1583)
+Caused by: java.lang.RuntimeException: java.net.BindException: Address already in use
+    at io.undertow.Undertow.start (Undertow.java:254)
+    at org.apache.camel.component.undertow.DefaultUndertowHost.registerHandler (DefaultUndertowHost.java:116)
+    at org.apache.camel.component.undertow.UndertowComponent.registerEndpoint (UndertowComponent.java:377)
+    at org.apache.camel.component.undertow.UndertowProducer.doStart (UndertowProducer.java:252)
+    at org.apache.camel.support.service.BaseService.start (BaseService.java:123)
+    at org.apache.camel.support.service.ServiceHelper.startService (ServiceHelper.java:127)
+    at org.apache.camel.impl.engine.InternalServiceManager.doAddService (InternalServiceManager.java:144)
+    at org.apache.camel.impl.engine.AbstractCamelContext.addService (AbstractCamelContext.java:1545)
+    at org.apache.camel.processor.SendProcessor.doStart (SendProcessor.java:332)
+    at org.apache.camel.support.service.BaseService.start (BaseService.java:123)
+    at org.apache.camel.support.service.ServiceHelper.startS[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime relay connected: conversationId=session-1772513434764, endpoint=wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview, model=gpt-4o-realtime-preview, reconnectCount=0
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.start connected: conversationId=session-1772513434764, endpoint=wss://api.openai.com/v1/realtime, model=gpt-4o-realtime-preview
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.start payload restored: conversationId=session-1772513434764, restoredContextPresent=true, incomingOverrides=true, keys=[audio,type,model,metadata,voice,input_audio_format,output_audio_format,input_audio_transcription,turn_detection]
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=1, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=input_audio_buffer.speech_started
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=4, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.created
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=37, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.text.delta
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=1, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=error
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=1, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.created
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=14, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=16, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=3, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio_transcript.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=8, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=4, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=12, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=1, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513434764, connected=true, lastError=none, eventCount=11, hasInputTranscript=false, hasResponseTextDone=true, lastEventType=rate_limits.updated
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime relay closed: conversationId=session-1772513434764
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session closed by event: conversationId=session-1772513434764, eventType=session.close
+[HttpClient-2-Worker-3] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime websocket closed: statusCode=1000, reason=session.close
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeBrowserTokenProcessor - Realtime browser token minted: conversationId=session-1772513478436, status=200
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript observed: conversationId=session-1772513478436, direction=input, observedType=conversation.item.input_audio_transcription.completed, chars=50
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript received: conversationId=session-1772513478436, chars=50
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript routed via ticket tool: conversationId=session-1772513478436
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime context update composed: conversationId=session-1772513478436, routePatchPresent=false, keys=[metadata], transcriptChars=50, assistantChars=207
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime route session update applied: conversationId=session-1772513478436, keys=[metadata]
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime context update apply result: conversationId=session-1772513478436, updated=true
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript routed: conversationId=session-1772513478436, assistantChars=207
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript observed: conversationId=session-1772513478436, direction=output, observedType=response.output_audio_transcript.done, chars=197
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session closed by event: conversationId=session-1772513478436, eventType=session.close
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime relay connected: conversationId=session-1772513591327, endpoint=wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview, model=gpt-4o-realtime-preview, reconnectCount=0
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.start connected: conversationId=session-1772513591327, endpoint=wss://api.openai.com/v1/realtime, model=gpt-4o-realtime-preview
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.start payload restored: conversationId=session-1772513591327, restoredContextPresent=true, incomingOverrides=true, keys=[audio,type,model,metadata,voice,input_audio_format,output_audio_format,input_audio_transcription,turn_detection]
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=1, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=error
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=3, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=conversation.item.created
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=5, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio_transcript.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=10, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio_transcript.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=11, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio_transcript.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=5, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=13, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=1, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=14, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=14, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio_transcript.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=7, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=4, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=11, hasInputTranscript=false, hasResponseTextDone=true, lastEventType=rate_limits.updated
+[XNIO-2 task-3] WARN io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime ingress event persistence failed: conversationId=session-1772513591327, eventType=session.state, error=JDBC append failed for agent.conversation/session-1772513591327
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513591327, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime relay closed: conversationId=session-1772513591327
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session closed by event: conversationId=session-1772513591327, eventType=session.close
+[HttpClient-2-Worker-4] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime websocket closed: statusCode=1000, reason=session.close
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime relay connected: conversationId=session-1772513740022, endpoint=wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview, model=gpt-4o-realtime-preview, reconnectCount=0
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.start connected: conversationId=session-1772513740022, endpoint=wss://api.openai.com/v1/realtime, model=gpt-4o-realtime-preview
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.start payload restored: conversationId=session-1772513740022, restoredContextPresent=true, incomingOverrides=true, keys=[audio,type,model,metadata,voice,input_audio_format,output_audio_format,input_audio_transcription,turn_detection]
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=4, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.created
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=7, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.function_call_arguments.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=9, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.function_call_arguments.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=9, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=rate_limits.updated
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772513740022, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime relay closed: conversationId=session-1772513740022
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session closed by event: conversationId=session-1772513740022, eventType=session.close
+[HttpClient-2-Worker-6] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime websocket closed: statusCode=1000, reason=session.close
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime relay connected: conversationId=session-1772519929320, endpoint=wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview, model=gpt-4o-realtime-preview, reconnectCount=0
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.start connected: conversationId=session-1772519929320, endpoint=wss://api.openai.com/v1/realtime, model=gpt-4o-realtime-preview
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.start payload restored: conversationId=session-1772519929320, restoredContextPresent=true, incomingOverrides=true, keys=[audio,type,model,metadata,voice,input_audio_format,output_audio_format,input_audio_transcription,turn_detection]
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=25, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.text.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=1, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=error
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=1, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.created
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=2, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=conversation.item.created
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=11, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=4, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio_transcript.delta
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=9, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio_transcript.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=11, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio_transcript.delta
+[XNIO-2 task-2] WARN io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime ingress event persistence failed: conversationId=session-1772519929320, eventType=session.state, error=JDBC append failed for agent.conversation/session-1772519929320
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=2, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio_transcript.delta
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=7, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=9, hasInputTranscript=false, hasResponseTextDone=true, lastEventType=rate_limits.updated
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772519929320, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime relay closed: conversationId=session-1772519929320
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session closed by event: conversationId=session-1772519929320, eventType=session.close
+[HttpClient-2-Worker-8] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime websocket closed: statusCode=1000, reason=session.close
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime relay connected: conversationId=session-1772520157948, endpoint=wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview, model=gpt-4o-realtime-preview, reconnectCount=0
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.start connected: conversationId=session-1772520157948, endpoint=wss://api.openai.com/v1/realtime, model=gpt-4o-realtime-preview
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.start payload restored: conversationId=session-1772520157948, restoredContextPresent=true, incomingOverrides=true, keys=[audio,type,model,metadata,voice,input_audio_format,output_audio_format,input_audio_transcription,turn_detection]
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=4, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.created
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=19, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.text.delta
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=9, hasInputTranscript=false, hasResponseTextDone=true, lastEventType=rate_limits.updated
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript received: conversationId=session-1772520157948, chars=76
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.kernel.DefaultAgentKernel - Kernel handleUserMessage started: conversationId=session-1772520157948, chars=76
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520157948, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime relay closed: conversationId=session-1772520157948
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session closed by event: conversationId=session-1772520157948, eventType=session.close
+[HttpClient-2-Worker-10] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime websocket closed: statusCode=1000, reason=session.close
+[XNIO-2 task-2] INFO io.dscope.camel.agent.kernel.DefaultAgentKernel - Kernel final assistant message ready: conversationId=session-1772520157948, chars=133
+[XNIO-2 task-2] INFO io.dscope.camel.agent.kernel.DefaultAgentKernel - Kernel handleUserMessage completed: conversationId=session-1772520157948, emittedEvents=5
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime context update composed: conversationId=session-1772520157948, routePatchPresent=false, keys=[metadata], transcriptChars=76, assistantChars=133
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime route session update applied: conversationId=session-1772520157948, keys=[metadata]
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime context update apply result: conversationId=session-1772520157948, updated=true
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript routed: conversationId=session-1772520157948, assistantChars=133
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeBrowserTokenProcessor - Realtime browser token minted: conversationId=session-1772520319509, status=200
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript observed: conversationId=session-1772520319509, direction=input, observedType=conversation.item.input_audio_transcription.completed, chars=48
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript received: conversationId=session-1772520319509, chars=48
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript routed via ticket tool: conversationId=session-1772520319509
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime context update composed: conversationId=session-1772520319509, routePatchPresent=false, keys=[metadata], transcriptChars=48, assistantChars=205
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime route session update applied: conversationId=session-1772520319509, keys=[metadata]
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime context update apply result: conversationId=session-1772520319509, updated=true
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript routed: conversationId=session-1772520319509, assistantChars=205
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session closed by event: conversationId=session-1772520319509, eventType=session.close
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime relay connected: conversationId=session-1772520365961, endpoint=wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview, model=gpt-4o-realtime-preview, reconnectCount=0
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.start connected: conversationId=session-1772520365961, endpoint=wss://api.openai.com/v1/realtime, model=gpt-4o-realtime-preview
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.start payload restored: conversationId=session-1772520365961, restoredContextPresent=true, incomingOverrides=true, keys=[audio,type,model,metadata,voice,input_audio_format,output_audio_format,input_audio_transcription,turn_detection]
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=1, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.created
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=6, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio_transcript.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=3, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=14, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio_transcript.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=1, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=11, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio_transcript.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=8, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=2, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=7, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=8, hasInputTranscript=false, hasResponseTextDone=true, lastEventType=rate_limits.updated
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520365961, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime relay closed: conversationId=session-1772520365961
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session closed by event: conversationId=session-1772520365961, eventType=session.close
+[HttpClient-2-Worker-12] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime websocket closed: statusCode=1000, reason=session.close
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeBrowserTokenProcessor - Realtime browser token minted: conversationId=session-1772520417009, status=200
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript observed: conversationId=session-1772520417009, direction=input, observedType=conversation.item.input_audio_transcription.completed, chars=48
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript received: conversationId=session-1772520417009, chars=48
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript routed via ticket tool: conversationId=session-1772520417009
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime context update composed: conversationId=session-1772520417009, routePatchPresent=false, keys=[metadata], transcriptChars=48, assistantChars=205
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime route session update applied: conversationId=session-1772520417009, keys=[metadata]
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime context update apply result: conversationId=session-1772520417009, updated=true
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript routed: conversationId=session-1772520417009, assistantChars=205
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript observed: conversationId=session-1772520417009, direction=output, observedType=response.output_text.done, chars=88
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session closed by event: conversationId=session-1772520417009, eventType=session.close
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime relay connected: conversationId=session-1772520528196, endpoint=wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview, model=gpt-4o-realtime-preview, reconnectCount=0
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.start connected: conversationId=session-1772520528196, endpoint=wss://api.openai.com/v1/realtime, model=gpt-4o-realtime-preview
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.start payload restored: conversationId=session-1772520528196, restoredContextPresent=true, incomingOverrides=true, keys=[audio,type,model,metadata,voice,input_audio_format,output_audio_format,input_audio_transcription,turn_detection]
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520528196, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520528196, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520528196, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520528196, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-2] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520528196, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520528196, connected=true, lastError=none, eventCount=4, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.created
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520528196, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520528196, connected=true, lastError=none, eventCount=8, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.text.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520528196, connected=true, lastError=none, eventCount=6, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.text.delta
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520528196, connected=true, lastError=none, eventCount=8, hasInputTranscript=false, hasResponseTextDone=true, lastEventType=rate_limits.updated
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520528196, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript received: conversationId=session-1772520528196, chars=57
+[XNIO-2 task-4] INFO io.dscope.camel.agent.kernel.DefaultAgentKernel - Kernel handleUserMessage started: conversationId=session-1772520528196, chars=57
+[XNIO-2 task-4] WARN org.springframework.ai.retry.RetryUtils - Retry error. Retry count:1
+org.springframework.ai.retry.NonTransientAiException: 400 - {
+  "error": {
+    "message": "This model's maximum context length is 128000 tokens. However, your messages resulted in 180522 tokens (180341 in the messages, 181 in the functions). Please reduce the length of the messages or functions.",
+    "type": "invalid_request_error",
+    "param": "messages",
+    "code": "context_length_exceeded"
+  }
+}
+	at org.springframework.ai.retry.RetryUtils$1.handleError(RetryUtils.java:72)
+	at org.springframework.ai.retry.RetryUtils$1.handleError(RetryUtils.java:57)
+	at org.springframework.web.client.StatusHandler.lambda$fromErrorHandler$1(StatusHandler.java:71)
+	at org.springframework.web.client.StatusHandler.handle(StatusHandler.java:146)
+	at org.springframework.web.client.DefaultRestClient$DefaultResponseSpec.applyStatusHandlers(DefaultRestClient.java:831)
+	at org.springframework.web.client.DefaultRestClient$DefaultResponseSpec.lambda$readBody$4(DefaultRestClient.java:820)
+	at org.springframework.web.client.DefaultRestClient.readWithMessageConverters(DefaultRestClient.java:216)
+	at org.springframework.web.client.DefaultRestClient$DefaultResponseSpec.readBody(DefaultRestClient.java:819)
+	at org.springframework.web.client.DefaultRestClient$DefaultResponseSpec.lambda$toEntityInternal$2(DefaultRestClient.java:775)
+	at org.springframework.web.client.DefaultRestClient$DefaultRequestBodyUriSpec.exchangeInternal(DefaultRestClient.java:579)
+	at org.springframework.web.client.DefaultRestClient$DefaultRequestBodyUriSpec.exchange(DefaultRestClient.java:533)
+	at org.springframework.web.client.RestClient$RequestHeadersSpec.exchange(RestClient.java:680)
+	at org.springframework.web.client.DefaultRestClient$DefaultResponseSpec.executeAndExtract(DefaultRestClient.java:814)
+	at org.springframework.web.client.DefaultRestClient$DefaultResponseSpec.toEntityInternal(DefaultRestClient.java:774)
+	at org.springframework.web.client.DefaultRestClient$DefaultResponseSpec.toEntity(DefaultRestClient.java:763)
+	at org.springframework.ai.openai.api.OpenAiApi.chatCompletionEntity(OpenAiApi.java:198)
+	at org.springframework.ai.openai.OpenAiChatModel.lambda$internalCall$1(OpenAiChatModel.java:199)
+	at org.springframework.retry.support.RetryTemplate.doExecute(RetryTemplate.java:357)
+	at org.springframework.retry.support.RetryTemplate.execute(RetryTemplate.java:230)
+	at org.springframework.ai.openai.OpenAiChatModel.lambda$internalCall$3(OpenAiChatModel.java:199)
+	at io.micrometer.observation.Observation.observe(Observation.java:565)
+	at org.springframework.ai.openai.OpenAiChatModel.internalCall(OpenAiChatModel.java:196)
+	at org.springframework.ai.openai.OpenAiChatModel.call(OpenAiChatModel.java:181)
+	at io.dscope.camel.agent.springai.MultiProviderSpringAiChatGateway.invokeSpringAiChat(MultiProviderSpringAiChatGateway.java:305)
+	at io.dscope.camel.agent.springai.MultiProviderSpringAiChatGateway.generateOpenAi(MultiProviderSpringAiChatGateway.java:166)
+	at io.dscope.camel.agent.springai.MultiProviderSpringAiChatGateway.generate(MultiProviderSpringAiChatGateway.java:67)
+	at io.dscope.camel.agent.springai.SpringAiModelClient.generate(SpringAiModelClient.java:29)
+	at io.dscope.camel.agent.kernel.DefaultAgentKernel.handleUserMessage(DefaultAgentKernel.java:143)
+	at io.dscope.camel.agent.component.AgentProducer.process(AgentProducer.java:31)
+	at org.apache.camel.support.AsyncProcessorConverterHelper$ProcessorToAsyncProcessorBridge.process(AsyncProcessorConverterHelper.java:65)
+	at org.apache.camel.impl.engine.SharedCamelInternalProcessor.processNonTransacted(SharedCamelInternalProcessor.java:156)
+	at org.apache.camel.impl.engine.SharedCamelInternalProcessor.process(SharedCamelInternalProcessor.java:133)
+	at org.apache.camel.impl.engine.SharedCamelInternalProcessor$1.process(SharedCamelInternalProcessor.java:89)
+	at org.apache.camel.impl.engine.DefaultAsyncProcessorAwaitManager.process(DefaultAsyncProcessorAwaitManager.java:82)
+	at org.apache.camel.impl.engine.SharedCamelInternalProcessor.process(SharedCamelInternalProcessor.java:86)
+	at org.apache.camel.support.cache.DefaultProducerCache.send(DefaultProducerCache.java:180)
+	at org.apache.camel.impl.engine.DefaultProducerTemplate.send(DefaultProducerTemplate.java:175)
+	at org.apache.camel.impl.engine.DefaultProducerTemplate.send(DefaultProducerTemplate.java:171)
+	at org.apache.camel.impl.engine.DefaultProducerTemplate.request(DefaultProducerTemplate.java:366)
+	at io.dscope.camel.agent.realtime.RealtimeEventProcessor.routeTranscriptToAssistant(RealtimeEventProcessor.java:433)
+	at io.dscope.camel.agent.realtime.RealtimeEventProcessor.process(RealtimeEventProcessor.java:189)
+	at org.apache.camel.support.processor.DelegateSyncProcessor.process(DelegateSyncProcessor.java:67)
+	at org.apache.camel.processor.errorhandler.RedeliveryErrorHandler$SimpleTask.handleFirst(RedeliveryErrorHandler.java:440)
+	at org.apache.camel.processor.errorhandler.RedeliveryErrorHandler$SimpleTask.run(RedeliveryErrorHandler.java:416)
+	at org.apache.camel.impl.engine.DefaultReactiveExecutor$Worker.doRun(DefaultReactiveExecutor.java:199)
+	at org.apache.camel.impl.engine.DefaultReactiveExecutor$Worker.executeReactiveWork(DefaultReactiveExecutor.java:189)
+	at org.apache.camel.impl.engine.DefaultReactiveExecutor$Worker.tryExecuteReactiveWork(DefaultReactiveExecutor.java:166)
+	at org.apache.camel.impl.engine.DefaultReactiveExecutor$Worker.schedule(DefaultReactiveExecutor.java:148)
+	at org.apache.camel.impl.engine.DefaultReactiveExecutor.scheduleMain(DefaultReactiveExecutor.java:59)
+	at org.apache.camel.processor.Pipeline.process(Pipeline.java:162)
+	at org.apache.camel.impl.engine.CamelInternalProcessor.processNonTransacted(CamelInternalProcessor.java:370)
+	at org.apache.camel.impl.engine.CamelInternalProcessor.process(CamelInternalProcessor.java:346)
+	at org.apache.camel.impl.engine.DefaultAsyncProcessorAwaitManager.process(DefaultAsyncProcessorAwaitManager.java:82)
+	at org.apache.camel.support.AsyncProcessorSupport.process(AsyncProcessorSupport.java:32)
+	at org.apache.camel.component.undertow.UndertowConsumer.handleRequest(UndertowConsumer.java:219)
+	at io.undertow.server.Connectors.executeRootHandler(Connectors.java:395)
+	at io.undertow.server.HttpServerExchange$1.run(HttpServerExchange.java:896)
+	at org.jboss.threads.ContextHandler$1.runWith(ContextHandler.java:18)
+	at org.jboss.threads.EnhancedQueueExecutor$Task.doRunWith(EnhancedQueueExecutor.java:2691)
+	at org.jboss.threads.EnhancedQueueExecutor$Task.run(EnhancedQueueExecutor.java:2670)
+	at org.jboss.threads.EnhancedQueueExecutor$ThreadBody.run(EnhancedQueueExecutor.java:1615)
+	at org.xnio.XnioWorker$WorkerThreadFactory$1$1.run(XnioWorker.java:1282)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+[XNIO-2 task-4] INFO io.dscope.camel.agent.kernel.DefaultAgentKernel - Kernel final assistant message ready: conversationId=session-1772520528196, chars=375
+[XNIO-2 task-4] INFO io.dscope.camel.agent.kernel.DefaultAgentKernel - Kernel handleUserMessage completed: conversationId=session-1772520528196, emittedEvents=5
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime context update composed: conversationId=session-1772520528196, routePatchPresent=false, keys=[metadata], transcriptChars=57, assistantChars=375
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime route session update applied: conversationId=session-1772520528196, keys=[metadata]
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime context update apply result: conversationId=session-1772520528196, updated=true
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime voice branch started from backend: conversationId=session-1772520528196
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript routed: conversationId=session-1772520528196, assistantChars=375
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime relay closed: conversationId=session-1772520528196
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session closed by event: conversationId=session-1772520528196, eventType=session.close
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520528196, connected=false, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[HttpClient-2-Worker-15] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime websocket closed: statusCode=1000, reason=session.close
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeBrowserTokenProcessor - Realtime browser token minted: conversationId=session-1772520687098, status=200
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime relay connected: conversationId=session-1772520695278, endpoint=wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview, model=gpt-4o-realtime-preview, reconnectCount=0
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.start connected: conversationId=session-1772520695278, endpoint=wss://api.openai.com/v1/realtime, model=gpt-4o-realtime-preview
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.start payload restored: conversationId=session-1772520695278, restoredContextPresent=true, incomingOverrides=true, keys=[audio,type,model,metadata,voice,input_audio_format,output_audio_format,input_audio_transcription,turn_detection]
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=1, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=input_audio_buffer.speech_started
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=19, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.text.delta
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=1, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=error
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=1, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.created
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=9, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=response.audio.delta
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=46, hasInputTranscript=false, hasResponseTextDone=true, lastEventType=rate_limits.updated
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=true, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime relay closed: conversationId=session-1772520695278
+[XNIO-2 task-4] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session closed by event: conversationId=session-1772520695278, eventType=session.close
+[HttpClient-2-Worker-16] INFO io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient - Realtime websocket closed: statusCode=1000, reason=session.close
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session.state diagnostics: conversationId=session-1772520695278, connected=false, lastError=none, eventCount=0, hasInputTranscript=false, hasResponseTextDone=false, lastEventType=none
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeBrowserTokenProcessor - Realtime browser token minted: conversationId=session-1772520744227, status=200
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript observed: conversationId=session-1772520744227, direction=input, observedType=conversation.item.input_audio_transcription.completed, chars=48
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript received: conversationId=session-1772520744227, chars=48
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript routed via ticket tool: conversationId=session-1772520744227
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime context update composed: conversationId=session-1772520744227, routePatchPresent=false, keys=[metadata], transcriptChars=48, assistantChars=205
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime route session update applied: conversationId=session-1772520744227, keys=[metadata]
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime context update apply result: conversationId=session-1772520744227, updated=true
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript routed: conversationId=session-1772520744227, assistantChars=205
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime transcript observed: conversationId=session-1772520744227, direction=output, observedType=response.output_audio_transcript.done, chars=131
+[XNIO-2 task-3] INFO io.dscope.camel.agent.realtime.RealtimeEventProcessor - Realtime session closed by event: conversationId=session-1772520744227, eventType=session.close
+[Camel Thread #1 - CamelHangupInterceptor] INFO org.apache.camel.main.DefaultMainShutdownStrategy - JVM shutdown hook triggered by SIGTERM (PID 52384). Shutting down Apache Camel (Main) 4.15.0
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext - Apache Camel 4.15.0 (agent-support-service) is shutting down (timeout:45s)
+[Camel Thread #1 - CamelHangupInterceptor] INFO org.apache.camel.main.DefaultMainShutdownStrategy - Waiting for CamelContext to graceful shutdown (max:1m0s0ms, elapsed:6s357ms)
+[Camel Thread #1 - CamelHangupInterceptor] INFO org.apache.camel.main.DefaultMainShutdownStrategy - Waiting for CamelContext to graceful shutdown (max:1m0s0ms, elapsed:11s668ms)
+[Camel Thread #1 - CamelHangupInterceptor] INFO org.apache.camel.main.DefaultMainShutdownStrategy - Waiting for CamelContext to graceful shutdown (max:1m0s0ms, elapsed:16s812ms)
+[Camel Thread #1 - CamelHangupInterceptor] INFO org.apache.camel.main.DefaultMainShutdownStrategy - Waiting for CamelContext to graceful shutdown (max:1m0s0ms, elapsed:22s239ms)
+[Camel (camel-1) thread #3 - ShutdownTask] INFO org.apache.camel.component.undertow.DefaultUndertowHost - Stopping Undertow server on http://0.0.0.0:8080
+[Camel Thread #1 - CamelHangupInterceptor] INFO org.apache.camel.main.DefaultMainShutdownStrategy - Waiting for CamelContext to graceful shutdown (max:1m0s0ms, elapsed:37s469ms)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext - Routes stopped (total:30 stopped:30 kamelets:1)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped support-ticket-open (direct://support-ticket-open)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-ui (http://0.0.0.0:8080/audit/ui)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-agent-md-api (http://0.0.0.0:8080/audit/agent-md)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-copilotkit-agent-message-alias-api (http://0.0.0.0:8080/audit/copilotkit/agent-message)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-copilotkit-view-alias-api (http://0.0.0.0:8080/audit/copilotkit)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-conversation-agent-message-api (http://0.0.0.0:8080/audit/conversation/agent-message)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-conversation-view-api (http://0.0.0.0:8080/audit/conversation/view)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-conversations-api (http://0.0.0.0:8080/audit/conversations)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-search-api (http://0.0.0.0:8080/audit/search)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-runtime-purge-preview (http://0.0.0.0:8080/runtime/purge/preview)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-runtime-close-conversation (http://0.0.0.0:8080/runtime/conversation/%7BconversationId%7D/close)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-runtime-refresh-conversation (http://0.0.0.0:8080/runtime/refresh/%7BconversationId%7D)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-runtime-refresh-all (http://0.0.0.0:8080/runtime/refresh)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-kamelet-echo-smoke (http://0.0.0.0:8080/smoke/kamelet/echo)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-admin-mcp-stream (http://0.0.0.0:8080/mcp/admin/stream)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-admin-mcp-health (http://0.0.0.0:8080/mcp/admin/health)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-admin-mcp-api (http://0.0.0.0:8080/mcp/admin)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped realtime-session-init (http://0.0.0.0:8080/realtime/session/%7BconversationId%7D/init)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped realtime-session-token (http://0.0.0.0:8080/realtime/session/%7BconversationId%7D/token)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped realtime-session-event (http://0.0.0.0:8080/realtime/session/%7BconversationId%7D/event)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-ui-static (http://0.0.0.0:8080/agui/ui/%7BassetPath%7D)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-ui (http://0.0.0.0:8080/agui/ui)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-agent-rpc-websocket (ws://0.0.0.0:8080/agui/rpc)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-stream (http://0.0.0.0:8080/agui/stream/%7BrunId%7D)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-backend-tool-rendering-post-sse (http://0.0.0.0:8080/agui/backend_tool_rendering)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-agent-post-sse (http://0.0.0.0:8080/agui/agent)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-diagnostics (http://0.0.0.0:8080/diagnostics)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped route1 (http://0.0.0.0:8080/health)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped kb-search (direct://kb-search)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-agent-invoke (timer://agent-demo)
+[Camel Thread #1 - CamelHangupInterceptor] INFO org.apache.camel.main.DefaultMainShutdownStrategy - Waiting for CamelContext to graceful shutdown (max:1m0s0ms, elapsed:42s690ms)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext - Apache Camel 4.15.0 (agent-support-service) shutdown in 46s461ms (uptime:2h26m)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.main.MainSupport - Apache Camel (Main) 4.15.0 shutdown
+[Camel Thread #1 - CamelHangupInterceptor] INFO org.apache.camel.main.DefaultMainShutdownStrategy - Apache Camel (Main) 4.15.0 is shutdown

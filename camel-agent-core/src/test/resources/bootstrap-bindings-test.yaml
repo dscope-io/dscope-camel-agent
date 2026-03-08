@@ -8,4 +8,4 @@ agent:
       bind-relay: true
       bind-processor: true
       processor-bean-name: supportRealtimeEventProcessor
-      agent-endpoint-uri: agent:test?blueprint={{agent.blueprint}}
+      agent-endpoint-uri: agent:test?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}

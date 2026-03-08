@@ -82,6 +82,12 @@
     .preview-ids { margin: 6px 0 0; padding-left: 18px; max-height: 160px; overflow: auto; }
     .preview-ids li { margin: 3px 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .conv-list { margin-top: 10px; border: 1px solid #314074; border-radius: 10px; background: #0f1731; max-height: 260px; overflow: auto; }
+    .catalog-panel { margin-top: 10px; border: 1px solid #314074; border-radius: 10px; background: #0f1731; padding: 10px; }
+    .catalog-grid { margin-top: 8px; display: grid; gap: 8px; }
+    .catalog-plan { border: 1px solid #243766; border-radius: 10px; padding: 8px; background: #101a36; }
+    .catalog-plan-title { font-size: 13px; font-weight: 700; }
+    .catalog-plan-meta { margin-top: 4px; font-size: 11px; opacity: .82; }
+    .catalog-version { margin-top: 6px; font-size: 12px; }
     .conv-item { border-bottom: 1px solid #243766; padding: 9px 10px; cursor: pointer; }
     .conv-item:last-child { border-bottom: 0; }
     .conv-item:hover { background: #1a2850; }
@@ -150,6 +156,7 @@
         <button id="purgePreviewBtn" type="button">Preview Purge Scope</button>
       </div>
       <div id="purgePreviewPanel" class="preview-panel hidden"></div>
+      <div id="agentCatalogPanel" class="catalog-panel">Loading agent catalog...</div>
       <div id="conversationList" class="conv-list">
         <div class="empty-list">Load conversations to browse audit threads.</div>
       </div>
@@ -243,6 +250,7 @@
     const purgeAgentNameEl = document.getElementById('purgeAgentName');
     const purgePreviewBtnEl = document.getElementById('purgePreviewBtn');
     const purgePreviewPanelEl = document.getElementById('purgePreviewPanel');
+    const agentCatalogPanelEl = document.getElementById('agentCatalogPanel');
     const conversationStatusEl = document.getElementById('conversationStatus');
     const conversationListEl = document.getElementById('conversationList');
     const searchBtnEl = document.getElementById('searchBtn');
@@ -410,7 +418,8 @@
       const eventCount = metadata.eventCount == null ? '?' : String(metadata.eventCount);
       const firstEventAt = metadata.firstEventAt || '-';
       const lastEventAt = metadata.lastEventAt || '-';
-      metaLineEl.textContent = `Events: ${eventCount} | First: ${firstEventAt} | Last: ${lastEventAt}`;
+      const agentSummary = formatAgentSummary(metadata);
+      metaLineEl.textContent = `Events: ${eventCount} | First: ${firstEventAt} | Last: ${lastEventAt}${agentSummary ? ` | ${agentSummary}` : ''}`;
       const topics = Array.isArray(metadata.topics) ? metadata.topics : [];
       metaTopicsEl.innerHTML = topics.length
         ? topics.map((topic) => `<span class="topic-chip">${escapeHtml(topic)}</span>`).join('')
@@ -428,11 +437,12 @@
         const title = String(metadata.title || conversationId || 'Conversation');
         const topics = Array.isArray(metadata.topics) ? metadata.topics.slice(0, 4).join(', ') : '';
         const lastEventAt = String(metadata.lastEventAt || '-');
+        const agentSummary = formatAgentSummary(metadata);
         return `
           <div class="conv-item" data-conversation-id="${escapeHtml(conversationId)}">
             <div class="conv-id">${escapeHtml(conversationId)}</div>
             <div class="conv-title">Title: ${escapeHtml(title)}</div>
-            <div class="conv-meta">Topics: ${escapeHtml(topics || 'No topics')} | Last: ${escapeHtml(lastEventAt)}</div>
+            <div class="conv-meta">Topics: ${escapeHtml(topics || 'No topics')} | Last: ${escapeHtml(lastEventAt)}${agentSummary ? ` | ${escapeHtml(agentSummary)}` : ''}</div>
           </div>
         `;
       }).join('');
@@ -443,6 +453,49 @@
           runSearch();
           setView(activeView === 'copilot' ? 'copilot' : 'tree');
         });
+      }
+    }
+
+    function renderAgentCatalog(catalog) {
+      if (!agentCatalogPanelEl) {
+        return;
+      }
+      if (!catalog || !Array.isArray(catalog.plans)) {
+        agentCatalogPanelEl.innerHTML = '<div class="empty-list">Agent catalog unavailable.</div>';
+        return;
+      }
+      const plansHtml = catalog.plans.map((plan) => {
+        const versions = Array.isArray(plan.versions) ? plan.versions : [];
+        const versionsHtml = versions.map((version) => {
+          const versionName = escapeHtml(String(version?.version || ''));
+          const defaultLabel = version?.default ? ' [default]' : '';
+          const agentName = escapeHtml(String(version?.agentName || ''));
+          const agentVersion = escapeHtml(String(version?.agentVersion || ''));
+          return `<div class="catalog-version">${versionName}${defaultLabel} - ${agentName}${agentVersion ? `@${agentVersion}` : ''}</div>`;
+        }).join('');
+        return `
+          <div class="catalog-plan">
+            <div class="catalog-plan-title">${escapeHtml(String(plan?.name || ''))}${plan?.default ? ' [default]' : ''}</div>
+            <div class="catalog-plan-meta">Versions: ${versions.length}</div>
+            ${versionsHtml || '<div class="catalog-version">No versions</div>'}
+          </div>
+        `;
+      }).join('');
+      agentCatalogPanelEl.innerHTML = `
+        <div><strong>Agent catalog</strong>: ${catalog.defaultPlan ? `default plan ${escapeHtml(String(catalog.defaultPlan))}` : 'no default reported'}</div>
+        <div class="catalog-grid">${plansHtml}</div>
+      `;
+    }
+
+    async function loadAgentCatalog() {
+      try {
+        const response = await fetch('/audit/agent/catalog');
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        renderAgentCatalog(await response.json());
+      } catch (err) {
+        agentCatalogPanelEl.innerHTML = `<div class="empty-list">Agent catalog load failed: ${escapeHtml(String(err))}</div>`;
       }
     }
 
@@ -458,8 +511,9 @@
       const perspective = data.agentPerspective && typeof data.agentPerspective === 'object' ? data.agentPerspective : {};
       const messages = Array.isArray(perspective.messages) ? perspective.messages : [];
       const available = !!data.copilotKitAvailable;
+      const agentSummary = formatAgentSummary(data.agent);
 
-      copilotKitMetaEl.textContent = `AGUI session=${agui.sessionId || '-'} | run=${agui.runId || '-'} | thread=${agui.threadId || '-'} | available=${available ? 'yes' : 'no'} | messages=${messages.length}`;
+      copilotKitMetaEl.textContent = `AGUI session=${agui.sessionId || '-'} | run=${agui.runId || '-'} | thread=${agui.threadId || '-'} | available=${available ? 'yes' : 'no'} | messages=${messages.length}${agentSummary ? ` | ${agentSummary}` : ''}`;
       if (!messages.length) {
         copilotKitMessagesEl.innerHTML = '<div class="empty-list">No agent-perspective messages found for this conversation.</div>';
         return;
@@ -470,9 +524,10 @@
         const text = escapeHtml(String(msg?.text || ''));
         const type = escapeHtml(String(msg?.type || ''));
         const timestamp = escapeHtml(String(msg?.timestamp || ''));
+        const agentSummary = escapeHtml(formatAgentSummary(msg?.agent));
         return `
           <div class="copilot-message">
-            <div class="copilot-message-role">${role} - ${type}</div>
+            <div class="copilot-message-role">${role} - ${type}${agentSummary ? ` - ${agentSummary}` : ''}</div>
             <div class="copilot-message-text">${text || '(empty)'}</div>
             <div class="copilot-message-time">${timestamp}</div>
           </div>
@@ -733,6 +788,23 @@
         .replaceAll("'", '&#39;');
     }
 
+    function formatAgentSummary(agent) {
+      if (!agent || typeof agent !== 'object') {
+        return '';
+      }
+      const agentName = String(agent.agentName || agent.agentTitle || '').trim();
+      const agentVersion = String(agent.agentVersion || '').trim();
+      const planName = String(agent.planName || '').trim();
+      const planVersion = String(agent.planVersion || '').trim();
+      const agentLabel = agentName
+        ? `Agent: ${agentName}${agentVersion ? `@${agentVersion}` : ''}`
+        : '';
+      const planLabel = planName
+        ? `Plan: ${planName}${planVersion ? `/${planVersion}` : ''}`
+        : '';
+      return [agentLabel, planLabel].filter(Boolean).join(' | ');
+    }
+
     function summarizeTypeCounts(events) {
       const counts = new Map();
       for (const event of events || []) {
@@ -820,7 +892,7 @@
             <div class="event-type">${escapeHtml(eventTypeLabel(event))}</div>
             <div class="event-time">${escapeHtml(event.timestamp || '')}</div>
           </div>
-          <div class="event-meta">conversationId=${escapeHtml(event.conversationId || '')} | taskId=${escapeHtml(event.taskId || '')}</div>
+          <div class="event-meta">conversationId=${escapeHtml(event.conversationId || '')} | taskId=${escapeHtml(event.taskId || '')}${formatAgentSummary(event.agent) ? ` | ${escapeHtml(formatAgentSummary(event.agent))}` : ''}</div>
           <div class="event-payload">${escapeHtml(payloadPreview(event.payload))}</div>
         </div>`).join('');
 
@@ -1197,6 +1269,7 @@
         setStatus(`MCP init failed: ${String(err)}`, 'err');
       }
 
+      loadAgentCatalog();
       const initialState = applyQueryParams();
       if (initialState.shouldAutoListLoad) {
         loadConversations();

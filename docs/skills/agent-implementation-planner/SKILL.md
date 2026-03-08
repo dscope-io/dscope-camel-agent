@@ -108,6 +108,32 @@ Use these as current-state anchors when drafting plans:
   - AGUI pre-run append: `camel-agent-core/src/main/java/io/dscope/camel/agent/agui/AgentAgUiPreRunTextProcessor.java`
   - realtime observed/final append: `camel-agent-core/src/main/java/io/dscope/camel/agent/realtime/RealtimeEventProcessor.java`
 
+### Known-Good WebRTC UI Flow (Pin This in Plans)
+
+When a request says WebRTC flow is the working baseline (and relay is not the focus), plan against the dedicated WebRTC page and keep these settings explicit in the implementation plan:
+
+- Source-of-truth rule: define WebRTC flow from `samples/agent-support-service/src/main/resources/frontend/webrtc-test.html` only (do not derive WebRTC flow settings from `index.html`).
+
+- Primary reference page: `samples/agent-support-service/src/main/resources/frontend/webrtc-test.html`
+- Transport selector:
+  - `#transport-mode` is disabled and fixed to `webrtc`
+  - option text: `Browser WebRTC (direct)`
+- AGUI selector:
+  - `#agui-transport-mode` default `post` (`POST + SSE`)
+- Voice defaults:
+  - `#duplex-mode=half`
+  - `#vad-pause=normal` (1200ms)
+  - `#voice-setting=alloy`
+- Instruction debug panel:
+  - keep `Instruction seed (debug)` panel and auto-open behavior for WebRTC mode
+- Transcript diagnostics:
+  - keep `WebRTC transcript log` panel + clear action
+
+Plan rule for this mode:
+
+- Do not introduce relay-specific finalize/commit orchestration into the WebRTC baseline flow.
+- If both relay and WebRTC are in scope, treat WebRTC as a separate transport path with independent stop/finalize behavior.
+
 - JDBC persistence bootstrap supports scripted vendor DDL selection and overrides:
   - `camel-agent-persistence-dscope/src/main/java/io/dscope/camel/agent/persistence/dscope/DscopePersistenceFactory.java`
   - `camel-agent-persistence-dscope/src/main/java/io/dscope/camel/agent/persistence/dscope/ScriptedJdbcFlowStateStore.java`
@@ -162,6 +188,28 @@ Output:
 - intent-to-tool mapping
 - fallback behavior when tools fail
 
+Blueprint tools format rule (required):
+
+- In blueprint markdown, `## Tools` must contain a fenced YAML block with top-level `tools:`.
+- Do not write tool definitions as prose bullets under `## Tools`.
+- For MCP service seed tools, use `endpointUri: mcp:<url>` in the YAML tool entry.
+
+Required structure example:
+
+```markdown
+## Tools
+
+~~~yaml
+tools:
+  - name: calendar.mcp
+    description: Calendar MCP service seed
+    endpointUri: mcp:http://localhost:8080/mcp
+    inputSchemaInline:
+      type: object
+      properties: {}
+~~~
+```
+
 ### Phase 3: Resource Design
 
 Plan resource artifacts:
@@ -214,6 +262,14 @@ Output:
   - `runtime.conversation.persistence.get`
   - `runtime.conversation.persistence.set`
   - `audit.conversation.sessionData`
+
+If WebRTC is selected as primary voice channel, include a “WebRTC Flow Settings” subsection that records at minimum:
+
+- page path (`webrtc-test.html`)
+- transport selector mode/value
+- AGUI mode default
+- duplex, pause profile, voice defaults
+- transcript log and instruction seed debug behavior
 
 ### Phase 6: Test Strategy
 

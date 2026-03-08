@@ -7,36 +7,8 @@ DEFAULT_PORT="${AGENT_PORT:-8080}"
 MAX_PORT_SCAN="${AGENT_PORT_SCAN_MAX:-20}"
 API_MODE="${AGENT_OPENAI_API_MODE:-}"
 
-print_help() {
-  cat <<'EOF'
-Usage: samples/agent-support-service/run-sample.sh [options] [--] [maven/exec args]
-
-Convenience options:
-  --chat                 Use OpenAI chat mode
-  --responses-ws         Use OpenAI responses-ws mode
-  --api-mode=<mode>      Explicit API mode override
-  -h, --help             Show this help
-
-Common JVM property overrides (pass as -D...):
-  -Dcamel.persistence.backend=redis_jdbc|jdbc
-  -Dcamel.persistence.jdbc.url=jdbc:postgresql://localhost:55432/agent_runtime?user=agent&password=agent
-  -Dcamel.persistence.jdbc.driver-class-name=org.postgresql.Driver
-  -Dcamel.persistence.jdbc.schema.ddl-resource=classpath:db/persistence/postgres-flow-state.sql
-  -Dagent.runtime.spring-ai.provider=openai|ollama|gemini|claude
-
-Environment:
-  AGENT_PORT              Preferred HTTP port (default: 8080)
-  AGENT_PORT_SCAN_MAX     Scan range if preferred port is busy (default: 20)
-  AGENT_SECRETS_FILE      Secrets properties file path (default: samples/agent-support-service/.agent-secrets.properties)
-EOF
-}
-
 FORWARDED_ARGS=()
 for arg in "$@"; do
-  if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
-    print_help
-    exit 0
-  fi
   if [[ "$arg" == "--responses-ws" ]]; then
     API_MODE="responses-ws"
     continue
@@ -111,7 +83,6 @@ fi
 echo "Starting agent-support-service on port ${SELECTED_PORT}"
 echo "UI:     http://localhost:${SELECTED_PORT}/agui/ui"
 echo "Health: http://localhost:${SELECTED_PORT}/health"
-echo "Tip:    override JDBC schema DDL with -Dcamel.persistence.jdbc.schema.ddl-resource=classpath:db/persistence/postgres-flow-state.sql"
 if [[ -n "$API_MODE" ]]; then
   echo "OpenAI api-mode override: ${API_MODE}"
 fi

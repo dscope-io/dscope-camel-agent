@@ -34,6 +34,8 @@ public class AgentEndpointConfigurer extends PropertyConfigurerSupport implement
         case "lazyStartProducer": target.setLazyStartProducer(property(camelContext, boolean.class, value)); return true;
         case "persistencemode":
         case "persistenceMode": target.setPersistenceMode(property(camelContext, java.lang.String.class, value)); return true;
+        case "plansconfig":
+        case "plansConfig": target.setPlansConfig(property(camelContext, java.lang.String.class, value)); return true;
         case "streaming": target.setStreaming(property(camelContext, boolean.class, value)); return true;
         case "strictschema":
         case "strictSchema": target.setStrictSchema(property(camelContext, boolean.class, value)); return true;
@@ -57,6 +59,8 @@ public class AgentEndpointConfigurer extends PropertyConfigurerSupport implement
         case "lazyStartProducer": return boolean.class;
         case "persistencemode":
         case "persistenceMode": return java.lang.String.class;
+        case "plansconfig":
+        case "plansConfig": return java.lang.String.class;
         case "streaming": return boolean.class;
         case "strictschema":
         case "strictSchema": return boolean.class;
@@ -81,6 +85,8 @@ public class AgentEndpointConfigurer extends PropertyConfigurerSupport implement
         case "lazyStartProducer": return target.isLazyStartProducer();
         case "persistencemode":
         case "persistenceMode": return target.getPersistenceMode();
+        case "plansconfig":
+        case "plansConfig": return target.getPlansConfig();
         case "streaming": return target.isStreaming();
         case "strictschema":
         case "strictSchema": return target.isStrictSchema();

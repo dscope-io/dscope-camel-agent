@@ -2,11 +2,13 @@
 
 `camel-agent` is a blueprint-driven Apache Camel component for agent orchestration.
 
+![Camel Agent Architecture](CamelArchitecture.png)
+
 ## Modules
 
 - `camel-agent-core`: `agent:` Camel component, kernel, blueprint parser, tool registry, schema checks.
 - `camel-agent-persistence-dscope`: persistence adapter using `dscope-camel-persistence` (`redis`, `jdbc`, `redis_jdbc`).
-- `camel-agent-spring-ai`: Spring AI multi-provider gateway (`openai`, `anthropic`, `vertex gemini`, `ollama`).
+- `camel-agent-spring-ai`: Spring AI multi-provider gateway (`openai`, `anthropic`, `vertex gemini`).
 - `camel-agent-starter`: Spring Boot auto-configuration.
 - `samples/agent-support-service`: runnable Camel Main support sample.
 
@@ -29,16 +31,6 @@
 mvn -q test
 mvn clean install
 ```
-
-## Karavan Metadata
-
-Generate Karavan metadata for core build support:
-
-```bash
-mvn -pl camel-agent-core -Pkaravan-metadata -DskipTests compile exec:java
-```
-
-Generated files are written under `camel-agent-core/src/main/resources/karavan/metadata`.
 
 ## Local DScope Integration Bootstrap
 
@@ -112,29 +104,6 @@ agent:
         url: jdbc:postgresql://localhost:5432/agent_audit
 ```
 
-### JDBC Schema DDL Resource Override
-
-For scripted JDBC store initialization, schema DDL is loaded from classpath resources by JDBC URL vendor:
-
-- PostgreSQL -> `classpath:db/persistence/postgres-flow-state.sql`
-- Snowflake -> `classpath:db/persistence/snowflake-flow-state.sql`
-
-You can override this with:
-
-```yaml
-camel:
-  persistence:
-    jdbc:
-      schema:
-        ddl-resource: classpath:db/persistence/postgres-flow-state.sql
-```
-
-Equivalent system property:
-
-```bash
--Dcamel.persistence.jdbc.schema.ddl-resource=classpath:db/persistence/postgres-flow-state.sql
-```
-
 ## Load-Balanced Task Ownership (redis_jdbc)
 
 Distributed task ownership is implemented via persistence-backed lease locks (`flowType=agent.task.lock`):
@@ -180,7 +149,7 @@ agent:
     ai:
       mode: spring-ai
     spring-ai:
-      provider: openai # openai | gemini | claude | ollama
+      provider: openai # openai | gemini | claude
       model: gpt-4o-mini
       temperature: 0.2
       max-tokens: 800
@@ -201,9 +170,6 @@ Notes:
   - `agent.runtime.spring-ai.gemini.vertex.project-id`
   - `agent.runtime.spring-ai.gemini.vertex.location`
 - Claude uses Spring AI Anthropic client (`/v1/messages`).
-- Ollama uses local/remote Ollama chat endpoint (default base URL `http://localhost:11434`) and provider config:
-  - `agent.runtime.spring-ai.ollama.base-url`
-  - `agent.runtime.spring-ai.ollama.model`
 
 ## Connectivity Check
 
@@ -311,16 +277,6 @@ tools:
 - `/agui/stream/{runId}` is available for split-transport clients
 
 For run commands and endpoint examples, see `samples/agent-support-service/README.md`.
-
-Audit conversation endpoints (sample runtime):
-
-- `GET /audit/conversation/view?conversationId=<id>`
-- `POST /audit/conversation/agent-message`
-
-Compatibility aliases (deprecated):
-
-- `GET /audit/copilotkit`
-- `POST /audit/copilotkit/agent-message`
 
 Realtime note:
 

@@ -19,18 +19,8 @@ openai:
     key: ${OPENAI_API_KEY}
 
 agent:
-  conversation:
-    persistence:
-      enabled: false
-      # Optional dedicated persistence target for AGUI/realtime conversation archive
-      # backend: jdbc
-      # jdbc:
-      #   url: jdbc:postgresql://localhost:55432/agent_conversation?user=agent&password=agent
-      #   username: agent
-      #   password: agent
-      #   driver-class-name: org.postgresql.Driver
   runtime:
-    routes-include-pattern: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/admin-platform.camel.yaml,classpath:routes/sip-adapter-platform.camel.yaml
+    routes-include-pattern: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/sip-adapter-platform.camel.yaml
     agent-routes-enabled: true
     ai:
       mode: spring-ai
@@ -101,9 +91,6 @@ agent:
         model: claude-3-5-sonnet-20241022
         api-key-system-property: anthropic.api.key
         anthropic-version: "2023-06-01"
-      ollama:
-        base-url: http://localhost:11434
-        model: llama3.1
   blueprint: classpath:agents/support/agent.md
   sample:
     prompt: My login is failing, please open a support ticket

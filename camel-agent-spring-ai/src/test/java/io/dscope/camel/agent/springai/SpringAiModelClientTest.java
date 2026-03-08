@@ -38,15 +38,15 @@ class SpringAiModelClientTest {
         ObjectMapper mapper = new ObjectMapper();
         SpringAiChatGateway gateway = (systemPrompt, userContext, tools, model, temperature, maxTokens, callback) -> {
             Assertions.assertEquals("system", systemPrompt);
-            Assertions.assertTrue(userContext.contains("user.message: \"first turn\""));
-            Assertions.assertTrue(userContext.contains("assistant.message: \"first response\""));
+            Assertions.assertTrue(userContext.contains("User: first turn"));
+            Assertions.assertTrue(userContext.contains("Agent: first response"));
             return new SpringAiChatGateway.SpringAiChatResult("done", List.of(), true);
         };
 
         SpringAiModelClient client = new SpringAiModelClient(gateway, mapper);
         List<AgentEvent> history = List.of(
             new AgentEvent("conv-1", null, "user.message", mapper.valueToTree("first turn"), Instant.now()),
-            new AgentEvent("conv-1", null, "assistant.message", mapper.valueToTree("first response"), Instant.now())
+            new AgentEvent("conv-1", null, "agent.message", mapper.valueToTree("first response"), Instant.now())
         );
 
         var response = client.generate(

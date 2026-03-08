@@ -284,6 +284,18 @@
             ref: auditConversationAgentMessageProcessor
 
 - route:
+    id: sample-audit-agent-catalog-api
+    from:
+      id: fromSampleAuditAgentCatalog
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/audit/agent/catalog?httpMethodRestrict=GET
+      steps:
+        - process:
+            id: processSampleAuditAgentCatalog
+            ref: auditAgentCatalogProcessor
+
+- route:
     id: sample-audit-copilotkit-view-alias-api
     from:
       id: fromSampleAuditCopilotKitViewAlias

@@ -186,6 +186,23 @@ methods:
         structuredContent:
           type: object
 
+  - name: audit.agent.catalog
+    title: Load agent catalog
+    description: Returns all configured plans, versions, blueprint metadata, and default flags.
+    inputSchema:
+      type: object
+      additionalProperties: false
+      properties: {}
+    outputSchema:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            type: object
+        structuredContent:
+          type: object
+
   - name: runtime.refresh
     title: Refresh runtime resources
     description: Refreshes blueprint/resource state globally or for one conversation.

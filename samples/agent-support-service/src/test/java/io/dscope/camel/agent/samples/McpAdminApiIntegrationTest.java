@@ -43,6 +43,19 @@ class McpAdminApiIntegrationTest {
                 containsTool(toolsList.path("tools"), "audit.events.search"),
                 "tools/list should include audit.events.search"
             );
+            Assertions.assertTrue(
+                containsTool(toolsList.path("tools"), "audit.agent.catalog"),
+                "tools/list should include audit.agent.catalog"
+            );
+
+            JsonNode catalogResult = mcpToolCall(port, "audit.agent.catalog", Map.of());
+            JsonNode catalogStructured = catalogResult.path("structuredContent");
+            Assertions.assertEquals("support", catalogStructured.path("defaultPlan").asText());
+            Assertions.assertTrue(catalogStructured.path("plans").isArray());
+            Assertions.assertTrue(containsPlan(catalogStructured.path("plans"), "support"));
+            Assertions.assertTrue(containsPlan(catalogStructured.path("plans"), "billing"));
+            Assertions.assertTrue(isDefaultPlan(catalogStructured.path("plans"), "support"));
+            Assertions.assertTrue(isDefaultVersion(catalogStructured.path("plans"), "support", "v1"));
 
             String conversationId = "mcp-it-" + System.currentTimeMillis();
 
@@ -122,6 +135,44 @@ class McpAdminApiIntegrationTest {
             }
         }
         return false;
+    }
+
+    private static boolean containsPlan(JsonNode plans, String expectedName) {
+        return findPlan(plans, expectedName) != null;
+    }
+
+    private static boolean isDefaultPlan(JsonNode plans, String expectedName) {
+        JsonNode plan = findPlan(plans, expectedName);
+        return plan != null && plan.path("default").asBoolean(false);
+    }
+
+    private static boolean isDefaultVersion(JsonNode plans, String expectedPlanName, String expectedVersion) {
+        JsonNode plan = findPlan(plans, expectedPlanName);
+        if (plan == null) {
+            return false;
+        }
+        JsonNode versions = plan.path("versions");
+        if (!versions.isArray()) {
+            return false;
+        }
+        for (JsonNode version : versions) {
+            if (expectedVersion.equals(version.path("version").asText())) {
+                return version.path("default").asBoolean(false);
+            }
+        }
+        return false;
+    }
+
+    private static JsonNode findPlan(JsonNode plans, String expectedName) {
+        if (plans == null || !plans.isArray()) {
+            return null;
+        }
+        for (JsonNode plan : plans) {
+            if (expectedName.equals(plan.path("name").asText())) {
+                return plan;
+            }
+        }
+        return null;
     }
 
     private static int randomPort() throws IOException {

@@ -10,9 +10,12 @@ import io.dscope.camel.agent.api.ToolRegistry;
 import io.dscope.camel.agent.blueprint.MarkdownBlueprintLoader;
 import io.dscope.camel.agent.executor.CamelToolExecutor;
 import io.dscope.camel.agent.kernel.DefaultAgentKernel;
+import io.dscope.camel.agent.mcp.McpToolDiscoveryResolver;
 import io.dscope.camel.agent.model.AgentBlueprint;
 import io.dscope.camel.agent.persistence.dscope.DscopePersistenceFactory;
 import io.dscope.camel.agent.registry.DefaultToolRegistry;
+import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
+import io.dscope.camel.agent.runtime.ResolvedAgentPlan;
 import io.dscope.camel.agent.springai.DscopeChatMemoryRepositoryFactory;
 import io.dscope.camel.agent.springai.NoopSpringAiChatGateway;
 import io.dscope.camel.agent.springai.SpringAiModelClient;
@@ -91,6 +94,12 @@ public class AgentAutoConfiguration {
         return DscopePersistenceFactory.create(config, objectMapper);
     }
 
+    @Bean
+    @ConditionalOnMissingBean
+    public AgentPlanSelectionResolver agentPlanSelectionResolver(PersistenceFacade persistenceFacade, ObjectMapper objectMapper) {
+        return new AgentPlanSelectionResolver(persistenceFacade, objectMapper);
+    }
+
     private void copyIfPresent(Properties config, String key, String value) {
         if (value != null && !value.isBlank()) {
             config.setProperty(key, value);
@@ -104,11 +113,24 @@ public class AgentAutoConfiguration {
                                    BlueprintLoader blueprintLoader,
                                    AiModelClient aiModelClient,
                                    PersistenceFacade persistenceFacade,
+                                   AgentPlanSelectionResolver planSelectionResolver,
                                    AgentStarterProperties properties,
                                    ObjectMapper objectMapper) {
-        AgentBlueprint blueprint = blueprintLoader.load(properties.getBlueprint());
-        ToolRegistry toolRegistry = new DefaultToolRegistry(blueprint.tools());
+        String blueprintLocation = properties.getBlueprint();
+        if (properties.getAgentsConfig() != null && !properties.getAgentsConfig().isBlank()) {
+            ResolvedAgentPlan resolved = planSelectionResolver.resolve(
+                null,
+                null,
+                null,
+                properties.getAgentsConfig(),
+                properties.getBlueprint()
+            );
+            blueprintLocation = resolved.blueprint();
+        }
+        AgentBlueprint loadedBlueprint = blueprintLoader.load(blueprintLocation);
         ProducerTemplate producerTemplate = camelContext.createProducerTemplate();
+        AgentBlueprint blueprint = McpToolDiscoveryResolver.resolve(loadedBlueprint, producerTemplate, objectMapper);
+        ToolRegistry toolRegistry = new DefaultToolRegistry(blueprint.tools());
         ToolExecutor toolExecutor = createToolExecutor(camelContext, producerTemplate, objectMapper, blueprint);
         return new DefaultAgentKernel(
             blueprint,

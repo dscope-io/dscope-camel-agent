@@ -47,6 +47,12 @@ public final class OpenAiRealtimeResponsesGateway implements OpenAiResponsesGate
         String conversationId = "responses-ws-" + UUID.randomUUID();
         String endpointUri = wsEndpoint(baseUrl, property("agent.runtime.spring-ai.openai.responses-ws.endpoint-uri"));
         String selectedModel = firstNonBlank(model, property("agent.runtime.spring-ai.openai.responses-ws.model"), "gpt-realtime");
+        String selectedReasoningEffort = firstNonBlank(
+            property("agent.runtime.spring-ai.openai.responses-ws.reasoning-effort"),
+            property("agent.runtime.spring-ai.openai.reasoning-effort"),
+            property("spring.ai.openai.chat.options.reasoning-effort"),
+            property("spring.ai.openai.reasoning-effort")
+        );
         long requestTimeoutMs = longProp("agent.runtime.spring-ai.openai.responses-ws.request-timeout-ms", 30_000L);
         long pollIntervalMs = longProp("agent.runtime.spring-ai.openai.responses-ws.poll-interval-ms", 50L);
         RealtimeReconnectPolicy reconnectPolicy = new RealtimeReconnectPolicy(
@@ -59,9 +65,10 @@ public final class OpenAiRealtimeResponsesGateway implements OpenAiResponsesGate
         try {
             realtimeRelayClient.connect(conversationId, endpointUri, selectedModel, apiKey, reconnectPolicy);
 
-            String prompt = buildPrompt(systemPrompt, userContext);
-            realtimeRelayClient.sendEvent(conversationId, conversationItemCreate(prompt));
-            realtimeRelayClient.sendEvent(conversationId, responseCreate(tools, temperature, maxTokens));
+            String event = responseCreate(
+                selectedModel, systemPrompt, userContext, tools, temperature, maxTokens, selectedReasoningEffort);
+            System.out.println("[RESPONSES-WS] Sending event: " + event);
+            realtimeRelayClient.sendEvent(conversationId, event);
 
             ParseState parseState = new ParseState();
             long deadline = System.currentTimeMillis() + Math.max(1_000L, requestTimeoutMs);
@@ -213,46 +220,66 @@ public final class OpenAiRealtimeResponsesGateway implements OpenAiResponsesGate
         if (name == null || name.isBlank() || usedToolNames.contains(name)) {
             return;
         }
+        String restored = restoreToolName(name);
         try {
             JsonNode parsed = arguments == null || arguments.isBlank() ? MAPPER.createObjectNode() : MAPPER.readTree(arguments);
-            toolCalls.add(new AiToolCall(name, parsed));
+            toolCalls.add(new AiToolCall(restored, parsed));
             usedToolNames.add(name);
         } catch (java.io.IOException ignored) {
-            toolCalls.add(new AiToolCall(name, MAPPER.createObjectNode()));
+            toolCalls.add(new AiToolCall(restored, MAPPER.createObjectNode()));
             usedToolNames.add(name);
         }
     }
 
-    private String conversationItemCreate(String prompt) throws Exception {
+    /**
+     * Sanitize tool name for OpenAI Responses API which only allows [a-zA-Z0-9_-].
+     * Dots are replaced with double underscores to allow round-tripping.
+     */
+    private static String sanitizeToolName(String name) {
+        return name == null ? name : name.replace(".", "__");
+    }
+
+    private static String restoreToolName(String name) {
+        return name == null ? name : name.replace("__", ".");
+    }
+
+    private String responseCreate(String model, String systemPrompt, String userContext,
+                                    List<ToolSpec> tools, Double temperature, Integer maxTokens,
+                                    String reasoningEffort) throws Exception {
         ObjectNode root = MAPPER.createObjectNode();
-        root.put("type", "conversation.item.create");
-        ObjectNode item = MAPPER.createObjectNode();
-        item.put("type", "message");
-        item.put("role", "user");
+        root.put("type", "response.create");
+        if (model != null && !model.isBlank()) {
+            root.put("model", model);
+        }
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            root.put("instructions", systemPrompt.trim());
+        }
+
+        // Embed user input in the response.create event
+        ArrayNode input = MAPPER.createArrayNode();
+        ObjectNode userMessage = MAPPER.createObjectNode();
+        userMessage.put("type", "message");
+        userMessage.put("role", "user");
         ArrayNode content = MAPPER.createArrayNode();
         ObjectNode inputText = MAPPER.createObjectNode();
         inputText.put("type", "input_text");
-        inputText.put("text", prompt);
+        inputText.put("text", userContext == null ? "" : userContext);
         content.add(inputText);
-        item.set("content", content);
-        root.set("item", item);
-        return MAPPER.writeValueAsString(root);
-    }
+        userMessage.set("content", content);
+        input.add(userMessage);
+        root.set("input", input);
 
-    private String responseCreate(List<ToolSpec> tools, Double temperature, Integer maxTokens) throws Exception {
-        ObjectNode root = MAPPER.createObjectNode();
-        root.put("type", "response.create");
-        ObjectNode response = MAPPER.createObjectNode();
-        ArrayNode modalities = MAPPER.createArrayNode();
-        modalities.add("text");
-        response.set("modalities", modalities);
         if (temperature != null) {
-            response.put("temperature", temperature);
+            root.put("temperature", temperature);
         }
         if (maxTokens != null) {
-            response.put("max_output_tokens", maxTokens);
+            root.put("max_output_tokens", maxTokens);
         }
-        response.put("tool_choice", "auto");
+        if (reasoningEffort != null && !reasoningEffort.isBlank()
+            && !reasoningEffort.contains("${")) {
+            root.set("reasoning", MAPPER.createObjectNode().put("effort", reasoningEffort));
+        }
+        root.put("tool_choice", "auto");
 
         ArrayNode toolDefs = MAPPER.createArrayNode();
         if (tools != null) {
@@ -262,7 +289,7 @@ public final class OpenAiRealtimeResponsesGateway implements OpenAiResponsesGate
                 }
                 ObjectNode toolDef = MAPPER.createObjectNode();
                 toolDef.put("type", "function");
-                toolDef.put("name", tool.name());
+                toolDef.put("name", sanitizeToolName(tool.name()));
                 toolDef.put("description", firstNonBlank(tool.description(), tool.name()));
                 JsonNode schema = tool.inputSchema() == null || tool.inputSchema().isNull()
                     ? MAPPER.createObjectNode().put("type", "object")
@@ -272,24 +299,10 @@ public final class OpenAiRealtimeResponsesGateway implements OpenAiResponsesGate
             }
         }
         if (!toolDefs.isEmpty()) {
-            response.set("tools", toolDefs);
+            root.set("tools", toolDefs);
         }
 
-        root.set("response", response);
         return MAPPER.writeValueAsString(root);
-    }
-
-    private String buildPrompt(String systemPrompt, String userContext) {
-        String instructions = "Use the conversation context to decide whether to call a tool. "
-            + "Call tools when needed for support actions, especially for ticket creation. "
-            + "If you call a tool, provide accurate JSON arguments matching the schema.";
-        StringBuilder prompt = new StringBuilder();
-        if (systemPrompt != null && !systemPrompt.isBlank()) {
-            prompt.append("System instruction:\n").append(systemPrompt.trim()).append("\n\n");
-        }
-        prompt.append(instructions).append("\n\nConversation context:\n")
-            .append(userContext == null ? "" : userContext);
-        return prompt.toString();
     }
 
     private String wsEndpoint(String baseUrl, String configuredEndpoint) {
@@ -298,29 +311,29 @@ public final class OpenAiRealtimeResponsesGateway implements OpenAiResponsesGate
         }
         String normalized = firstNonBlank(baseUrl, "https://api.openai.com").trim();
         if (normalized.startsWith("wss://")) {
-            return appendRealtimePath(normalized);
+            return appendResponsesPath(normalized);
         }
         if (normalized.startsWith("ws://")) {
-            return appendRealtimePath(normalized);
+            return appendResponsesPath(normalized);
         }
         if (normalized.startsWith("https://")) {
-            return appendRealtimePath("wss://" + normalized.substring("https://".length()));
+            return appendResponsesPath("wss://" + normalized.substring("https://".length()));
         }
         if (normalized.startsWith("http://")) {
-            return appendRealtimePath("ws://" + normalized.substring("http://".length()));
+            return appendResponsesPath("ws://" + normalized.substring("http://".length()));
         }
-        return appendRealtimePath("wss://" + normalized);
+        return appendResponsesPath("wss://" + normalized);
     }
 
-    private String appendRealtimePath(String endpoint) {
+    private String appendResponsesPath(String endpoint) {
         String trimmed = endpoint.endsWith("/") ? endpoint.substring(0, endpoint.length() - 1) : endpoint;
-        if (trimmed.endsWith("/v1/realtime")) {
+        if (trimmed.endsWith("/v1/responses")) {
             return trimmed;
         }
         if (trimmed.endsWith("/v1")) {
-            return trimmed + "/realtime";
+            return trimmed + "/responses";
         }
-        return trimmed + "/v1/realtime";
+        return trimmed + "/v1/responses";
     }
 
     private String property(String key) {

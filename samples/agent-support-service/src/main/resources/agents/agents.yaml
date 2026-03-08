@@ -1,0 +1,16 @@
+plans:
+  - name: support
+    default: true
+    versions:
+      - version: v1
+        default: true
+        blueprint: classpath:agents/support/v1/agent.md
+      - version: v2
+        blueprint: classpath:agents/support/v2/agent.md
+  - name: billing
+    versions:
+      - version: v1
+        default: true
+        blueprint: classpath:agents/billing/v1/agent.md
+      - version: v2
+        blueprint: classpath:agents/billing/v2/agent.md

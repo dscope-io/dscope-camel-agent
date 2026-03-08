@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class AgentStarterProperties {
 
     private String blueprint = "classpath:agents/support/agent.md";
+    private String agentsConfig;
     private String persistenceMode = "redis_jdbc";
     private boolean strictSchema = true;
     private long timeoutMs = 30_000L;
@@ -27,6 +28,14 @@ public class AgentStarterProperties {
 
     public void setBlueprint(String blueprint) {
         this.blueprint = blueprint;
+    }
+
+    public String getAgentsConfig() {
+        return agentsConfig;
+    }
+
+    public void setAgentsConfig(String agentsConfig) {
+        this.agentsConfig = agentsConfig;
     }
 
     public String getPersistenceMode() {

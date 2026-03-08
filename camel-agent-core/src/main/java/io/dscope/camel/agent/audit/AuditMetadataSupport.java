@@ -1,12 +1,14 @@
 package io.dscope.camel.agent.audit;
 
 import io.dscope.camel.agent.model.AgentEvent;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -18,6 +20,7 @@ final class AuditMetadataSupport {
 
     private static final Pattern TOOL_NAME_PATTERN = Pattern.compile("^\\s*-\\s*name:\\s*([^\\s#]+).*$");
     private static final Pattern TOPICS_PATTERN = Pattern.compile("^\\s*topics?\\s*:\\s*(.+)$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern VERSION_PATTERN = Pattern.compile("^\\s*version\\s*:\\s*(.+)$", Pattern.CASE_INSENSITIVE);
 
     private AuditMetadataSupport() {
     }
@@ -51,10 +54,11 @@ final class AuditMetadataSupport {
 
     static BlueprintMetadata parseBlueprintMetadata(String content) {
         if (content == null || content.isBlank()) {
-            return new BlueprintMetadata("Agent", "", List.of());
+            return new BlueprintMetadata("Agent", "", "", List.of());
         }
         String[] lines = content.replace("\r\n", "\n").replace('\r', '\n').split("\n");
         String title = "Agent";
+        String version = "";
         String description = "";
         boolean inCodeBlock = false;
         boolean sawTopHeading = false;
@@ -69,6 +73,12 @@ final class AuditMetadataSupport {
             if (!sawTopHeading && trimmed.startsWith("# ")) {
                 sawTopHeading = true;
                 title = normalizedAgentTitle(trimmed.substring(2).trim());
+                continue;
+            }
+
+            Matcher versionMatcher = VERSION_PATTERN.matcher(trimmed);
+            if (versionMatcher.matches()) {
+                version = versionMatcher.group(1).trim();
                 continue;
             }
 
@@ -111,10 +121,25 @@ final class AuditMetadataSupport {
             }
         }
 
-        return new BlueprintMetadata(title, description, topics.stream().limit(16).toList());
+        return new BlueprintMetadata(title, version, description, topics.stream().limit(16).toList());
+    }
+
+    static BlueprintMetadata loadBlueprintMetadata(String blueprintUri) {
+        try {
+            return parseBlueprintMetadata(loadBlueprintContent(blueprintUri));
+        } catch (Exception ignored) {
+            return new BlueprintMetadata("Agent", "", "", List.of());
+        }
     }
 
     static Map<String, Object> buildConversationMetadata(String conversationId, List<AgentEvent> events, BlueprintMetadata blueprintMetadata) {
+        return buildConversationMetadata(conversationId, events, blueprintMetadata, AgentStepMetadata.fromBlueprint("", blueprintMetadata));
+    }
+
+    static Map<String, Object> buildConversationMetadata(String conversationId,
+                                                         List<AgentEvent> events,
+                                                         BlueprintMetadata blueprintMetadata,
+                                                         AgentStepMetadata agentStepMetadata) {
         String title = blueprintMetadata.agentTitle() + " conversation";
         if (title.length() > 96) {
             title = title.substring(0, 96) + "…";
@@ -135,16 +160,96 @@ final class AuditMetadataSupport {
             }
         }
 
-        return Map.of(
-            "conversationId", conversationId,
-            "title", title,
-            "description", blueprintMetadata.description(),
-            "topics", blueprintMetadata.topics(),
-            "agentTitle", blueprintMetadata.agentTitle(),
-            "eventCount", events.size(),
-            "firstEventAt", firstEventAt == null ? "" : firstEventAt.toString(),
-            "lastEventAt", lastEventAt == null ? "" : lastEventAt.toString()
-        );
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("conversationId", conversationId);
+        metadata.put("title", title);
+        metadata.put("description", blueprintMetadata.description());
+        metadata.put("topics", blueprintMetadata.topics());
+        metadata.put("agentTitle", blueprintMetadata.agentTitle());
+        metadata.put("agentName", blankToFallback(agentStepMetadata.agentName(), blueprintMetadata.agentTitle()));
+        metadata.put("agentVersion", blankToFallback(agentStepMetadata.agentVersion(), blueprintMetadata.agentVersion()));
+        metadata.put("eventCount", events.size());
+        metadata.put("firstEventAt", firstEventAt == null ? "" : firstEventAt.toString());
+        metadata.put("lastEventAt", lastEventAt == null ? "" : lastEventAt.toString());
+        if (!agentStepMetadata.planName().isBlank()) {
+            metadata.put("planName", agentStepMetadata.planName());
+        }
+        if (!agentStepMetadata.planVersion().isBlank()) {
+            metadata.put("planVersion", agentStepMetadata.planVersion());
+        }
+        if (!agentStepMetadata.blueprintUri().isBlank()) {
+            metadata.put("blueprintUri", agentStepMetadata.blueprintUri());
+        }
+        return metadata;
+    }
+
+    static AgentStepMetadata deriveAgentStepMetadata(List<AgentEvent> events, String blueprintUri) {
+        AgentStepMetadata state = AgentStepMetadata.fromBlueprint(blueprintUri, loadBlueprintMetadata(blueprintUri));
+        if (events == null) {
+            return state;
+        }
+        for (AgentEvent event : events) {
+            state = advanceAgentStepMetadata(state, event);
+        }
+        return state;
+    }
+
+    static AgentStepMetadata advanceAgentStepMetadata(AgentStepMetadata current, AgentEvent event) {
+        AgentStepMetadata state = current == null
+            ? AgentStepMetadata.fromBlueprint("", new BlueprintMetadata("Agent", "", "", List.of()))
+            : current;
+        if (event == null || event.type() == null || event.payload() == null || event.payload().isNull()) {
+            return state;
+        }
+
+        if ("conversation.plan.selected".equals(event.type())) {
+            String planName = text(event.payload(), "planName");
+            String planVersion = text(event.payload(), "planVersion");
+            String blueprintUri = firstNonBlank(text(event.payload(), "blueprint"), text(event.payload(), "blueprintUri"), state.blueprintUri());
+            BlueprintMetadata metadata = loadBlueprintMetadata(blueprintUri);
+            return new AgentStepMetadata(
+                blankToFallback(planName, state.planName()),
+                blankToFallback(planVersion, state.planVersion()),
+                blueprintUri,
+                blankToFallback(metadata.agentTitle(), state.agentName()),
+                blankToFallback(metadata.agentVersion(), state.agentVersion())
+            );
+        }
+
+        if ("agent.definition.refreshed".equals(event.type())) {
+            String blueprintUri = firstNonBlank(text(event.payload(), "blueprint"), text(event.payload(), "blueprintUri"), state.blueprintUri());
+            BlueprintMetadata metadata = loadBlueprintMetadata(blueprintUri);
+            return new AgentStepMetadata(
+                state.planName(),
+                state.planVersion(),
+                blueprintUri,
+                firstNonBlank(text(event.payload(), "agentName"), metadata.agentTitle(), state.agentName()),
+                firstNonBlank(text(event.payload(), "agentVersion"), metadata.agentVersion(), state.agentVersion())
+            );
+        }
+
+        return state;
+    }
+
+    private static String text(JsonNode node, String field) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return "";
+        }
+        JsonNode value = node.path(field);
+        return value.isMissingNode() || value.isNull() ? "" : value.asText("");
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return "";
+    }
+
+    private static String blankToFallback(String value, String fallback) {
+        return value == null || value.isBlank() ? (fallback == null ? "" : fallback) : value;
     }
 
     private static String normalizedAgentTitle(String heading) {
@@ -166,6 +271,39 @@ final class AuditMetadataSupport {
             || normalized.equals("agui pre-run");
     }
 
-    record BlueprintMetadata(String agentTitle, String description, List<String> topics) {
+    record BlueprintMetadata(String agentTitle, String agentVersion, String description, List<String> topics) {
+    }
+
+    record AgentStepMetadata(String planName, String planVersion, String blueprintUri, String agentName, String agentVersion) {
+        static AgentStepMetadata fromBlueprint(String blueprintUri, BlueprintMetadata metadata) {
+            BlueprintMetadata resolved = metadata == null ? new BlueprintMetadata("Agent", "", "", List.of()) : metadata;
+            return new AgentStepMetadata(
+                "",
+                "",
+                blueprintUri == null ? "" : blueprintUri,
+                resolved.agentTitle(),
+                resolved.agentVersion()
+            );
+        }
+
+        Map<String, Object> asMap() {
+            Map<String, Object> data = new LinkedHashMap<>();
+            if (!planName.isBlank()) {
+                data.put("planName", planName);
+            }
+            if (!planVersion.isBlank()) {
+                data.put("planVersion", planVersion);
+            }
+            if (!blueprintUri.isBlank()) {
+                data.put("blueprintUri", blueprintUri);
+            }
+            if (!agentName.isBlank()) {
+                data.put("agentName", agentName);
+            }
+            if (!agentVersion.isBlank()) {
+                data.put("agentVersion", agentVersion);
+            }
+            return data;
+        }
     }
 }

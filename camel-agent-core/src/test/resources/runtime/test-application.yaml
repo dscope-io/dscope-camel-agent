@@ -3,6 +3,7 @@ camel:
     jdbc:
       url: jdbc:derby:memory:test;create=true
 agent:
+  agents-config: classpath:agents/agents.yaml
   blueprint: classpath:agents/support/agent.md
   audit:
     granularity: debug

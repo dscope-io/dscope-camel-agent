@@ -1,0 +1,2772 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Support Copilot (WebRTC Test)</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230f1731'/%3E%3Cpath d='M32 41a9 9 0 0 0 9-9V19a9 9 0 1 0-18 0v13a9 9 0 0 0 9 9zm-4 5.2V52h-8a2 2 0 1 0 0 4h24a2 2 0 1 0 0-4h-8v-5.8A16 16 0 0 0 48 31a2 2 0 1 0-4 0 12 12 0 0 1-24 0 2 2 0 1 0-4 0 16 16 0 0 0 12 15.2z' fill='%23ecf1ff'/%3E%3C/svg%3E" />
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0b1020; color: #e8ecff; }
+    .app { max-width: 900px; margin: 24px auto; padding: 0 16px; }
+    .title { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+    .subtitle { opacity: .8; margin-bottom: 16px; }
+    .panel { background: #131b34; border: 1px solid #2a335d; border-radius: 12px; padding: 14px; }
+    .messages { min-height: 280px; max-height: 420px; overflow: auto; display: grid; gap: 10px; margin-bottom: 12px; }
+    .msg { border-radius: 10px; padding: 10px 12px; line-height: 1.35; }
+    .msg.user { background: #233365; justify-self: end; max-width: 80%; }
+    .msg.agent { background: #1b2546; max-width: 90%; }
+    .msg-badge { display: inline-block; margin-bottom: 6px; font-size: 11px; opacity: .8; border: 1px solid #3b4f93; border-radius: 999px; padding: 1px 8px; }
+    .json-block { margin-top: 6px; border: 1px solid #3b4f93; border-radius: 8px; background: #101b3a; }
+    .json-summary { cursor: pointer; font-size: 12px; opacity: .85; padding: 6px 8px; }
+    .json-pre { margin: 0; padding: 8px; font-size: 12px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow: auto; }
+    .ticket { margin-top: 8px; border: 1px solid #3b4f93; background: #172548; border-radius: 10px; padding: 10px; }
+    .ticket h4 { margin: 0 0 8px 0; font-size: 14px; }
+    .ticket-row { font-size: 13px; margin: 4px 0; }
+    form { display: grid; gap: 8px; }
+    .controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+    .status { font-size: 12px; opacity: .8; }
+    .status.ok { color: #9be29b; opacity: 1; }
+    .status.warn { color: #ffd27f; opacity: 1; }
+    .status.err { color: #ff9e9e; opacity: 1; }
+    .transcript-log-wrap { margin-top: 10px; border: 1px solid #314074; border-radius: 10px; background: #0f1731; }
+    .transcript-log-wrap summary { cursor: pointer; padding: 8px 10px; font-size: 12px; opacity: .85; }
+    .transcript-log-actions { padding: 0 10px 8px 10px; display: flex; justify-content: flex-end; }
+    .transcript-log-clear { border: 1px solid #3b4f93; border-radius: 7px; background: #172548; color: #ecf1ff; padding: 4px 8px; font-size: 11px; font-weight: 600; cursor: pointer; }
+    .transcript-log { margin: 0; padding: 10px; border-top: 1px solid #314074; font-size: 12px; line-height: 1.35; max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+    textarea { width: 100%; min-height: 84px; resize: vertical; border-radius: 10px; border: 1px solid #314074; background: #0f1731; color: #ecf1ff; padding: 10px; }
+    button { width: max-content; border: 0; border-radius: 9px; background: #4b72ff; color: white; padding: 8px 14px; font-weight: 600; cursor: pointer; }
+    .voice-toggle { display: inline-flex; align-items: center; gap: 6px; }
+    .voice-toggle-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      line-height: 1;
+    }
+    .voice-toggle-icon svg {
+      width: 16px;
+      height: 16px;
+      fill: currentColor;
+    }
+    .voice-toggle.idle { background: #4b72ff; }
+    .voice-toggle.live { background: #233365; }
+    .voice-toggle.busy { background: #3b4f93; cursor: progress; }
+    .voice-toggle-text { display: inline; }
+    @media (max-width: 760px) {
+      .voice-toggle { min-width: 40px; justify-content: center; padding: 8px 10px; }
+      .voice-toggle-text { display: none; }
+    }
+    .hint { font-size: 12px; opacity: .75; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="title">Support Copilot (WebRTC Test)</div>
+    <div class="subtitle">Dedicated WebRTC debugging page. Return to <a href="/agui/ui">relay primary page</a>. <a href="/audit/ui">Open audit trail explorer</a>.</div>
+
+    <div class="panel">
+      <div id="messages" class="messages"></div>
+      <form id="chat-form">
+        <textarea id="prompt" placeholder="Ask a support question or request ticket creation..."></textarea>
+        <div class="controls">
+          <label for="agui-transport-mode" class="status">AGUI</label>
+          <select id="agui-transport-mode">
+            <option value="post" selected>POST + SSE</option>
+            <option value="ws">WebSocket</option>
+          </select>
+        </div>
+        <button type="submit">Send</button>
+      </form>
+      <div class="controls">
+        <button id="voice-toggle" class="voice-toggle idle" type="button" title="Start Voice" aria-label="Start Voice"><span class="voice-toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v4a3 3 0 0 0 3 3zm-1 2.92V20H8a1 1 0 1 0 0 2h8a1 1 0 1 0 0-2h-3v-3.08A7.01 7.01 0 0 0 19 10a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7.01 7.01 0 0 0 6 6.92z"></path></svg></span><span class="voice-toggle-text">Start Voice</span></button>
+        <label for="transport-mode" class="status">Transport</label>
+        <select id="transport-mode" disabled>
+          <option value="webrtc" selected>Browser WebRTC (direct)</option>
+        </select>
+        <label for="duplex-mode" class="status">Mode</label>
+        <select id="duplex-mode">
+          <option value="half" selected>Half duplex</option>
+          <option value="full">Full duplex</option>
+        </select>
+        <label id="vad-pause-label" for="vad-pause" class="status">Pause</label>
+        <select id="vad-pause">
+          <option value="fast">Fast</option>
+          <option value="normal" selected>Normal</option>
+          <option value="patient">Patient</option>
+        </select>
+        <label for="voice-setting" class="status">Voice</label>
+        <select id="voice-setting">
+          <option value="alloy" selected>Alloy</option>
+          <option value="ash">Ash</option>
+          <option value="ballad">Ballad</option>
+          <option value="coral">Coral</option>
+          <option value="cedar">Cedar</option>
+          <option value="echo">Echo</option>
+          <option value="marin">Marin</option>
+          <option value="sage">Sage</option>
+          <option value="shimmer">Shimmer</option>
+          <option value="verse">Verse</option>
+        </select>
+        <span id="voice-status" class="status">Voice idle</span>
+        <span id="tts-status" class="status">TTS unknown</span>
+      </div>
+      <details id="instruction-debug" class="transcript-log-wrap">
+        <summary>Instruction seed (debug)</summary>
+        <div id="instruction-debug-text" class="hint" style="padding: 8px 10px; border-top: 1px solid #314074;">Instruction seed: waiting for realtime init context...</div>
+      </details>
+      <details class="transcript-log-wrap">
+        <summary>WebRTC transcript log</summary>
+        <pre id="webrtc-transcript-log" class="transcript-log"></pre>
+        <div class="transcript-log-actions">
+          <button id="webrtc-transcript-clear" class="transcript-log-clear" type="button">Clear log</button>
+        </div>
+      </details>
+      <div class="hint">Tip: &quot;My login is failing, please open a support ticket&quot;.</div>
+    </div>
+  </div>
+
+  <script>
+    const messagesEl = document.getElementById('messages');
+    const formEl = document.getElementById('chat-form');
+    const promptEl = document.getElementById('prompt');
+    const aguiTransportModeEl = document.getElementById('agui-transport-mode');
+    const voiceToggleEl = document.getElementById('voice-toggle');
+    const transportModeEl = document.getElementById('transport-mode');
+    const duplexModeEl = document.getElementById('duplex-mode');
+    const vadPauseLabelEl = document.getElementById('vad-pause-label');
+    const vadPauseEl = document.getElementById('vad-pause');
+    const voiceSettingEl = document.getElementById('voice-setting');
+    const voiceStatusEl = document.getElementById('voice-status');
+    const ttsStatusEl = document.getElementById('tts-status');
+    const instructionDebugPanelEl = document.getElementById('instruction-debug');
+    const instructionDebugEl = document.getElementById('instruction-debug-text');
+    const webRtcTranscriptLogEl = document.getElementById('webrtc-transcript-log');
+    const webRtcTranscriptClearEl = document.getElementById('webrtc-transcript-clear');
+    let sessionId = `session-${Date.now()}`;
+    let audioContext = null;
+    let mediaStream = null;
+    let sourceNode = null;
+    let captureNode = null;
+    let pollTimer = null;
+    let playbackContext = null;
+    let playbackNextTime = 0;
+    let realtimeEventQueue = Promise.resolve();
+    let realtimePollInFlight = false;
+    const handledTranscriptKeys = new Set();
+    const displayedVoiceMessages = new Set();
+    let lastRelayError = '';
+    let lastPollError = '';
+    let lastPollErrorAt = 0;
+    let realtimeAudioSinceResponseCreate = false;
+    let fallbackSpeakTimer = null;
+    let fullDuplexTurnTimer = null;
+    let fullDuplexTurnInFlight = false;
+    let audioFramesSinceCommit = 0;
+    let lastRelayInputTranscript = '';
+    let lastRouteToRulesAt = 0;
+    let relayStopInProgress = false;
+    let relayPendingAudioChunks = [];
+    let relayAudioFlushInFlight = false;
+    let relayDroppedAppendCount = 0;
+    let relayHasUncommittedAudio = false;
+    let voiceActive = false;
+    let voiceToggleBusy = false;
+    let voiceToggleAction = 'start';
+    let aguiTransportMode = (aguiTransportModeEl?.value || 'post').toLowerCase();
+    let transportMode = (transportModeEl?.value || 'relay').toLowerCase();
+    let duplexMode = (duplexModeEl?.value || 'half').toLowerCase();
+    let vadPauseProfile = (vadPauseEl?.value || 'normal').toLowerCase();
+    let selectedVoice = (voiceSettingEl?.value || 'alloy').toLowerCase();
+    const browserTtsEnabled = true;
+    let webRtcPeerConnection = null;
+    let webRtcDataChannel = null;
+    let webRtcRemoteAudioEl = null;
+    let webRtcResponsePending = false;
+    let webRtcResponsePendingTimer = null;
+    let webRtcResponseRecoveryTimer = null;
+    const webRtcOutputTranscriptDeltas = new Map();
+
+    function isWebRtcMode() {
+      return transportMode === 'webrtc';
+    }
+
+    function isFullDuplexMode() {
+      return duplexMode === 'full';
+    }
+
+    function relayLog(message, details = undefined) {
+      if (transportMode !== 'relay') {
+        return;
+      }
+      if (typeof details === 'undefined') {
+        console.info(`[Relay] ${message}`);
+      } else {
+        console.info(`[Relay] ${message}`, details);
+      }
+    }
+
+    function aguiLog(message, details = undefined) {
+      if (typeof details === 'undefined') {
+        console.info(`[AGUI] ${message}`);
+      } else {
+        console.info(`[AGUI] ${message}`, details);
+      }
+    }
+
+    function clearRelayPendingAudio() {
+      relayPendingAudioChunks = [];
+      relayAudioFlushInFlight = false;
+    }
+
+    async function flushRelayPendingAudio(sampleRate, force = false) {
+      if (transportMode !== 'relay') {
+        return false;
+      }
+      if (relayAudioFlushInFlight) {
+        return false;
+      }
+      if (!force && relayPendingAudioChunks.length < 6) {
+        return false;
+      }
+      if (!relayPendingAudioChunks.length) {
+        return false;
+      }
+
+      relayAudioFlushInFlight = true;
+      try {
+        let totalLength = 0;
+        for (const chunk of relayPendingAudioChunks) {
+          totalLength += chunk.length;
+        }
+        const merged = new Float32Array(totalLength);
+        let offset = 0;
+        for (const chunk of relayPendingAudioChunks) {
+          merged.set(chunk, offset);
+          offset += chunk.length;
+        }
+        relayPendingAudioChunks = [];
+
+        const audio = toPcm16Base64(merged, sampleRate);
+        const appendPayload = { type: 'input_audio_buffer.append', audio };
+        const appendResult = force
+          ? await postRealtimeEvent(appendPayload, 1800)
+          : await enqueueRealtimeEvent(appendPayload);
+        const appendAccepted = !!appendResult && appendResult.accepted !== false && appendResult?.payload?.accepted !== false;
+        if (appendAccepted) {
+          relayHasUncommittedAudio = true;
+        }
+        if (force || !appendResult?.skipped) {
+          relayLog('input_audio_buffer.append sent', {
+            pcmBase64Length: audio.length,
+            sourceSamples: merged.length
+          });
+        }
+        return true;
+      } catch (error) {
+        relayLog('input_audio_buffer.append failed', { error: error.message });
+        return false;
+      } finally {
+        relayAudioFlushInFlight = false;
+      }
+    }
+
+    function getListeningStatusText() {
+      const pauseDescription = getVadPauseDescription();
+      return isFullDuplexMode()
+        ? `Voice listening (full duplex, ${pauseDescription})...`
+        : `Voice recording (${pauseDescription})...`;
+    }
+
+    function getVadPauseLabel() {
+      if (vadPauseProfile === 'fast') {
+        return 'Fast';
+      }
+      if (vadPauseProfile === 'patient') {
+        return 'Patient';
+      }
+      return 'Normal';
+    }
+
+    function getVadPauseDescription() {
+      return `${getVadPauseLabel()} pause = ${getVadSilenceDurationMs()}ms`;
+    }
+
+    function updateVadPauseLabel() {
+      if (!vadPauseLabelEl) {
+        return;
+      }
+      vadPauseLabelEl.textContent = `Pause (${getVadSilenceDurationMs()}ms)`;
+    }
+
+    function getVadSilenceDurationMs() {
+      if (vadPauseProfile === 'fast') {
+        return 800;
+      }
+      if (vadPauseProfile === 'patient') {
+        return 1800;
+      }
+      return 1200;
+    }
+
+    function buildRealtimeSessionConfig() {
+      const voice = getSelectedVoice();
+      const fullDuplex = isFullDuplexMode();
+      const session = {
+        voice,
+        input_audio_format: 'pcm16',
+        output_audio_format: 'pcm16',
+        input_audio_transcription: {
+          model: 'gpt-4o-mini-transcribe'
+        },
+        turn_detection: fullDuplex
+          ? {
+              type: 'server_vad',
+              threshold: 0.5,
+              prefix_padding_ms: 300,
+              silence_duration_ms: getVadSilenceDurationMs(),
+              create_response: false
+            }
+          : null,
+        audio: {
+          input: {
+            transcription: {
+              model: 'gpt-4o-mini-transcribe',
+              language: 'en'
+            },
+            turn_detection: fullDuplex
+              ? {
+                  type: 'server_vad',
+                  threshold: 0.5,
+                  prefix_padding_ms: 300,
+                  silence_duration_ms: getVadSilenceDurationMs(),
+                  create_response: false
+                }
+              : null
+          },
+          output: {
+            voice
+          }
+        }
+      };
+      return session;
+    }
+
+    function buildWebRtcSessionConfig(existingSession) {
+      const voice = getSelectedVoice();
+      const contextualInstructions = buildWebRtcInstructions(existingSession);
+      return {
+        type: 'realtime',
+        model: 'gpt-realtime',
+        instructions: contextualInstructions,
+        audio: {
+          input: {
+            transcription: {
+              model: 'gpt-4o-mini-transcribe',
+              language: 'en'
+            },
+            turn_detection: {
+              type: 'server_vad',
+              threshold: 0.5,
+              prefix_padding_ms: 300,
+              silence_duration_ms: getVadSilenceDurationMs()
+            }
+          },
+          output: {
+            voice
+          }
+        }
+      };
+    }
+
+    function buildWebRtcInstructions(existingSession) {
+      const base = 'Respond in English only. Keep responses concise and do not switch languages unless the user explicitly asks for another language.';
+      const metadata = existingSession?.metadata?.camelAgent || {};
+      const context = metadata?.context || {};
+      const agentProfile = metadata?.agentProfile || {};
+      const seededPurpose = normalizeDisplayText(String(agentProfile?.purpose || context?.agentPurpose || '')).trim();
+      const seededFocusHint = normalizeDisplayText(String(context?.agentFocusHint || '')).trim();
+      const seededTools = Array.isArray(agentProfile?.tools)
+        ? agentProfile.tools
+            .map((toolName) => normalizeDisplayText(String(toolName || '')).trim())
+            .filter(Boolean)
+            .slice(0, 12)
+        : [];
+      const lastTranscript = normalizeDisplayText(String(metadata?.lastTranscript || '')).trim();
+      const lastAssistantMessage = normalizeDisplayText(String(metadata?.lastAssistantMessage || '')).trim();
+      let contextLines = [];
+      if (seededPurpose) {
+        contextLines.push(`Agent purpose: ${seededPurpose}`);
+      }
+      if (seededTools.length) {
+        contextLines.push(`Allowed tools: ${seededTools.join(', ')}`);
+      } else {
+        contextLines.push('Tool scope fallback: stay within support troubleshooting and ticket workflows only.');
+      }
+      if (seededFocusHint) {
+        contextLines.push(`Focus hint: ${seededFocusHint}`);
+      }
+      if (lastTranscript) {
+        contextLines.push(`Last user transcript: ${lastTranscript}`);
+      }
+      if (lastAssistantMessage) {
+        contextLines.push(`Last assistant output: ${lastAssistantMessage}`);
+      }
+
+      const recentTurns = Array.isArray(context?.recentTurns)
+        ? context.recentTurns
+            .slice(-10)
+            .map((entry) => {
+              const role = normalizeDisplayText(String(entry?.role || 'unknown')).trim();
+              const text = normalizeDisplayText(String(entry?.text || '')).trim();
+              if (!text) {
+                return '';
+              }
+              return `${role || 'unknown'}: ${text}`;
+            })
+            .filter(Boolean)
+        : [];
+      if (recentTurns.length) {
+        contextLines.push(`Recent conversation:\n${recentTurns.join('\n')}`);
+      }
+
+      if (!contextLines.length) {
+        updateInstructionDebug('Instruction seed: base only (no runtime context available yet).');
+        return base;
+      }
+
+      updateInstructionDebug(`Instruction seed: ${contextLines.join(' | ')}`);
+
+      return `${base}\n\nContinue from this existing support conversation context. Do not restart or ask unrelated generic questions.\n${contextLines.join('\n')}`;
+    }
+
+    function updateInstructionDebug(text) {
+      if (!instructionDebugEl) {
+        return;
+      }
+      const normalized = normalizeDisplayText(String(text || '')).trim();
+      if (!normalized) {
+        instructionDebugEl.textContent = 'Instruction seed: unavailable';
+        return;
+      }
+      instructionDebugEl.textContent = normalized;
+    }
+
+    function openInstructionDebugForWebRtc() {
+      if (!instructionDebugPanelEl) {
+        return;
+      }
+      if (transportMode === 'webrtc') {
+        instructionDebugPanelEl.open = true;
+      }
+    }
+
+    function syncInstructionDebugVisibility() {
+      if (!instructionDebugPanelEl) {
+        return;
+      }
+      const show = transportMode === 'webrtc';
+      instructionDebugPanelEl.style.display = show ? '' : 'none';
+      if (show) {
+        instructionDebugPanelEl.open = true;
+      }
+    }
+
+    function refreshInstructionDebugHint() {
+      if (!instructionDebugEl) {
+        return;
+      }
+      if (transportMode !== 'webrtc') {
+        updateInstructionDebug(`Instruction seed: WebRTC-only debug (current transport: ${transportMode}).`);
+        return;
+      }
+      const current = normalizeDisplayText(String(instructionDebugEl.textContent || '')).trim();
+      if (!current || current.includes('WebRTC-only debug')) {
+        updateInstructionDebug('Instruction seed: waiting for realtime init context...');
+      }
+    }
+
+    function getSelectedVoice() {
+      const value = (voiceSettingEl?.value || selectedVoice || 'alloy').trim().toLowerCase();
+      return value || 'alloy';
+    }
+
+    function setSelectedVoice(voice) {
+      if (!voice || typeof voice !== 'string') {
+        return;
+      }
+      const normalized = voice.trim().toLowerCase();
+      if (!normalized) {
+        return;
+      }
+      selectedVoice = normalized;
+      if (voiceSettingEl) {
+        const hasOption = Array.from(voiceSettingEl.options).some((option) => option.value === normalized);
+        if (hasOption) {
+          voiceSettingEl.value = normalized;
+        }
+      }
+    }
+
+    function extractVoiceFromSession(session) {
+      if (!session || typeof session !== 'object') {
+        return '';
+      }
+      return firstNonEmptyString([
+        session.voice,
+        session.audio?.output?.voice
+      ]).toLowerCase();
+    }
+
+    function buildVoiceSessionPatch() {
+      const voice = getSelectedVoice();
+      return {
+        audio: {
+          output: {
+            voice
+          }
+        }
+      };
+    }
+
+    function setVoiceStatus(text) {
+      voiceStatusEl.textContent = text;
+    }
+
+    function voiceToggleIconSvg(kind) {
+      if (kind === 'stop') {
+        return '<svg viewBox="0 0 24 24" focusable="false"><rect x="7" y="7" width="10" height="10" rx="1.5" ry="1.5"></rect></svg>';
+      }
+      if (kind === 'busy') {
+        return '<svg viewBox="0 0 24 24" focusable="false"><path d="M12 2a10 10 0 1 0 10 10h-2a8 8 0 1 1-8-8V2z"></path></svg>';
+      }
+      return '<svg viewBox="0 0 24 24" focusable="false"><path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v4a3 3 0 0 0 3 3zm-1 2.92V20H8a1 1 0 1 0 0 2h8a1 1 0 1 0 0-2h-3v-3.08A7.01 7.01 0 0 0 19 10a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7.01 7.01 0 0 0 6 6.92z"></path></svg>';
+    }
+
+    function updateVoiceToggleButton() {
+      if (!voiceToggleEl) {
+        return;
+      }
+      voiceToggleEl.classList.remove('idle', 'live', 'busy');
+      if (voiceToggleBusy) {
+        voiceToggleEl.classList.add('busy');
+        voiceToggleEl.innerHTML = voiceToggleAction === 'stop'
+          ? `<span class="voice-toggle-icon" aria-hidden="true">${voiceToggleIconSvg('busy')}</span><span class="voice-toggle-text">Stopping Voice</span>`
+          : `<span class="voice-toggle-icon" aria-hidden="true">${voiceToggleIconSvg('busy')}</span><span class="voice-toggle-text">Starting Voice</span>`;
+        const busyText = voiceToggleAction === 'stop' ? 'Stopping Voice' : 'Starting Voice';
+        voiceToggleEl.title = busyText;
+        voiceToggleEl.setAttribute('aria-label', busyText);
+        voiceToggleEl.disabled = true;
+        return;
+      }
+      voiceToggleEl.disabled = false;
+      if (voiceActive) {
+        voiceToggleEl.classList.add('live');
+        voiceToggleEl.innerHTML = `<span class="voice-toggle-icon" aria-hidden="true">${voiceToggleIconSvg('stop')}</span><span class="voice-toggle-text">Stop Voice</span>`;
+        voiceToggleEl.title = 'Stop Voice';
+        voiceToggleEl.setAttribute('aria-label', 'Stop Voice');
+      } else {
+        voiceToggleEl.classList.add('idle');
+        voiceToggleEl.innerHTML = `<span class="voice-toggle-icon" aria-hidden="true">${voiceToggleIconSvg('mic')}</span><span class="voice-toggle-text">Start Voice</span>`;
+        voiceToggleEl.title = 'Start Voice';
+        voiceToggleEl.setAttribute('aria-label', 'Start Voice');
+      }
+    }
+
+    function setVoiceToggleBusy(isBusy, action = 'start') {
+      voiceToggleBusy = isBusy;
+      voiceToggleAction = action;
+      updateVoiceToggleButton();
+    }
+
+    function setTtsStatus(text, tone = '') {
+      ttsStatusEl.textContent = text;
+      ttsStatusEl.classList.remove('ok', 'warn', 'err');
+      if (tone) {
+        ttsStatusEl.classList.add(tone);
+      }
+    }
+
+    function clearFallbackSpeakTimer() {
+      if (fallbackSpeakTimer) {
+        clearTimeout(fallbackSpeakTimer);
+        fallbackSpeakTimer = null;
+      }
+    }
+
+    function clearFullDuplexTurnTimer() {
+      if (fullDuplexTurnTimer) {
+        clearInterval(fullDuplexTurnTimer);
+        fullDuplexTurnTimer = null;
+      }
+      fullDuplexTurnInFlight = false;
+    }
+
+    function startFullDuplexTurnTimer() {
+      if (!isFullDuplexMode()) {
+        return;
+      }
+      clearFullDuplexTurnTimer();
+      fullDuplexTurnTimer = setInterval(async () => {
+        if (!isFullDuplexMode() || fullDuplexTurnInFlight) {
+          return;
+        }
+        if (audioFramesSinceCommit < 3) {
+          return;
+        }
+        fullDuplexTurnInFlight = true;
+        try {
+          await enqueueRealtimeEvent({ type: 'input_audio_buffer.commit' });
+          realtimeAudioSinceResponseCreate = false;
+          relayHasUncommittedAudio = false;
+          await enqueueRealtimeEvent({
+            type: 'response.create',
+            response: {
+              modalities: ['audio', 'text']
+            }
+          });
+          audioFramesSinceCommit = 0;
+        } catch (error) {
+          addMessage('agent', `Full-duplex auto-turn warning: ${error.message}`);
+        } finally {
+          fullDuplexTurnInFlight = false;
+        }
+      }, 1100);
+    }
+
+    function addMessage(role, text, widget, source) {
+      const el = document.createElement('div');
+      el.className = `msg ${role}`;
+      if (source === 'voice-transcript') {
+        const badge = document.createElement('div');
+        badge.className = 'msg-badge';
+        badge.textContent = 'voice transcript (AGUI)';
+        el.appendChild(badge);
+      } else if (source === 'voice-output-transcript') {
+        const badge = document.createElement('div');
+        badge.className = 'msg-badge';
+        badge.textContent = 'voice output transcript';
+        el.appendChild(badge);
+      }
+      const normalizedText = normalizeDisplayText(String(text ?? ''));
+      const parsedJson = parseJsonPayload(normalizedText);
+      if (parsedJson !== null) {
+        const jsonBadge = document.createElement('div');
+        jsonBadge.className = 'msg-badge';
+        jsonBadge.textContent = 'json payload';
+        el.appendChild(jsonBadge);
+
+        const details = document.createElement('details');
+        details.className = 'json-block';
+        details.open = true;
+
+        const summary = document.createElement('summary');
+        summary.className = 'json-summary';
+        summary.textContent = 'Structured content';
+        details.appendChild(summary);
+
+        const pre = document.createElement('pre');
+        pre.className = 'json-pre';
+        pre.textContent = JSON.stringify(parsedJson, null, 2);
+        details.appendChild(pre);
+
+        el.appendChild(details);
+      } else {
+        const textNode = document.createElement('div');
+        textNode.textContent = normalizedText;
+        el.appendChild(textNode);
+      }
+      if (widget && widget.template === 'ticket-card' && widget.data) {
+        el.appendChild(renderTicketWidget(widget.data));
+      }
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      if (
+        source === 'voice-transcript'
+        || source === 'voice-output-transcript'
+        || source === 'agent'
+      ) {
+        aguiLog('message rendered', {
+          role,
+          source,
+          hasWidget: !!widget,
+          textPreview: normalizeDisplayText(String(text ?? '')).slice(0, 120)
+        });
+      }
+    }
+
+    function renderTicketWidget(data) {
+      const ticketId = normalizeDisplayText(String(data.ticketId ?? 'N/A'));
+      const status = normalizeDisplayText(String(data.status ?? 'OPEN'));
+      const assignedQueue = normalizeDisplayText(String(data.assignedQueue ?? 'L1-SUPPORT'));
+      const summary = normalizeDisplayText(String(data.summary ?? ''));
+      const message = normalizeDisplayText(String(data.message ?? ''));
+      const card = document.createElement('div');
+      card.className = 'ticket';
+      card.innerHTML = `
+        <h4>Ticket Created</h4>
+        <div class="ticket-row"><strong>ID:</strong> ${ticketId}</div>
+        <div class="ticket-row"><strong>Status:</strong> ${status}</div>
+        <div class="ticket-row"><strong>Queue:</strong> ${assignedQueue}</div>
+        <div class="ticket-row"><strong>Summary:</strong> ${summary}</div>
+        <div class="ticket-row">${message}</div>
+      `;
+      return card;
+    }
+
+    function parseSseEvents(payload) {
+      const blocks = payload.split(/\n\n+/).map((chunk) => chunk.trim()).filter(Boolean);
+      const events = [];
+      for (const block of blocks) {
+        const lines = block.split(/\n/);
+        let eventType = '';
+        let data = '';
+        for (const line of lines) {
+          if (line.startsWith('event:')) {
+            eventType = line.slice('event:'.length).trim();
+          } else if (line.startsWith('data:')) {
+            data += line.slice('data:'.length).trim();
+          }
+        }
+        if (!data) continue;
+        try {
+          events.push({ eventType, data: JSON.parse(data) });
+        } catch (_) {
+          events.push({ eventType, data: { raw: data } });
+        }
+      }
+      aguiLog('SSE parsed', { eventCount: events.length });
+      return events;
+    }
+
+    function normalizeAguiEventLike(raw) {
+      if (!raw || typeof raw !== 'object') {
+        return null;
+      }
+      const eventType = raw.eventType || raw.event || raw.type || '';
+      const data = raw.data && typeof raw.data === 'object' ? raw.data : raw;
+      return { eventType, data };
+    }
+
+    function parseAguiEventsFromWebSocketPayload(payload) {
+      const text = (payload || '').trim();
+      if (!text) {
+        return [];
+      }
+
+      if (text.includes('event:') && text.includes('data:')) {
+        return parseSseEvents(text);
+      }
+
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) {
+          return parsed.map(normalizeAguiEventLike).filter(Boolean);
+        }
+        const normalized = normalizeAguiEventLike(parsed);
+        return normalized ? [normalized] : [];
+      } catch (_) {
+        return [];
+      }
+    }
+
+    async function sendPromptViaWebSocket(request) {
+      return new Promise((resolve, reject) => {
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const socket = new WebSocket(`${protocol}://${window.location.host}/agui/rpc`);
+        const events = [];
+        let finished = false;
+
+        const finish = (error, result) => {
+          if (finished) {
+            return;
+          }
+          finished = true;
+          try {
+            socket.close();
+          } catch (_) {
+          }
+          if (error) {
+            reject(error);
+          } else {
+            resolve(result);
+          }
+        };
+
+        const timeout = setTimeout(() => {
+          if (events.length) {
+            finish(null, events);
+          } else {
+            finish(new Error('AGUI WebSocket timeout waiting for events'));
+          }
+        }, 15000);
+
+        socket.addEventListener('open', () => {
+          aguiLog('WebSocket opened', {
+            threadId: request?.threadId,
+            sessionId: request?.sessionId,
+            messageCount: Array.isArray(request?.messages) ? request.messages.length : 0
+          });
+          socket.send(JSON.stringify(request));
+        });
+
+        socket.addEventListener('message', (message) => {
+          const parsed = parseAguiEventsFromWebSocketPayload(String(message.data || ''));
+          if (parsed.length) {
+            events.push(...parsed);
+            aguiLog('WebSocket message parsed', {
+              chunkCount: parsed.length,
+              totalCount: events.length
+            });
+          }
+          const runFinished = parsed.some((event) => {
+            const type = event.eventType || event.data?.type || '';
+            return type === 'RUN_FINISHED' || type === 'RUN_ERROR';
+          });
+          if (runFinished) {
+            clearTimeout(timeout);
+            finish(null, events);
+          }
+        });
+
+        socket.addEventListener('error', () => {
+          aguiLog('WebSocket error');
+          clearTimeout(timeout);
+          finish(new Error('AGUI WebSocket connection failed'));
+        });
+
+        socket.addEventListener('close', () => {
+          aguiLog('WebSocket closed', { totalEvents: events.length });
+          clearTimeout(timeout);
+          if (events.length) {
+            finish(null, events);
+          } else {
+            finish(new Error('AGUI WebSocket closed without events'));
+          }
+        });
+      });
+    }
+
+    function extractAssistantText(events) {
+      const parts = [];
+      for (const event of events) {
+        const type = event.eventType || event.data?.type || '';
+        if (type === 'TEXT_MESSAGE_CONTENT') {
+          parts.push(event.data?.delta ?? '');
+        }
+      }
+      return parts.join('') || '(no response)';
+    }
+
+    function parseTicketWidgetFromText(text) {
+      const start = text.indexOf('{');
+      const end = text.lastIndexOf('}');
+      if (start < 0 || end <= start) {
+        return null;
+      }
+      try {
+        const data = JSON.parse(text.slice(start, end + 1));
+        return normalizeWidgetCandidate(data);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function extractSpeechText(text) {
+      if (!text || typeof text !== 'string') {
+        return '';
+      }
+      const trimmed = text.trim();
+      if (!trimmed) {
+        return '';
+      }
+      if (!(trimmed.startsWith('{') && trimmed.endsWith('}'))) {
+        return trimmed;
+      }
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (typeof parsed.message === 'string' && parsed.message.trim()) {
+          const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
+          return summary
+            ? `${parsed.message.trim()}. ${summary}`
+            : parsed.message.trim();
+        }
+        if (typeof parsed.description === 'string' && parsed.description.trim()) {
+          return parsed.description.trim();
+        }
+        if (typeof parsed.issueDescription === 'string' && parsed.issueDescription.trim()) {
+          return parsed.issueDescription.trim();
+        }
+        if (typeof parsed.issue === 'string' && parsed.issue.trim()) {
+          return parsed.issue.trim();
+        }
+        if (typeof parsed.text === 'string' && parsed.text.trim()) {
+          return parsed.text.trim();
+        }
+      } catch (_) {
+      }
+      return trimmed;
+    }
+
+    function speakAssistantText(text) {
+      if (!browserTtsEnabled) {
+        setTtsStatus('Browser TTS disabled (Realtime voice only)', 'warn');
+        return;
+      }
+      const speechText = extractSpeechText(text);
+      if (!speechText) {
+        setTtsStatus('TTS skipped (empty)', 'warn');
+        return;
+      }
+      if (!window.speechSynthesis || typeof window.SpeechSynthesisUtterance === 'undefined') {
+        setTtsStatus('TTS unavailable in browser', 'err');
+        return;
+      }
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(speechText);
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        utterance.onstart = () => setTtsStatus('TTS speaking', 'ok');
+        utterance.onend = () => setTtsStatus('TTS done', 'ok');
+        utterance.onerror = (event) => setTtsStatus(`TTS error: ${event?.error || 'unknown'}`, 'err');
+        window.speechSynthesis.speak(utterance);
+      } catch (_) {
+        setTtsStatus('TTS blocked/error', 'err');
+      }
+    }
+
+    function scheduleFallbackSpeech(text) {
+      if (!browserTtsEnabled) {
+        setTtsStatus('Browser TTS disabled (Realtime voice only)', 'warn');
+        return;
+      }
+      clearFallbackSpeakTimer();
+      fallbackSpeakTimer = setTimeout(() => {
+        fallbackSpeakTimer = null;
+        if (!realtimeAudioSinceResponseCreate) {
+          setTtsStatus('Realtime audio missing, using TTS fallback', 'warn');
+          speakAssistantText(text);
+        } else {
+          setTtsStatus('Realtime voice active', 'ok');
+        }
+      }, 1200);
+    }
+
+    function extractTranscriptCandidate(text) {
+      if (!text || typeof text !== 'string') {
+        return '';
+      }
+      const trimmed = text.trim();
+      if (!trimmed) {
+        return '';
+      }
+      if (!(trimmed.startsWith('{') && trimmed.endsWith('}'))) {
+        return trimmed;
+      }
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (typeof parsed.transcript === 'string' && parsed.transcript.trim()) {
+          return parsed.transcript.trim();
+        }
+        if (typeof parsed.issue_description === 'string' && parsed.issue_description.trim()) {
+          return `Please open a support ticket: ${parsed.issue_description.trim()}`;
+        }
+        if (typeof parsed.issueDescription === 'string' && parsed.issueDescription.trim()) {
+          return `Please open a support ticket: ${parsed.issueDescription.trim()}`;
+        }
+        if (typeof parsed.text === 'string' && parsed.text.trim()) {
+          return parsed.text.trim();
+        }
+      } catch (_) {
+      }
+      return trimmed;
+    }
+
+    function firstNonEmptyString(values) {
+      for (const value of values) {
+        if (typeof value === 'string' && value.trim()) {
+          return value.trim();
+        }
+      }
+      return '';
+    }
+
+    function extractRelayTranscript(event) {
+      if (!event || typeof event !== 'object') {
+        return '';
+      }
+
+      const itemContents = Array.isArray(event.item?.content) ? event.item.content : [];
+      const transcriptFromItemContents = firstNonEmptyString(
+        itemContents.flatMap((entry) => {
+          if (!entry || typeof entry !== 'object') {
+            return [];
+          }
+          return [
+            entry.text,
+            entry.transcript,
+            entry.input_text,
+            entry.output_text,
+            entry?.audio?.transcript,
+            entry?.input_audio?.transcript,
+            entry?.input_audio?.transcript
+          ];
+        })
+      );
+      if (transcriptFromItemContents) {
+        return transcriptFromItemContents;
+      }
+
+      const fromKnownPaths = firstNonEmptyString([
+        event.transcript,
+        event.text,
+        event.delta,
+        event.payload?.transcript,
+        event.payload?.text,
+        event.item?.transcript,
+        event.item?.text,
+        event.item?.input_text,
+        event.item?.formatted?.transcript,
+        event.item?.formatted?.text,
+        event.item?.content?.[0]?.text,
+        event.item?.content?.[0]?.transcript,
+        event.response?.transcript,
+        event.response?.text,
+        event.response?.output_text,
+        event.response?.output?.[0]?.content?.[0]?.text,
+        event.response?.output?.[0]?.content?.[0]?.transcript
+      ]);
+      if (fromKnownPaths) {
+        return fromKnownPaths;
+      }
+
+      const queue = [event];
+      const seen = new Set();
+      while (queue.length) {
+        const current = queue.shift();
+        if (!current || typeof current !== 'object') {
+          continue;
+        }
+        if (seen.has(current)) {
+          continue;
+        }
+        seen.add(current);
+
+        for (const [key, value] of Object.entries(current)) {
+          if (typeof value === 'string') {
+            const normalizedKey = key.toLowerCase();
+            if ((normalizedKey.includes('transcript') || normalizedKey === 'text') && value.trim()) {
+              return value.trim();
+            }
+          } else if (value && typeof value === 'object') {
+            queue.push(value);
+          }
+        }
+      }
+
+      return '';
+    }
+
+    function tryAddVoiceMessage(role, content, source, widget = null, keyHint = '') {
+      const normalized = normalizeDisplayText((content || '').trim());
+      if (!normalized) {
+        return false;
+      }
+      const key = `${role}:${source}:${keyHint}:${normalized}`;
+      if (displayedVoiceMessages.has(key)) {
+        return false;
+      }
+      displayedVoiceMessages.add(key);
+      addMessage(role, normalized, widget, source);
+      return true;
+    }
+
+    function appendWebRtcTranscriptLog(direction, transcript, eventType, eventScope) {
+      if (!webRtcTranscriptLogEl || !transcript) {
+        return;
+      }
+      const timestamp = new Date().toISOString().slice(11, 23);
+      const scopeSuffix = eventScope ? ` [${eventScope}]` : '';
+      const line = `${timestamp} ${direction.toUpperCase()} ${eventType}${scopeSuffix}: ${transcript}`;
+      const lines = webRtcTranscriptLogEl.textContent
+        ? webRtcTranscriptLogEl.textContent.split('\n')
+        : [];
+      lines.push(line);
+      if (lines.length > 120) {
+        lines.splice(0, lines.length - 120);
+      }
+      webRtcTranscriptLogEl.textContent = lines.join('\n');
+      webRtcTranscriptLogEl.scrollTop = webRtcTranscriptLogEl.scrollHeight;
+    }
+
+    function clearWebRtcTranscriptLog() {
+      if (!webRtcTranscriptLogEl) {
+        return;
+      }
+      webRtcTranscriptLogEl.textContent = '';
+    }
+
+    function clearWebRtcResponsePendingTimer() {
+      if (webRtcResponsePendingTimer) {
+        clearTimeout(webRtcResponsePendingTimer);
+        webRtcResponsePendingTimer = null;
+      }
+    }
+
+    function clearWebRtcResponseRecoveryTimer() {
+      if (webRtcResponseRecoveryTimer) {
+        clearTimeout(webRtcResponseRecoveryTimer);
+        webRtcResponseRecoveryTimer = null;
+      }
+    }
+
+    function markWebRtcResponsePending() {
+      webRtcResponsePending = true;
+      clearWebRtcResponsePendingTimer();
+      webRtcResponsePendingTimer = setTimeout(() => {
+        webRtcResponsePending = false;
+        webRtcResponsePendingTimer = null;
+      }, 12000);
+    }
+
+    function clearWebRtcResponsePending() {
+      webRtcResponsePending = false;
+      clearWebRtcResponsePendingTimer();
+      clearWebRtcResponseRecoveryTimer();
+    }
+
+    function getWebRtcTranscriptScope(event) {
+      return event?.item_id || event?.response_id || event?.id || event?.type || '';
+    }
+
+    function appendWebRtcOutputTranscriptDelta(event) {
+      const rawDelta = String(event?.delta || event?.text || '');
+      const delta = normalizeDisplayText(rawDelta);
+      if (!delta) {
+        return;
+      }
+      const scope = getWebRtcTranscriptScope(event);
+      if (!scope) {
+        return;
+      }
+      const existing = webRtcOutputTranscriptDeltas.get(scope) || '';
+      webRtcOutputTranscriptDeltas.set(scope, `${existing}${delta}`);
+    }
+
+    function consumeWebRtcOutputTranscript(scope) {
+      if (!scope) {
+        return '';
+      }
+      const transcript = normalizeDisplayText(webRtcOutputTranscriptDeltas.get(scope) || '');
+      webRtcOutputTranscriptDeltas.delete(scope);
+      return transcript;
+    }
+
+    function sendWebRtcEvent(eventBody) {
+      if (!isWebRtcMode() || !webRtcDataChannel || webRtcDataChannel.readyState !== 'open') {
+        return false;
+      }
+      try {
+        webRtcDataChannel.send(JSON.stringify(eventBody));
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function reportObservedRealtimeTranscript(direction, transcript, eventType, eventScope) {
+      if (!isWebRtcMode() || !transcript) {
+        return;
+      }
+      const normalizedTranscript = normalizeDisplayText(String(transcript || '')).trim();
+      if (!normalizedTranscript) {
+        return;
+      }
+      enqueueRealtimeEvent({
+        type: 'transcript.observed',
+        direction,
+        observedEventType: eventType || '',
+        eventScope: eventScope || '',
+        transcript: normalizedTranscript,
+        text: normalizedTranscript
+      }).catch(() => {
+      });
+    }
+
+    function scheduleWebRtcResponseRecovery(transcript, eventScope) {
+      clearWebRtcResponseRecoveryTimer();
+      return;
+      if (!transcript) {
+        return;
+      }
+      webRtcResponseRecoveryTimer = setTimeout(() => {
+        if (!webRtcResponsePending) {
+          return;
+        }
+        const scopeSuffix = eventScope ? ` [${eventScope}]` : '';
+        const itemCreated = sendWebRtcEvent({
+          type: 'conversation.item.create',
+          item: {
+            type: 'message',
+            role: 'user',
+            content: [
+              { type: 'input_text', text: transcript }
+            ]
+          }
+        });
+        const responseRequested = sendWebRtcEvent({
+          type: 'response.create',
+          response: {
+            modalities: ['audio', 'text'],
+            voice: 'alloy',
+            output_audio_format: 'pcm16',
+            instructions: 'Respond in English only. Confirm ticket actions briefly and avoid changing language unless user explicitly requests it.'
+          }
+        });
+        console.info(`[WebRTC Transcript][response-recovery]${scopeSuffix} itemCreated=${itemCreated} responseRequested=${responseRequested}`);
+      }, 2200);
+    }
+
+    function requestWebRtcResponse(triggerType, eventScope) {
+      if (!isWebRtcMode()) {
+        return false;
+      }
+      return false;
+      if (webRtcResponsePending) {
+        return false;
+      }
+      realtimeAudioSinceResponseCreate = false;
+      const requestEvent = {
+        type: 'response.create',
+        response: {
+          modalities: ['audio', 'text'],
+          voice: 'alloy',
+          output_audio_format: 'pcm16',
+          instructions: 'Respond in English only. Confirm ticket actions briefly and avoid changing language unless user explicitly requests it.'
+        }
+      };
+      const sent = sendWebRtcEvent(requestEvent);
+      if (sent) {
+        markWebRtcResponsePending();
+        const scopeSuffix = eventScope ? ` [${eventScope}]` : '';
+        console.info(`[WebRTC Transcript][response-requested]${scopeSuffix} ${triggerType}`);
+        setVoiceStatus('Generating WebRTC response...');
+        return true;
+      }
+      return false;
+    }
+
+    function logWebRtcEventType(event) {
+      if (!isWebRtcMode()) {
+        return false;
+      }
+      const type = event?.type || '';
+      if (!type) {
+        return false;
+      }
+      if (
+        type.startsWith('response.')
+        || type.startsWith('conversation.item.')
+        || type.startsWith('input_audio_buffer.')
+        || type.startsWith('error')
+      ) {
+        const details = event?.error?.message || event?.message || '';
+        const suffix = details ? ` :: ${details}` : '';
+        console.info(`[WebRTC Event] ${type}${suffix}`);
+      }
+      return true;
+    }
+
+    function logWebRtcTranscript(direction, transcript, eventType, eventScope) {
+      if (!isWebRtcMode() || !transcript) {
+        return;
+      }
+      const scopeSuffix = eventScope ? ` [${eventScope}]` : '';
+      console.info(`[WebRTC Transcript][${direction}]${scopeSuffix} ${eventType}:`, transcript);
+      appendWebRtcTranscriptLog(direction, transcript, eventType, eventScope);
+    }
+
+    function normalizeDisplayText(text) {
+      if (!text || typeof text !== 'string') {
+        return '';
+      }
+      const repaired = repairLikelyUtf8Mojibake(text);
+      return repaired
+        .replaceAll('â', '’')
+        .replaceAll('â', '‘')
+        .replaceAll('â', '“')
+        .replaceAll('â', '”')
+        .replaceAll('â', '–')
+        .replaceAll('â', '—')
+        .trim();
+    }
+
+    function repairLikelyUtf8Mojibake(text) {
+      if (!text || typeof text !== 'string') {
+        return text;
+      }
+
+      const looksMojibake = /[ÃÂâã]/.test(text) || text.includes('\u0080') || text.includes('\u009d');
+      if (!looksMojibake || typeof TextDecoder === 'undefined') {
+        return text;
+      }
+
+      try {
+        const bytes = new Uint8Array(Array.from(text, (char) => char.charCodeAt(0) & 0xff));
+        const decoded = new TextDecoder('utf-8').decode(bytes);
+        if (!decoded || decoded === text) {
+          return text;
+        }
+        const originalControls = (text.match(/[\u0080-\u009f]/g) || []).length;
+        const decodedControls = (decoded.match(/[\u0080-\u009f]/g) || []).length;
+        return decodedControls <= originalControls ? decoded : text;
+      } catch (_) {
+        return text;
+      }
+    }
+
+    function isLikelyTranscriptFragment(text) {
+      if (!text || typeof text !== 'string') {
+        return true;
+      }
+      const normalized = text.trim();
+      if (!normalized) {
+        return true;
+      }
+      if (normalized.length <= 2) {
+        return true;
+      }
+      if (/^[\p{P}\p{S}\s]+$/u.test(normalized)) {
+        return true;
+      }
+      if (normalized.split(/\s+/).length === 1 && normalized.length <= 4) {
+        return true;
+      }
+      return false;
+    }
+
+    function normalizeTranscriptKey(text) {
+      return (text || '')
+        .toLowerCase()
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function extractExplicitTicketDirective(text) {
+      const normalized = normalizeDisplayText(String(text || ''));
+      if (!normalized) {
+        return '';
+      }
+
+      const parsed = parseJsonPayload(normalized);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const candidate = firstNonEmptyString([
+          parsed.issue_summary,
+          parsed.issue,
+          parsed.summary,
+          parsed.issue_details,
+          parsed.text
+        ]);
+        if (candidate && !isLikelyTranscriptFragment(candidate)) {
+          return normalizeDisplayText(candidate);
+        }
+      }
+
+      const match = normalized.match(/^please open (?:a )?support ticket\s*:\s*(.+)$/i);
+      if (!match || !match[1]) {
+        return '';
+      }
+      const directive = normalizeDisplayText(match[1]);
+      return directive && !isLikelyTranscriptFragment(directive) ? directive : '';
+    }
+
+    function parseJsonPayload(text) {
+      if (!text || typeof text !== 'string') {
+        return null;
+      }
+      const trimmed = text.trim();
+      if (!trimmed || !((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']')))) {
+        return null;
+      }
+      try {
+        return JSON.parse(trimmed);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function normalizeWidgetCandidate(widgetLike) {
+      if (!widgetLike || typeof widgetLike !== 'object') {
+        return null;
+      }
+      if (widgetLike.template === 'ticket-card' && widgetLike.data) {
+        return widgetLike;
+      }
+      const data = widgetLike.data || widgetLike.payload || widgetLike;
+      if (data && typeof data === 'object') {
+        const ticketId = firstNonEmptyString([
+          data.ticketId,
+          data.ticket_id,
+          data.caseId,
+          data.case_id,
+          data.id,
+          data.ticketNumber
+        ]);
+        const summary = firstNonEmptyString([
+          data.summary,
+          data.issueDescription,
+          data.issue_description,
+          data.description,
+          data.issue,
+          data.problem,
+          data.text
+        ]);
+        const message = firstNonEmptyString([
+          data.message,
+          data.assistantMessage,
+          data.reply
+        ]);
+        const status = firstNonEmptyString([data.status, data.state]);
+        const assignedQueue = firstNonEmptyString([
+          data.assignedQueue,
+          data.assigned_queue,
+          data.queue
+        ]);
+
+        if (!ticketId && !summary && !message && !status && !assignedQueue) {
+          return null;
+        }
+        return {
+          template: 'ticket-card',
+          data: {
+            ticketId: ticketId || '',
+            status: status || 'OPEN',
+            summary: summary || '',
+            assignedQueue: assignedQueue || 'L1-SUPPORT',
+            message: message || ''
+          }
+        };
+      }
+      return null;
+    }
+
+    function extractWidgetFromRoutedMessage(message, content) {
+      const structured =
+        normalizeWidgetCandidate(message?.widget)
+        || normalizeWidgetCandidate(message?.data)
+        || normalizeWidgetCandidate(message?.payload)
+        || normalizeWidgetCandidate(message?.metadata?.widget);
+      if (structured) {
+        return structured;
+      }
+      return parseTicketWidgetFromText(content || '');
+    }
+
+    async function routeTranscriptToRules(transcript, key, options = {}) {
+      if (!transcript || handledTranscriptKeys.has(key)) {
+        aguiLog('route skipped', {
+          reason: !transcript ? 'empty-transcript' : 'duplicate-key',
+          key
+        });
+        return null;
+      }
+      handledTranscriptKeys.add(key);
+
+      const eventScope = options.eventScope || key;
+      relayLog('routeTranscriptToRules -> transcript.final', {
+        eventScope,
+        key,
+        transcriptPreview: String(transcript).slice(0, 120)
+      });
+      const routed = await enqueueRealtimeEvent({ type: 'transcript.final', text: transcript });
+      aguiLog('route transcript.final completed', {
+        key,
+        eventScope,
+        routedToAgent: routed?.routedToAgent,
+        aguiMessages: Array.isArray(routed?.aguiMessages) ? routed.aguiMessages.length : 0,
+        assistantMessageLength: (routed?.assistantMessage || '').length
+      });
+      relayLog('routeTranscriptToRules <- transcript.final result', {
+        accepted: routed?.accepted,
+        routedToAgent: routed?.routedToAgent,
+        sessionContextUpdated: routed?.sessionContextUpdated,
+        realtimeVoiceBranchStarted: routed?.realtimeVoiceBranchStarted,
+        assistantMessageLength: (routed?.assistantMessage || '').length,
+        aguiMessages: Array.isArray(routed?.aguiMessages) ? routed.aguiMessages.length : 0
+      });
+      const aguiMessages = Array.isArray(routed?.aguiMessages) ? routed.aguiMessages : [];
+      if (aguiMessages.length) {
+        for (const message of aguiMessages) {
+          const role = (message?.role || '').toLowerCase() === 'assistant' ? 'agent' : 'user';
+          const content = (message?.content || '').trim();
+          aguiLog('route message', {
+            role,
+            source: message?.source || '',
+            contentLength: content.length,
+            hasWidgetCandidate: !!(message?.widget || message?.data || message?.payload || message?.metadata?.widget)
+          });
+          if (!content && role !== 'agent') {
+            continue;
+          }
+
+          if (role === 'user') {
+            if (content && options.echoUserTranscript !== false) {
+              tryAddVoiceMessage('user', content, message?.source || 'voice-transcript', null, eventScope);
+            }
+            continue;
+          }
+
+          const widget = extractWidgetFromRoutedMessage(message, content);
+          if (widget || content) {
+            const fallbackText = widget?.data?.message || content || 'Ticket Created';
+            const added = tryAddVoiceMessage('agent', fallbackText, message?.source || 'agent', widget || null, eventScope);
+            aguiLog('route assistant render', {
+              added,
+              hasWidget: !!widget,
+              fallbackTextPreview: normalizeDisplayText(fallbackText).slice(0, 120)
+            });
+            if (added && !isWebRtcMode()) {
+              scheduleFallbackSpeech(extractSpeechText(fallbackText));
+            }
+          }
+        }
+      } else if (routed?.assistantMessage) {
+        const widget = parseTicketWidgetFromText(routed.assistantMessage);
+        if (widget) {
+          const added = tryAddVoiceMessage('agent', routed.assistantMessage, 'agent', widget, eventScope);
+          if (added && !isWebRtcMode()) {
+            scheduleFallbackSpeech(extractSpeechText(routed.assistantMessage));
+          }
+        }
+      } else {
+        const widget =
+          normalizeWidgetCandidate(routed?.widget)
+          || normalizeWidgetCandidate(routed?.data)
+          || normalizeWidgetCandidate(routed?.payload);
+        if (widget) {
+          const fallbackText = widget?.data?.message || 'Ticket Created';
+          const added = tryAddVoiceMessage('agent', fallbackText, 'agent', widget, eventScope);
+          if (added && !isWebRtcMode()) {
+            scheduleFallbackSpeech(extractSpeechText(fallbackText));
+          }
+        }
+      }
+
+      setVoiceStatus('Voice transcript routed');
+      lastRouteToRulesAt = Date.now();
+      return routed;
+    }
+
+    async function sendPrompt(prompt) {
+      aguiLog('sendPrompt begin', {
+        transport: aguiTransportMode,
+        promptLength: (prompt || '').length,
+        sessionId
+      });
+      const request = {
+        threadId: sessionId,
+        sessionId,
+        messages: [{ role: 'user', content: prompt }]
+      };
+
+      let events = [];
+      if (aguiTransportMode === 'ws') {
+        events = await sendPromptViaWebSocket(request);
+      } else {
+        const response = await fetch('/agui/agent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(request)
+        });
+
+        const payload = await response.text();
+        events = parseSseEvents(payload);
+      }
+      const outputText = extractAssistantText(events);
+      const widget = parseTicketWidgetFromText(outputText);
+      aguiLog('sendPrompt completed', {
+        transport: aguiTransportMode,
+        eventCount: events.length,
+        outputLength: (outputText || '').length,
+        hasWidget: !!widget
+      });
+
+      if (!events.length) {
+        throw new Error('No AGUI events received');
+      }
+      return { outputText, widget };
+    }
+
+    async function postRealtimeEvent(eventBody, timeoutMs = 4000) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => {
+        try {
+          controller.abort();
+        } catch (_) {
+        }
+      }, timeoutMs);
+
+      let response;
+      try {
+        response = await fetch(`/realtime/session/${encodeURIComponent(sessionId)}/event`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(eventBody),
+          signal: controller.signal
+        });
+      } catch (error) {
+        if (error?.name === 'AbortError') {
+          throw new Error('Realtime endpoint timeout');
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      if (!response.ok) {
+        throw new Error(`Realtime endpoint error: HTTP ${response.status}`);
+      }
+      return response.json();
+    }
+
+    async function postRealtimeEventWithTimeout(eventBody, timeoutMs = 1800) {
+      const timeoutToken = Symbol('timeout');
+      try {
+        const result = await Promise.race([
+          postRealtimeEvent(eventBody, timeoutMs),
+          wait(timeoutMs).then(() => timeoutToken)
+        ]);
+        if (result === timeoutToken) {
+          return { ok: false, timedOut: true, payload: null };
+        }
+        return { ok: true, timedOut: false, payload: result };
+      } catch (_) {
+        return { ok: false, timedOut: false, payload: null };
+      }
+    }
+
+    async function postRealtimeEventBestEffort(eventBody, timeoutMs = 1800) {
+      const result = await postRealtimeEventWithTimeout(eventBody, timeoutMs);
+      return { ok: result.ok, timedOut: result.timedOut };
+    }
+
+    async function requestWebRtcToken() {
+      const response = await fetch(`/realtime/session/${encodeURIComponent(sessionId)}/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      const rawPayload = await response.text();
+      let payload = {};
+      try {
+        payload = rawPayload ? JSON.parse(rawPayload) : {};
+      } catch (_) {
+      }
+      if (!response.ok) {
+        const err = payload?.error || payload?.message || rawPayload || `HTTP ${response.status}`;
+        throw new Error(`Realtime token endpoint failed: ${err}`);
+      }
+      const token = payload?.value || payload?.client_secret?.value || '';
+      if (!token) {
+        throw new Error('Realtime token response missing ephemeral key');
+      }
+      return token;
+    }
+
+    async function requestWebRtcTokenWithRecovery() {
+      try {
+        return await requestWebRtcToken();
+      } catch (error) {
+        const message = String(error?.message || '');
+        const shouldRecover = message.includes('HTTP 400') || message.toLowerCase().includes('bad request');
+        if (!shouldRecover) {
+          throw error;
+        }
+
+        const previousSessionId = sessionId;
+        sessionId = `session-${Date.now()}`;
+        realtimeEventQueue = Promise.resolve();
+        setVoiceStatus('WebRTC token failed (400), reinitializing session...');
+        addMessage('agent', `WebRTC token 400 for ${previousSessionId}; retrying with fresh session ${sessionId}.`);
+
+        await initializeWebRtcSessionContext();
+        return requestWebRtcToken();
+      }
+    }
+
+    async function initializeWebRtcSessionContext() {
+      const existing = await initializeRealtimeSessionContext(buildVoiceSessionPatch());
+      const contextAwareConfig = buildWebRtcSessionConfig(existing?.session || null);
+      return initializeRealtimeSessionContext(contextAwareConfig);
+    }
+
+    async function initializeRealtimeSessionContext(sessionPayload) {
+      const response = await fetch(`/realtime/session/${encodeURIComponent(sessionId)}/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session: sessionPayload || buildVoiceSessionPatch() })
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        const err = payload?.error || `HTTP ${response.status}`;
+        throw new Error(`Realtime init endpoint failed: ${err}`);
+      }
+      const resolvedVoice = extractVoiceFromSession(payload?.session);
+      if (resolvedVoice) {
+        setSelectedVoice(resolvedVoice);
+      }
+      return payload;
+    }
+
+    function enqueueRealtimeEvent(eventBody) {
+      const run = () => {
+        const eventType = eventBody?.type || '';
+        if (
+          eventType === 'input_audio_buffer.append'
+          && (
+            !audioContext
+            || !captureNode
+            || !mediaStream
+            || (voiceToggleBusy && voiceToggleAction === 'stop')
+          )
+        ) {
+          relayDroppedAppendCount += 1;
+          if (relayDroppedAppendCount % 50 === 1) {
+            relayLog('drop stale input_audio_buffer.append', {
+              reason: 'capture-not-active',
+              droppedCount: relayDroppedAppendCount
+            });
+          }
+          return Promise.resolve({ accepted: false, skipped: true, reason: 'capture-not-active' });
+        }
+        let timeoutMs = 4200;
+        if (eventType === 'input_audio_buffer.append') {
+          timeoutMs = 1800;
+        } else if (eventType === 'transcript.final') {
+          timeoutMs = 20000;
+        } else if (eventType === 'response.create') {
+          timeoutMs = 10000;
+        } else if (eventType === 'session.state') {
+          timeoutMs = 6000;
+        }
+        return postRealtimeEvent(eventBody, timeoutMs);
+      };
+      const next = realtimeEventQueue.then(run, run);
+      realtimeEventQueue = next.then(() => undefined, () => undefined);
+      return next;
+    }
+
+    async function waitForRealtimeQueueDrain(timeoutMs = 1200) {
+      try {
+        await Promise.race([
+          realtimeEventQueue,
+          wait(timeoutMs)
+        ]);
+      } catch (_) {
+      }
+    }
+
+    function wait(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    function relayResponseAlreadyStarted(events) {
+      if (!Array.isArray(events) || !events.length) {
+        return false;
+      }
+      let sawResponseCreated = false;
+      let sawResponseDone = false;
+      let sawResponseOutput = false;
+      for (const evt of events) {
+        const evtType = String(evt?.type || '').toLowerCase();
+        if (!evtType.startsWith('response.')) {
+          continue;
+        }
+        if (evtType === 'response.created') {
+          sawResponseCreated = true;
+        }
+        if (evtType === 'response.done' || evtType.endsWith('.done')) {
+          sawResponseDone = true;
+        }
+        if (
+          evtType.includes('audio.delta')
+          || evtType.includes('text.delta')
+          || evtType.includes('output_text.delta')
+          || evtType.includes('audio_transcript.delta')
+          || evtType.includes('audio_transcript.done')
+          || evtType.includes('output_audio.done')
+          || evtType.includes('output_item.done')
+          || evtType.includes('content_part.done')
+        ) {
+          sawResponseOutput = true;
+        }
+      }
+      return sawResponseOutput || (sawResponseCreated && !sawResponseDone);
+    }
+
+    function toPcm16Base64(float32Array, sourceSampleRate, targetSampleRate = 24000) {
+      const ratio = sourceSampleRate / targetSampleRate;
+      const length = Math.max(1, Math.floor(float32Array.length / ratio));
+      const pcm16 = new Int16Array(length);
+      for (let i = 0; i < length; i++) {
+        const index = Math.min(float32Array.length - 1, Math.floor(i * ratio));
+        const sample = Math.max(-1, Math.min(1, float32Array[index]));
+        pcm16[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+      }
+
+      let binary = '';
+      const bytes = new Uint8Array(pcm16.buffer);
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary);
+    }
+
+    function decodePcm16Base64ToFloat32(base64Audio) {
+      const binary = atob(base64Audio);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const view = new DataView(bytes.buffer);
+      const samples = new Float32Array(bytes.byteLength / 2);
+      for (let i = 0; i < samples.length; i++) {
+        const int16 = view.getInt16(i * 2, true);
+        samples[i] = int16 / 32768;
+      }
+      return samples;
+    }
+
+    function ensurePlaybackContext() {
+      if (!playbackContext || playbackContext.state === 'closed') {
+        playbackContext = new (window.AudioContext || window.webkitAudioContext)();
+        playbackNextTime = playbackContext.currentTime;
+      }
+      if (playbackContext.state === 'suspended') {
+        playbackContext.resume();
+      }
+      return playbackContext;
+    }
+
+    function playPcm16Base64(base64Audio, sampleRate = 24000) {
+      if (!base64Audio) {
+        return;
+      }
+      const context = ensurePlaybackContext();
+      const samples = decodePcm16Base64ToFloat32(base64Audio);
+      if (!samples.length) {
+        return;
+      }
+
+      const buffer = context.createBuffer(1, samples.length, sampleRate);
+      buffer.copyToChannel(samples, 0);
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(context.destination);
+
+      const startAt = Math.max(context.currentTime, playbackNextTime);
+      source.start(startAt);
+      playbackNextTime = startAt + buffer.duration;
+    }
+
+    async function createCaptureWorkletNode(context) {
+      if (!context?.audioWorklet) {
+        throw new Error('AudioWorklet is not supported in this browser');
+      }
+      const workletSource = `
+        class PcmCaptureProcessor extends AudioWorkletProcessor {
+          process(inputs) {
+            const input = inputs?.[0]?.[0];
+            if (input && input.length) {
+              this.port.postMessage(input.slice(0));
+            }
+            return true;
+          }
+        }
+        registerProcessor('pcm-capture-processor', PcmCaptureProcessor);
+      `;
+      const blob = new Blob([workletSource], { type: 'application/javascript' });
+      const workletUrl = URL.createObjectURL(blob);
+      try {
+        await context.audioWorklet.addModule(workletUrl);
+      } finally {
+        URL.revokeObjectURL(workletUrl);
+      }
+      return new AudioWorkletNode(context, 'pcm-capture-processor');
+    }
+
+    async function handleRelayEvents(events) {
+      if (!Array.isArray(events) || !events.length) {
+        return;
+      }
+
+      for (const event of events) {
+        const normalized = (event && typeof event === 'object')
+          ? {
+              type: event.type || event.eventType || event.event || event.name || event.data?.type || '',
+              payload: (event.data && typeof event.data === 'object')
+                ? { ...event, ...event.data, _outer: event }
+                : event
+            }
+          : { type: '', payload: event };
+
+        const type = normalized.type || '';
+        const payload = normalized.payload || event;
+        if (!type) {
+          relayLog('untyped relay event ignored', event);
+          continue;
+        }
+        const lowerType = type.toLowerCase();
+        logWebRtcEventType(payload);
+        relayLog('relay event', { type, lowerType });
+
+        if (type === 'relay.error') {
+          const relayMessage = payload.message || 'unknown';
+          if (lastRelayError !== relayMessage) {
+            lastRelayError = relayMessage;
+            addMessage('agent', `Realtime relay error: ${relayMessage}`);
+          }
+          continue;
+        }
+
+        if (type === 'relay.closed') {
+          const reason = payload.reason ? ` (${payload.reason})` : '';
+          setVoiceStatus(`Voice disconnected${reason}`);
+          continue;
+        }
+
+        if (lowerType === 'error') {
+          const errorCode = String(payload?.error?.code || payload?.code || '').toLowerCase();
+          if (errorCode === 'input_audio_buffer_commit_empty') {
+            relayHasUncommittedAudio = false;
+          }
+          const errorMessage = firstNonEmptyString([
+            payload?.error?.message,
+            payload?.message,
+            payload?.error?.type,
+            payload?.error?.code,
+            payload?.code
+          ]);
+          relayLog('relay error detail', {
+            type,
+            code: payload?.error?.code || payload?.code || '',
+            eventId: payload?.event_id || payload?.error?.event_id || '',
+            message: errorMessage || 'unknown'
+          });
+        }
+
+        const transcript = extractRelayTranscript(payload);
+        const transcriptFinal = extractTranscriptCandidate(transcript);
+        const userConversationItemTranscript =
+          lowerType.includes('conversation.item.created')
+          && (payload?.item?.role || '').toLowerCase() === 'user'
+          && transcriptFinal;
+        const assistantConversationItemTranscript =
+          lowerType.includes('conversation.item.created')
+          && (payload?.item?.role || '').toLowerCase() === 'assistant'
+          && transcriptFinal
+          && (!payload?.item?.status || (payload?.item?.status || '').toLowerCase() === 'completed');
+
+        const isCompletedEvent = lowerType.endsWith('.done') || lowerType.endsWith('.completed');
+
+        const isInputTranscriptEvent =
+          (lowerType.includes('input_audio_transcription') && isCompletedEvent)
+          || lowerType.includes('transcription.completed')
+          || userConversationItemTranscript;
+
+        const looksLikeInputTranscriptEvent =
+          lowerType.includes('input_audio')
+          || lowerType.includes('transcription')
+          || lowerType.includes('conversation.item.input_audio_transcription')
+          || userConversationItemTranscript;
+
+        const isOutputTranscriptEvent =
+          (lowerType.includes('response.text') && isCompletedEvent)
+          || (lowerType.includes('response.output_text') && isCompletedEvent)
+          || (lowerType.includes('response.audio_transcript') && isCompletedEvent)
+          || (lowerType.includes('response.output_audio_transcript') && isCompletedEvent)
+          || lowerType.includes('agent.message')
+          || lowerType.endsWith('text.done')
+          || assistantConversationItemTranscript;
+
+        if (lowerType === 'response.output_audio_transcript.delta' || lowerType === 'response.audio_transcript.delta') {
+          appendWebRtcOutputTranscriptDelta(payload);
+        }
+
+        let outputTranscriptHandledFromDoneEvent = false;
+
+        if (lowerType === 'response.output_audio_transcript.done' || lowerType === 'response.audio_transcript.done') {
+          const transcriptScope = getWebRtcTranscriptScope(payload);
+          const combinedTranscript = consumeWebRtcOutputTranscript(transcriptScope);
+          const finalTranscript = transcriptFinal || combinedTranscript;
+          if (finalTranscript && !isLikelyTranscriptFragment(finalTranscript)) {
+            const outputKey = `output:${transcriptScope}:${normalizeTranscriptKey(finalTranscript)}`;
+            if (!handledTranscriptKeys.has(outputKey)) {
+              handledTranscriptKeys.add(outputKey);
+              logWebRtcTranscript('output', finalTranscript, type, transcriptScope);
+              reportObservedRealtimeTranscript('output', finalTranscript, type, transcriptScope);
+              const added = tryAddVoiceMessage('agent', finalTranscript, 'voice-output-transcript', null, transcriptScope);
+              if (added) {
+                scheduleFallbackSpeech(finalTranscript);
+              }
+            }
+
+            if (!isWebRtcMode()) {
+              relayLog('output transcript observed (no browser inference/routing)', {
+                transcriptScope,
+                transcriptPreview: normalizeDisplayText(finalTranscript).slice(0, 120)
+              });
+            }
+          }
+          outputTranscriptHandledFromDoneEvent = true;
+        }
+
+        if (lowerType.startsWith('response.')) {
+          if (lowerType === 'response.created') {
+            relayHasUncommittedAudio = false;
+          }
+          if (
+            lowerType.endsWith('.done')
+            || lowerType.endsWith('.completed')
+            || lowerType.includes('audio.delta')
+            || lowerType.includes('text.delta')
+            || lowerType.includes('output_text.delta')
+            || lowerType.includes('audio_transcript.delta')
+          ) {
+            clearWebRtcResponsePending();
+          }
+        }
+
+        if (looksLikeInputTranscriptEvent && transcriptFinal && !isLikelyTranscriptFragment(transcriptFinal)) {
+          lastRelayInputTranscript = transcriptFinal;
+        }
+
+        if (isInputTranscriptEvent && transcriptFinal && !isLikelyTranscriptFragment(transcriptFinal)) {
+          const eventScope = payload.item_id || payload.response_id || payload.id || type;
+          logWebRtcTranscript('input', transcriptFinal, type, eventScope);
+          reportObservedRealtimeTranscript('input', transcriptFinal, type, eventScope);
+          tryAddVoiceMessage('user', transcriptFinal, 'voice-transcript', null, eventScope);
+          const key = `input:${eventScope}:${normalizeTranscriptKey(transcriptFinal)}`;
+          const routed = await routeTranscriptToRules(transcriptFinal, key, { eventScope });
+
+          const shouldRequestRealtimeResponse = isWebRtcMode()
+            ? true
+            : (routed?.realtimeVoiceBranchStarted === false);
+
+          if (shouldRequestRealtimeResponse) {
+            const requested = requestWebRtcResponse(type, eventScope);
+            if (requested) {
+              scheduleWebRtcResponseRecovery(transcriptFinal, eventScope);
+            }
+          }
+          continue;
+        }
+
+        if (isOutputTranscriptEvent && transcriptFinal && !isLikelyTranscriptFragment(transcriptFinal)) {
+          if (outputTranscriptHandledFromDoneEvent) {
+            continue;
+          }
+          const eventScope = payload.item_id || payload.response_id || payload.id || '';
+          logWebRtcTranscript('output', transcriptFinal, type, eventScope);
+          reportObservedRealtimeTranscript('output', transcriptFinal, type, eventScope);
+
+          if (!isWebRtcMode()) {
+            relayLog('output text observed (no browser inference/routing)', {
+              eventScope,
+              transcriptPreview: normalizeDisplayText(transcriptFinal).slice(0, 120)
+            });
+
+            const explicitDirective = extractExplicitTicketDirective(transcriptFinal);
+            const shouldRouteDirective =
+              !!explicitDirective
+              && (Date.now() - lastRouteToRulesAt) > 2500
+              && !handledTranscriptKeys.has(`directive:${eventScope}:${normalizeTranscriptKey(explicitDirective)}`);
+            if (shouldRouteDirective) {
+              const directiveKey = `directive:${eventScope}:${normalizeTranscriptKey(explicitDirective)}`;
+              handledTranscriptKeys.add(directiveKey);
+              aguiLog('routing explicit ticket directive', {
+                eventScope,
+                directivePreview: explicitDirective.slice(0, 120)
+              });
+              await routeTranscriptToRules(explicitDirective, directiveKey, {
+                eventScope,
+                echoUserTranscript: false
+              });
+            }
+          }
+
+          const key = `output:${eventScope}:${normalizeTranscriptKey(transcriptFinal)}`;
+          if (handledTranscriptKeys.has(key)) {
+            continue;
+          }
+
+          handledTranscriptKeys.add(key);
+          const added = tryAddVoiceMessage('agent', transcriptFinal, 'voice-output-transcript', null, eventScope);
+          if (added) {
+            scheduleFallbackSpeech(transcriptFinal);
+          }
+          continue;
+        }
+
+        if (
+          type === 'response.audio.delta'
+          || type === 'response.output_audio.delta'
+          || type.endsWith('.audio.delta')
+        ) {
+          const audioDelta = payload.delta || payload.audio || '';
+          if (audioDelta) {
+            realtimeAudioSinceResponseCreate = true;
+            clearFallbackSpeakTimer();
+            setTtsStatus('Realtime voice active', 'ok');
+            playPcm16Base64(audioDelta, 24000);
+            setVoiceStatus('Voice playing response...');
+          }
+        }
+
+        if (
+          type === 'response.audio.done'
+          || type === 'response.output_audio.done'
+          || type.endsWith('.audio.done')
+        ) {
+          clearFallbackSpeakTimer();
+          setVoiceStatus(getListeningStatusText());
+        }
+      }
+    }
+
+    async function pollRealtimeState() {
+      if (realtimePollInFlight) {
+        return;
+      }
+      realtimePollInFlight = true;
+      try {
+        const state = await enqueueRealtimeEvent({ type: 'session.state' });
+        lastPollError = '';
+        const relayState = state?.relayState || null;
+        const relayEvents = relayState?.events || state?.relayEvents || [];
+        relayLog('session.state polled', {
+          connected: relayState?.connected,
+          lastError: relayState?.lastError || '',
+          eventCount: Array.isArray(relayEvents) ? relayEvents.length : 0
+        });
+        if (relayState) {
+          if (relayState.connected === false && relayState.lastError) {
+            if (lastRelayError !== relayState.lastError) {
+              lastRelayError = relayState.lastError;
+              addMessage('agent', `Realtime relay disconnected: ${relayState.lastError}`);
+            }
+            setVoiceStatus('Voice disconnected');
+          } else if (relayState.connected === true && !relayState.lastError) {
+            lastRelayError = '';
+          }
+        }
+        await handleRelayEvents(relayEvents);
+      } catch (error) {
+        const now = Date.now();
+        const message = `Realtime poll failed: ${error.message}`;
+        if (message !== lastPollError || (now - lastPollErrorAt) > 5000) {
+          addMessage('agent', message);
+          lastPollError = message;
+          lastPollErrorAt = now;
+        }
+      } finally {
+        realtimePollInFlight = false;
+      }
+    }
+
+    async function startWebRtcVoice() {
+      if (webRtcPeerConnection) {
+        return;
+      }
+      try {
+        updateInstructionDebug('Instruction seed: waiting for realtime init context...');
+        clearWebRtcResponsePending();
+        webRtcOutputTranscriptDeltas.clear();
+        handledTranscriptKeys.clear();
+        displayedVoiceMessages.clear();
+        clearFallbackSpeakTimer();
+        setVoiceStatus('Requesting WebRTC token...');
+        await initializeWebRtcSessionContext();
+        const ephemeralKey = await requestWebRtcTokenWithRecovery();
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+        const pc = new RTCPeerConnection();
+        webRtcPeerConnection = pc;
+
+        webRtcRemoteAudioEl = document.createElement('audio');
+        webRtcRemoteAudioEl.autoplay = true;
+        webRtcRemoteAudioEl.playsInline = true;
+        webRtcRemoteAudioEl.muted = false;
+        webRtcRemoteAudioEl.addEventListener('playing', () => {
+          realtimeAudioSinceResponseCreate = true;
+          clearFallbackSpeakTimer();
+          setTtsStatus('Realtime voice active', 'ok');
+          setVoiceStatus('Voice playing response...');
+        });
+        webRtcRemoteAudioEl.addEventListener('stalled', () => {
+          setTtsStatus('Realtime audio stalled', 'warn');
+        });
+        pc.ontrack = (event) => {
+          console.info('[WebRTC Event] remote audio track received');
+          webRtcRemoteAudioEl.srcObject = event.streams[0];
+          webRtcRemoteAudioEl.play().catch((error) => {
+            console.info(`[WebRTC Event] remote audio play blocked :: ${error?.message || error}`);
+          });
+        };
+
+        for (const track of mediaStream.getTracks()) {
+          pc.addTrack(track, mediaStream);
+        }
+
+        const dc = pc.createDataChannel('oai-events');
+        webRtcDataChannel = dc;
+        dc.addEventListener('open', () => {
+          console.info('[WebRTC Event] datachannel.open');
+          sendWebRtcEvent({
+            type: 'session.update',
+            session: buildWebRtcSessionConfig(null)
+          });
+          setVoiceStatus(`Voice listening (WebRTC direct, ${getVadPauseDescription()})...`);
+        });
+        dc.addEventListener('close', () => {
+          console.info('[WebRTC Event] datachannel.close');
+        });
+        dc.addEventListener('error', (event) => {
+          const message = event?.message || event?.error?.message || 'unknown';
+          console.info(`[WebRTC Event] datachannel.error :: ${message}`);
+        });
+        dc.addEventListener('message', async (e) => {
+          try {
+            const event = JSON.parse(e.data);
+            await handleRelayEvents([event]);
+          } catch (_) {
+          }
+        });
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        const sdpResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
+          method: 'POST',
+          body: offer.sdp,
+          headers: {
+            Authorization: `Bearer ${ephemeralKey}`,
+            'Content-Type': 'application/sdp'
+          }
+        });
+        if (!sdpResponse.ok) {
+          throw new Error(`Realtime SDP exchange failed: HTTP ${sdpResponse.status}`);
+        }
+
+        const answerSdp = await sdpResponse.text();
+        await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+        voiceActive = true;
+        updateVoiceToggleButton();
+      } catch (error) {
+        setVoiceStatus(`WebRTC start failed: ${error.message}`);
+        await stopWebRtcVoice(true);
+      }
+    }
+
+    async function stopWebRtcVoice(skipCloseEvent = false) {
+      try {
+        clearWebRtcResponsePending();
+        webRtcOutputTranscriptDeltas.clear();
+        if (webRtcDataChannel) {
+          try {
+            webRtcDataChannel.close();
+          } catch (_) {
+          }
+          webRtcDataChannel = null;
+        }
+
+        if (webRtcPeerConnection) {
+          try {
+            webRtcPeerConnection.close();
+          } catch (_) {
+          }
+          webRtcPeerConnection = null;
+        }
+
+        if (webRtcRemoteAudioEl) {
+          webRtcRemoteAudioEl.srcObject = null;
+          webRtcRemoteAudioEl = null;
+        }
+
+        if (mediaStream) {
+          mediaStream.getTracks().forEach(track => track.stop());
+          mediaStream = null;
+        }
+
+        if (!skipCloseEvent) {
+          try {
+            await enqueueRealtimeEvent({ type: 'session.close' });
+          } catch (_) {
+          }
+        }
+      } finally {
+        voiceActive = false;
+        updateVoiceToggleButton();
+        setVoiceStatus('Voice idle');
+      }
+    }
+
+    async function startVoice() {
+      if (isWebRtcMode()) {
+        await startWebRtcVoice();
+        return;
+      }
+      if (captureNode || audioContext) {
+        return;
+      }
+      try {
+        relayStopInProgress = false;
+        clearRelayPendingAudio();
+        relayDroppedAppendCount = 0;
+        relayHasUncommittedAudio = false;
+        lastRelayInputTranscript = '';
+        relayLog('startVoice begin', { sessionId, duplexMode, vadPauseProfile, selectedVoice });
+        handledTranscriptKeys.clear();
+        displayedVoiceMessages.clear();
+        realtimeAudioSinceResponseCreate = false;
+        clearFallbackSpeakTimer();
+        setVoiceStatus('Connecting realtime session...');
+        await initializeRealtimeSessionContext(buildVoiceSessionPatch());
+        relayLog('session init complete');
+        await enqueueRealtimeEvent({
+          type: 'session.start',
+          session: buildRealtimeSessionConfig()
+        });
+        relayLog('session.start sent');
+        await enqueueRealtimeEvent({
+          type: 'session.update',
+          session: buildRealtimeSessionConfig()
+        });
+        relayLog('session.update sent (post-start)');
+
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        sourceNode = audioContext.createMediaStreamSource(mediaStream);
+        captureNode = await createCaptureWorkletNode(audioContext);
+        captureNode.port.onmessage = async (messageEvent) => {
+          if (relayStopInProgress) {
+            return;
+          }
+          if (!audioContext || !captureNode) {
+            return;
+          }
+          const input = messageEvent.data;
+          if (!input?.length) {
+            return;
+          }
+          relayPendingAudioChunks.push(new Float32Array(input));
+          try {
+            await flushRelayPendingAudio(audioContext.sampleRate, false);
+            if (isFullDuplexMode()) {
+              audioFramesSinceCommit += 1;
+            }
+          } catch (error) {
+            setVoiceStatus(`Voice stream error: ${error.message}`);
+            relayLog('relay capture flush failed', { error: error.message });
+          }
+        };
+
+        sourceNode.connect(captureNode);
+        captureNode.connect(audioContext.destination);
+
+        pollTimer = setInterval(() => {
+          pollRealtimeState();
+        }, 500);
+        audioFramesSinceCommit = 0;
+        startFullDuplexTurnTimer();
+        voiceActive = true;
+        updateVoiceToggleButton();
+        setVoiceStatus(getListeningStatusText());
+        relayLog('startVoice ready/listening');
+      } catch (error) {
+        setVoiceStatus(`Voice start failed: ${error.message}`);
+        relayLog('startVoice failed', { error: error.message });
+        await stopVoice(true);
+      }
+    }
+
+    async function stopVoice(skipCloseEvent = false) {
+      if (isWebRtcMode()) {
+        await stopWebRtcVoice(skipCloseEvent);
+        return;
+      }
+      relayStopInProgress = true;
+      let closeTimedOut = false;
+      let finalizeCommitAccepted = null;
+      let finalizeResponseAccepted = null;
+      let observedFinalizeResponse = false;
+      const routeMarkerAtStart = lastRouteToRulesAt;
+      try {
+        relayLog('stopVoice begin', { skipCloseEvent, routeMarkerAtStart });
+        clearFullDuplexTurnTimer();
+
+        if (captureNode) {
+          captureNode.disconnect();
+          captureNode.port.onmessage = null;
+          captureNode = null;
+        }
+        if (sourceNode) {
+          sourceNode.disconnect();
+          sourceNode = null;
+        }
+        if (mediaStream) {
+          mediaStream.getTracks().forEach(track => track.stop());
+          mediaStream = null;
+        }
+        if (audioContext) {
+          await audioContext.close();
+          audioContext = null;
+        }
+
+        if (!skipCloseEvent) {
+          const shouldFinalizeTurn = !isFullDuplexMode() || (audioFramesSinceCommit > 0 && !realtimeAudioSinceResponseCreate);
+          relayLog('stopVoice finalize decision', {
+            shouldFinalizeTurn,
+            isFullDuplex: isFullDuplexMode(),
+            audioFramesSinceCommit,
+            realtimeAudioSinceResponseCreate
+          });
+          if (shouldFinalizeTurn) {
+            setVoiceStatus('Finalizing voice turn...');
+            await flushRelayPendingAudio(24000, true);
+            await waitForRealtimeQueueDrain(1400);
+            let routedDuringFinalize = false;
+            let responseAlreadyStarted = false;
+            for (let attempt = 0; attempt < 3; attempt++) {
+              let preStateResult = null;
+              try {
+                preStateResult = await postRealtimeEventWithTimeout({ type: 'session.state' }, 1600);
+              } catch (_) {
+              }
+              const preState = preStateResult?.payload || null;
+              const preRelayEvents = preState?.relayState?.events || preState?.relayEvents || [];
+              if (relayResponseAlreadyStarted(preRelayEvents)) {
+                responseAlreadyStarted = true;
+              }
+              await handleRelayEvents(preRelayEvents);
+              routedDuringFinalize = lastRouteToRulesAt > routeMarkerAtStart;
+              if (routedDuringFinalize || responseAlreadyStarted) {
+                break;
+              }
+              await wait(180);
+            }
+
+            const hasAudioToCommit = relayHasUncommittedAudio || relayPendingAudioChunks.length > 0;
+            let commitAccepted = false;
+            if (hasAudioToCommit && !responseAlreadyStarted) {
+              try {
+                const commitResult = await postRealtimeEventWithTimeout({ type: 'input_audio_buffer.commit' }, 1800);
+                commitAccepted = !!commitResult?.ok && (commitResult?.payload?.accepted !== false);
+                relayLog('input_audio_buffer.commit result', {
+                  ok: commitResult?.ok,
+                  timedOut: commitResult?.timedOut,
+                  accepted: commitResult?.payload?.accepted,
+                  connected: commitResult?.payload?.connected
+                });
+                if (commitAccepted) {
+                  relayHasUncommittedAudio = false;
+                }
+              } catch (_) {
+                relayLog('input_audio_buffer.commit threw');
+              }
+            } else {
+              relayLog('input_audio_buffer.commit skipped', {
+                reason: responseAlreadyStarted ? 'response-already-started' : 'no-uncommitted-audio',
+                hasAudioToCommit,
+                responseAlreadyStarted
+              });
+            }
+            finalizeCommitAccepted = commitAccepted;
+            if (commitAccepted || responseAlreadyStarted) {
+              realtimeAudioSinceResponseCreate = false;
+
+              if (!routedDuringFinalize) {
+                const preFinalizeTranscript = normalizeDisplayText(String(lastRelayInputTranscript || '')).trim();
+                if (preFinalizeTranscript && !isLikelyTranscriptFragment(preFinalizeTranscript)) {
+                  const preFinalizeKey = `input:stop-prefinal:${normalizeTranscriptKey(preFinalizeTranscript)}`;
+                  await routeTranscriptToRules(preFinalizeTranscript, preFinalizeKey, { eventScope: 'stop-prefinal' });
+                  routedDuringFinalize = lastRouteToRulesAt > routeMarkerAtStart;
+                  relayLog('stop finalize prefallback routed', {
+                    preFinalizeKey,
+                    transcriptPreview: preFinalizeTranscript.slice(0, 120)
+                  });
+                }
+              }
+
+              let responseAccepted = false;
+              if (!routedDuringFinalize && !responseAlreadyStarted) {
+                try {
+                  const responseResult = await postRealtimeEventWithTimeout({
+                    type: 'response.create',
+                    response: {
+                      modalities: ['audio', 'text'],
+                      instructions: 'Respond in English only. Keep responses concise and do not switch languages unless the user explicitly asks for another language.'
+                    }
+                  }, 2200);
+                  responseAccepted = !!responseResult?.ok && (responseResult?.payload?.accepted !== false);
+                  relayLog('response.create result', {
+                    ok: responseResult?.ok,
+                    timedOut: responseResult?.timedOut,
+                    accepted: responseResult?.payload?.accepted,
+                    connected: responseResult?.payload?.connected
+                  });
+                } catch (_) {
+                  relayLog('response.create threw');
+                }
+              } else if (responseAlreadyStarted) {
+                relayLog('response.create skipped (response already started)');
+              }
+              finalizeResponseAccepted = responseAccepted || routedDuringFinalize || responseAlreadyStarted;
+              if (responseAccepted || routedDuringFinalize || responseAlreadyStarted) {
+                setVoiceStatus('Waiting for assistant response...');
+                let sawResponseCreated = responseAlreadyStarted;
+                let sawResponseTerminalAfterCreated = false;
+                for (let attempt = 0; attempt < 16; attempt++) {
+                  let stateResult = null;
+                  try {
+                    stateResult = await postRealtimeEventWithTimeout({ type: 'session.state' }, 5000);
+                  } catch (_) {
+                  }
+                  const state = stateResult?.payload || null;
+                  const relayState = state?.relayState || null;
+                  const relayEvents = relayState?.events || state?.relayEvents || [];
+                  if (relayState?.connected === false && relayState?.lastError) {
+                    if (lastRelayError !== relayState.lastError) {
+                      lastRelayError = relayState.lastError;
+                      addMessage('agent', `Realtime relay disconnected: ${relayState.lastError}`);
+                    }
+                    setVoiceStatus('Voice disconnected');
+                  }
+                  if (Array.isArray(relayEvents)) {
+                    for (const relayEvent of relayEvents) {
+                      const lowerType = (relayEvent?.type || '').toLowerCase();
+                      if (!lowerType) {
+                        continue;
+                      }
+                      if (lowerType === 'response.created') {
+                        sawResponseCreated = true;
+                      }
+                      if (sawResponseCreated && (
+                        lowerType === 'response.done'
+                        || lowerType === 'response.audio.done'
+                        || lowerType === 'response.output_audio.done'
+                        || lowerType === 'response.audio_transcript.done'
+                        || lowerType === 'response.output_audio_transcript.done'
+                        || lowerType === 'response.output_item.done'
+                        || lowerType === 'response.content_part.done'
+                      )) {
+                        sawResponseTerminalAfterCreated = true;
+                      }
+                    }
+                  }
+                  await handleRelayEvents(relayEvents);
+
+                  const responseCompleted = sawResponseCreated
+                    && sawResponseTerminalAfterCreated;
+
+                  if (responseCompleted || lastRouteToRulesAt > routeMarkerAtStart) {
+                    observedFinalizeResponse = true;
+                    break;
+                  }
+                  await wait(260);
+                }
+
+                routedDuringFinalize = lastRouteToRulesAt > routeMarkerAtStart;
+                const fallbackTranscript = normalizeDisplayText(String(lastRelayInputTranscript || '')).trim();
+                if (!routedDuringFinalize && fallbackTranscript && !isLikelyTranscriptFragment(fallbackTranscript)) {
+                  const fallbackKey = `input:stop-fallback:${normalizeTranscriptKey(fallbackTranscript)}`;
+                  await routeTranscriptToRules(fallbackTranscript, fallbackKey, { eventScope: 'stop-fallback' });
+                  addMessage('agent', 'Relay half-duplex fallback: routed transcript to AGUI on stop finalize.');
+                  relayLog('stop finalize fallback routed', { fallbackKey, transcriptPreview: fallbackTranscript.slice(0, 120) });
+                } else if (!routedDuringFinalize && !fallbackTranscript) {
+                  aguiLog('route not triggered (missing input transcript event)', {
+                    phase: 'stop-finalize',
+                    routeMarkerAtStart,
+                    responseAlreadyStarted
+                  });
+                }
+              }
+            } else {
+              finalizeResponseAccepted = false;
+            }
+
+            addMessage(
+              'agent',
+              `Relay half-duplex finalize: commitAccepted=${String(!!finalizeCommitAccepted)}, responseAccepted=${String(!!finalizeResponseAccepted)}`
+            );
+          }
+
+          const closeResult = await postRealtimeEventBestEffort({ type: 'session.close' });
+          closeTimedOut = !!closeResult?.timedOut;
+          relayLog('session.close result', closeResult);
+          if (!observedFinalizeResponse && !closeTimedOut) {
+            relayLog('stop finalize completed without observed response events');
+          }
+          if (closeTimedOut) {
+            setVoiceStatus('Voice stopped locally; server close pending...');
+            addMessage('agent', 'Voice stop completed locally, but backend session close is still pending.');
+          }
+        }
+      } finally {
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+        clearFallbackSpeakTimer();
+        clearFullDuplexTurnTimer();
+        voiceActive = false;
+        relayStopInProgress = false;
+        updateVoiceToggleButton();
+        setVoiceStatus(closeTimedOut ? 'Voice idle (server close pending)' : 'Voice idle');
+        relayLog('stopVoice complete', {
+          closeTimedOut,
+          finalizeCommitAccepted,
+          finalizeResponseAccepted
+        });
+      }
+    }
+
+    formEl.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const prompt = promptEl.value.trim();
+      if (!prompt) {
+        return;
+      }
+      addMessage('user', prompt);
+      promptEl.value = '';
+
+      try {
+        const result = await sendPrompt(prompt);
+        addMessage('agent', result.outputText || '(no response)', result.widget || null);
+      } catch (error) {
+        addMessage('agent', `Error: ${error.message}`);
+      }
+    });
+
+    voiceToggleEl?.addEventListener('click', async () => {
+      if (voiceToggleBusy) {
+        return;
+      }
+      if (!voiceActive) {
+        setVoiceToggleBusy(true, 'start');
+        try {
+          if (window.speechSynthesis) {
+            try {
+              window.speechSynthesis.resume();
+              setTtsStatus('TTS ready', 'ok');
+            } catch (_) {
+              setTtsStatus('TTS resume failed', 'warn');
+            }
+          } else {
+            setTtsStatus('TTS unavailable in browser', 'err');
+          }
+          await startVoice();
+        } finally {
+          setVoiceToggleBusy(false, 'start');
+        }
+      } else {
+        setVoiceToggleBusy(true, 'stop');
+        try {
+          await stopVoice(false);
+        } finally {
+          setVoiceToggleBusy(false, 'stop');
+        }
+      }
+    });
+
+    webRtcTranscriptClearEl?.addEventListener('click', () => {
+      clearWebRtcTranscriptLog();
+    });
+
+    duplexModeEl?.addEventListener('change', () => {
+      duplexMode = (duplexModeEl.value || 'half').toLowerCase();
+      if (!captureNode && !audioContext) {
+        setVoiceStatus(isFullDuplexMode() ? 'Voice idle (full duplex)' : 'Voice idle');
+      }
+    });
+
+    transportModeEl?.addEventListener('change', () => {
+      transportMode = (transportModeEl.value || 'relay').toLowerCase();
+      if (transportMode === 'webrtc') {
+        duplexModeEl.disabled = true;
+      } else {
+        duplexModeEl.disabled = false;
+      }
+      syncInstructionDebugVisibility();
+      openInstructionDebugForWebRtc();
+      refreshInstructionDebugHint();
+      if (!captureNode && !audioContext && !webRtcPeerConnection) {
+        setVoiceStatus(transportMode === 'webrtc' ? 'Voice idle (WebRTC direct)' : 'Voice idle');
+      }
+    });
+
+    vadPauseEl?.addEventListener('change', () => {
+      vadPauseProfile = (vadPauseEl.value || 'normal').toLowerCase();
+      updateVadPauseLabel();
+      if (captureNode || audioContext) {
+        setVoiceStatus(getListeningStatusText());
+      } else if (webRtcPeerConnection && webRtcDataChannel?.readyState === 'open') {
+        setVoiceStatus(`Voice listening (WebRTC direct, ${getVadPauseDescription()})...`);
+      }
+    });
+
+    voiceSettingEl?.addEventListener('change', async () => {
+      setSelectedVoice(voiceSettingEl.value || 'alloy');
+      try {
+        await initializeRealtimeSessionContext(buildVoiceSessionPatch());
+        if (voiceActive) {
+          if (isWebRtcMode() && webRtcDataChannel?.readyState === 'open') {
+            sendWebRtcEvent({
+              type: 'session.update',
+              session: {
+                audio: {
+                  output: {
+                    voice: getSelectedVoice()
+                  }
+                }
+              }
+            });
+          } else {
+            await enqueueRealtimeEvent({
+              type: 'session.update',
+              session: {
+                voice: getSelectedVoice()
+              }
+            });
+          }
+        }
+        setVoiceStatus(`Voice profile saved: ${getSelectedVoice()}`);
+      } catch (error) {
+        setVoiceStatus(`Voice profile save failed: ${error.message}`);
+      }
+    });
+
+      aguiTransportModeEl?.addEventListener('change', () => {
+        aguiTransportMode = (aguiTransportModeEl.value || 'post').toLowerCase();
+      });
+
+    initializeRealtimeSessionContext(buildVoiceSessionPatch()).catch(() => {
+    });
+
+    syncInstructionDebugVisibility();
+    openInstructionDebugForWebRtc();
+    refreshInstructionDebugHint();
+    updateVadPauseLabel();
+    updateVoiceToggleButton();
+
+    if (window.speechSynthesis && typeof window.SpeechSynthesisUtterance !== 'undefined') {
+      setTtsStatus(browserTtsEnabled ? 'TTS ready' : 'Browser TTS disabled (Realtime voice only)', browserTtsEnabled ? 'ok' : 'warn');
+    } else {
+      setTtsStatus('TTS unavailable in browser', 'err');
+    }
+  </script>
+</body>
+</html>

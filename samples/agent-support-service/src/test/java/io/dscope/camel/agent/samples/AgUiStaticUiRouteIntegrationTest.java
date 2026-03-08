@@ -33,11 +33,11 @@ class AgUiStaticUiRouteIntegrationTest {
 
             HttpResult ui = get(port, "/agui/ui");
             Assertions.assertEquals(200, ui.statusCode());
-            Assertions.assertTrue(ui.body().contains("<title>Support Copilot (AGUI Sample)</title>"));
+            Assertions.assertTrue(ui.body().contains("<title>Multi-Agent Copilot (Relay Primary)</title>"));
 
             HttpResult staticIndex = get(port, "/agui/ui/index.html");
             Assertions.assertEquals(200, staticIndex.statusCode());
-            Assertions.assertTrue(staticIndex.body().contains("<title>Support Copilot (AGUI Sample)</title>"));
+            Assertions.assertTrue(staticIndex.body().contains("<title>Multi-Agent Copilot (Relay Primary)</title>"));
         } finally {
             try {
                 main.stop();

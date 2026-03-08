@@ -2,21 +2,62 @@
 
 ## Runtime
 
-1. `agent.md` is loaded by `MarkdownBlueprintLoader`.
-2. Tool declarations are converted to `ToolSpec` and registered in `DefaultToolRegistry`.
-3. `DefaultAgentKernel` handles message loop:
+1. Runtime resolves a concrete plan selection for the exchange:
+   - explicit request `planName` / `planVersion`
+   - else sticky `conversation.plan.selected`
+   - else catalog defaults from `agent.agents-config`
+   - legacy fallback: `agent.blueprint`
+2. The resolved plan version blueprint (`agent.md`) is loaded by `MarkdownBlueprintLoader`.
+3. Tool declarations are converted to `ToolSpec` and registered in `DefaultToolRegistry`.
+4. `DefaultAgentKernel` handles message loop:
    - append `user.message`
    - invoke model client
    - enforce tool allow-list
    - validate input/output schema
    - execute tool route through Camel
    - append `assistant.message` and `snapshot.written`
-4. Events are persisted via `PersistenceFacade` implementation.
+5. Events are persisted via `PersistenceFacade` implementation.
+
+Plan-aware runtime behavior:
+
+- kernels are cached by resolved `{planName, planVersion, blueprintUri}`
+- first successful resolution appends `conversation.plan.selected`
+- later explicit overrides append a new `conversation.plan.selected`
+- audit and runtime refresh derive active blueprint from persisted plan-selection events instead of assuming one global blueprint
 
 Runtime bootstrap also binds mutable operational controls and optional archive services:
 
 - `RuntimeControlState` for live audit granularity updates
 - `ConversationArchiveService` for optional transcript-focused persistence (`conversation.*`)
+- optional `AsyncEventPersistenceFacade` wrapper when `agent.audit.async.enabled=true`
+
+## Plan Catalog
+
+Catalog source:
+
+- `agent.agents-config`
+
+Catalog model:
+
+- multiple named plans
+- multiple versions per plan
+- exactly one default plan
+- exactly one default version per plan
+
+Each version points to a concrete markdown blueprint location. The blueprint remains the unit that defines:
+
+- system prompt
+- tools
+- AGUI pre-run behavior
+- realtime defaults
+
+Internal request headers:
+
+- `agent.planName`
+- `agent.planVersion`
+- `agent.resolvedPlanName`
+- `agent.resolvedPlanVersion`
+- `agent.resolvedBlueprint`
 
 ## Persistence Mapping
 
@@ -25,6 +66,31 @@ Runtime bootstrap also binds mutable operational controls and optional archive s
 - `agent.dynamicRoute` => dynamic route metadata snapshots
 
 `camel-agent-persistence-dscope` maps these flows to `FlowStateStore` operations.
+
+## Non-Blocking Audit Path
+
+Runtime can move audit writes off the request thread:
+
+- config flag: `agent.audit.async.enabled=true`
+- wrapper: `AsyncEventPersistenceFacade`
+- applied to:
+  - primary audit/event persistence facade
+  - optional conversation archive persistence facade
+
+Async facade behavior:
+
+- `appendEvent(...)` enqueues events into a bounded in-memory queue
+- a dedicated background worker flushes events to the delegate persistence facade
+- retries use fixed backoff (`agent.audit.async.retry-delay-ms`)
+- shutdown waits up to `agent.audit.async.shutdown-timeout-ms`
+- periodic metrics logs report enqueue/persist/drop/retry counters
+
+Read-path behavior:
+
+- `loadConversation(...)` merges queued-but-not-yet-flushed events with persisted history
+- `listConversationIds(...)` merges pending conversation ids with persisted ids
+
+This keeps audit projections and conversation views coherent while making audit/archive persistence non-blocking for normal request flows.
 
 ## Phase-2 Orchestration Behavior
 
@@ -72,6 +138,13 @@ Correlation between agent conversations and transport identifiers is handled in 
 
 Debug audit trail includes available correlation metadata in payload (`payload._correlation`).
 
+Plan-aware request behavior:
+
+- `POST /agui/agent` accepts top-level `planName` / `planVersion`
+- `POST /realtime/session/{conversationId}/init` accepts top-level `planName` / `planVersion`
+- `POST /realtime/session/{conversationId}/event` accepts top-level `planName` / `planVersion`
+- AGUI and realtime processors forward these as Camel headers to `agent:`
+
 ## Conversation Archive Persistence (Separate from Audit Trail)
 
 Conversation archive persistence is an optional, transcript-focused stream designed for replay/UX use cases.
@@ -112,6 +185,31 @@ Design intent:
 - collapsible `Instruction seed (debug)` panel shows the currently seeded WebRTC instruction context
 - instruction debug panel auto-opens when transport switches to WebRTC and on initial load when transport is already WebRTC
 
+### Canonical WebRTC Flow (Source of Truth)
+
+- Define WebRTC flow from `samples/agent-support-service/src/main/resources/frontend/webrtc-test.html`.
+- Do not use `index.html` to define WebRTC flow defaults.
+- Default control contract from `webrtc-test.html`:
+  - `#transport-mode` is disabled and fixed to `webrtc` (`Browser WebRTC (direct)`)
+  - `#agui-transport-mode=post` (`POST + SSE`)
+  - `#duplex-mode=half`
+  - `#vad-pause=normal` (1200ms)
+  - `#voice-setting=alloy`
+  - `Instruction seed (debug)` panel remains available and auto-opens in WebRTC mode
+  - `WebRTC transcript log` panel + clear action remains available for diagnostics
+
+WebRTC flow contract:
+
+1. Browser requests ephemeral token via `/realtime/session/{conversationId}/token`.
+2. Browser starts direct WebRTC session with OpenAI Realtime.
+3. Browser posts transcript events to Camel realtime endpoint for routing and context merge.
+4. Backend (`RealtimeEventProcessor`) routes transcript to agent tools/routes and returns branch flags/assistant payloads.
+5. Browser renders transcript + assistant output in the WebRTC UI path.
+
+Separation rule:
+
+- Relay-specific finalize/commit orchestration must not be used as the WebRTC baseline flow definition.
+
 ### Pre-Conversation Realtime Context Seed
 
 Before first user transcript turn, `POST /realtime/session/{conversationId}/init` seeds profile context from blueprint metadata/system text into session state:
@@ -120,10 +218,29 @@ Before first user transcript turn, `POST /realtime/session/{conversationId}/init
 - `metadata.camelAgent.agentProfile.version`
 - `metadata.camelAgent.agentProfile.purpose`
 - `metadata.camelAgent.agentProfile.tools[]`
+- `metadata.camelAgent.plan.name`
+- `metadata.camelAgent.plan.version`
+- `metadata.camelAgent.plan.blueprint`
 - `metadata.camelAgent.context.agentPurpose`
 - `metadata.camelAgent.context.agentFocusHint`
 
 This seed is consumed by WebRTC instruction construction so first-turn responses are aligned with agent purpose/tool scope before transcript history exists.
+
+## Audit Projection
+
+Audit stores raw events (`user.message`, `tool.*`, `realtime.*`, `conversation.plan.selected`, `agent.definition.refreshed`) and projects conversation state on read.
+
+Conversation-level audit metadata now includes:
+
+- `agentName`
+- `agentVersion`
+- `planName`
+- `planVersion`
+- `blueprintUri`
+
+Per-step audit projections also include the same resolved agent block so operators can see which plan/version produced each message or tool step.
+
+When async audit is enabled, these projections include both persisted and still-queued events because the read path merges pending async entries before rendering audit responses.
 
 ### Event Flow Scenarios
 

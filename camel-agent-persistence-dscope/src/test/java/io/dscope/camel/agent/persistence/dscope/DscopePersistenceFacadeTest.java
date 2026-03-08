@@ -43,7 +43,7 @@ class DscopePersistenceFacadeTest {
     void shouldNotWriteAuditWhenGranularityIsNone() {
         TestFlowStateStore store = new TestFlowStateStore();
         DscopePersistenceFacade facade = new DscopePersistenceFacade(store, new ObjectMapper(), AuditGranularity.NONE);
-        AgentEvent event = new AgentEvent("c-none", null, "assistant.message",
+        AgentEvent event = new AgentEvent("c-none", null, "agent.message",
             new ObjectMapper().createObjectNode().put("text", "hello"), Instant.now());
 
         facade.appendEvent(event, "k-none");
@@ -55,7 +55,7 @@ class DscopePersistenceFacadeTest {
     void shouldWriteDebugWithPayloadAndMetadata() {
         TestFlowStateStore store = new TestFlowStateStore();
         DscopePersistenceFacade facade = new DscopePersistenceFacade(store, new ObjectMapper(), AuditGranularity.DEBUG);
-        AgentEvent event = new AgentEvent("c-debug", "t1", "assistant.message",
+        AgentEvent event = new AgentEvent("c-debug", "t1", "agent.message",
             new ObjectMapper().createObjectNode().put("text", "hello"), Instant.now());
 
         facade.appendEvent(event, "k-debug");
@@ -182,7 +182,7 @@ class DscopePersistenceFacadeTest {
         CorrelationRegistry.global().bind("conv-corr", CorrelationKeys.AGUI_RUN_ID, "run-456");
         CorrelationRegistry.global().bind("conv-corr", CorrelationKeys.AGUI_THREAD_ID, "thread-789");
 
-        AgentEvent event = new AgentEvent("conv-corr", null, "assistant.message",
+        AgentEvent event = new AgentEvent("conv-corr", null, "agent.message",
             mapper.createObjectNode().put("text", "hello"), Instant.now());
         facade.appendEvent(event, "k-corr");
 
@@ -203,7 +203,7 @@ class DscopePersistenceFacadeTest {
         TestFlowStateStore auditStore = new TestFlowStateStore();
         DscopePersistenceFacade facade = new DscopePersistenceFacade(primaryStore, auditStore, new ObjectMapper(), AuditGranularity.DEBUG);
 
-        AgentEvent event = new AgentEvent("conv-audit-dedicated", null, "assistant.message",
+        AgentEvent event = new AgentEvent("conv-audit-dedicated", null, "agent.message",
             new ObjectMapper().createObjectNode().put("text", "hello"), Instant.now());
         facade.appendEvent(event, "k-audit");
 
@@ -214,7 +214,22 @@ class DscopePersistenceFacadeTest {
         Assertions.assertTrue(facade.loadTask("task-audit-dedicated").isPresent());
     }
 
-    private static final class TestFlowStateStore implements FlowStateStore {
+    @Test
+    void shouldListConversationIdsWhenIndexEnvelopeVersionLagsBehindEvents() {
+        LaggingIndexRehydrateStore store = new LaggingIndexRehydrateStore();
+        DscopePersistenceFacade facade = new DscopePersistenceFacade(store, new ObjectMapper(), AuditGranularity.DEBUG);
+
+        facade.appendEvent(new AgentEvent("conv-1", null, "agent.message",
+            new ObjectMapper().createObjectNode().put("text", "one"), Instant.now()), "k-1");
+        facade.appendEvent(new AgentEvent("conv-2", null, "agent.message",
+            new ObjectMapper().createObjectNode().put("text", "two"), Instant.now()), "k-2");
+
+        List<String> ids = facade.listConversationIds(10);
+
+        Assertions.assertEquals(List.of("conv-2", "conv-1"), ids);
+    }
+
+    private static class TestFlowStateStore implements FlowStateStore {
         private final Map<String, List<PersistedEvent>> events = new HashMap<>();
         private final Map<String, com.fasterxml.jackson.databind.JsonNode> snapshots = new HashMap<>();
         private final Map<String, Long> snapshotVersions = new HashMap<>();
@@ -257,6 +272,17 @@ class DscopePersistenceFacadeTest {
 
         List<PersistedEvent> eventsFor(String flowType, String flowId) {
             return events.getOrDefault(flowType + ":" + flowId, List.of());
+        }
+    }
+
+    private static final class LaggingIndexRehydrateStore extends TestFlowStateStore {
+        @Override
+        public RehydratedState rehydrate(String flowType, String flowId) {
+            if (DscopePersistenceFacade.FLOW_CONVERSATION_INDEX.equals(flowType) && "_all".equals(flowId)) {
+                StateEnvelope envelope = new StateEnvelope(flowType, flowId, 0L, 0L, null, Instant.now().toString(), Map.of());
+                return new RehydratedState(envelope, eventsFor(flowType, flowId));
+            }
+            return super.rehydrate(flowType, flowId);
         }
     }
 }

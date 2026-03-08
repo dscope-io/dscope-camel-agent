@@ -1,0 +1,73 @@
++ set -euo pipefail
++++ dirname ./run-sample-classes.sh
+++ cd .
+++ pwd
++ SCRIPT_DIR=/Users/roman/Projects/DScope/CamelAIAgentComponent/samples/agent-support-service
++ SECRETS_FILE=/Users/roman/Projects/DScope/CamelAIAgentComponent/samples/agent-support-service/.agent-secrets.properties
++ DEFAULT_PORT=8080
++ MAX_PORT_SCAN=20
++ CLASSPATH_FILE=/Users/roman/Projects/DScope/CamelAIAgentComponent/samples/agent-support-service/target/runtime.classpath
++ MAIN_CLASS=io.dscope.camel.agent.samples.Main
++ ROUTES_INCLUDE_DEFAULT=classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/admin-platform.camel.yaml
++ ROUTES_INCLUDE=classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/admin-platform.camel.yaml
++ JAVA_BIN=java
++ command -v java
++ MAVEN_BIN=
++ [[ -x /Users/roman/.sdkman/candidates/maven/current/bin/mvn ]]
++ MAVEN_BIN=/Users/roman/.sdkman/candidates/maven/current/bin/mvn
+++ pick_port 8080 20
+++ local preferred=8080
+++ local max_scan=20
+++ is_port_busy 8080
+++ local port=8080
+++ lsof -nP -iTCP:8080 -sTCP:LISTEN
+++ local candidate
+++ (( candidate=preferred+1 ))
+++ (( candidate<=preferred+max_scan ))
+++ is_port_busy 8081
+++ local port=8081
+++ lsof -nP -iTCP:8081 -sTCP:LISTEN
+++ (( candidate++ ))
+++ (( candidate<=preferred+max_scan ))
+++ is_port_busy 8082
+++ local port=8082
+++ lsof -nP -iTCP:8082 -sTCP:LISTEN
+++ (( candidate++ ))
+++ (( candidate<=preferred+max_scan ))
+++ is_port_busy 8083
+++ local port=8083
+++ lsof -nP -iTCP:8083 -sTCP:LISTEN
+++ (( candidate++ ))
+++ (( candidate<=preferred+max_scan ))
+++ is_port_busy 8084
+++ local port=8084
+++ lsof -nP -iTCP:8084 -sTCP:LISTEN
+++ (( candidate++ ))
+++ (( candidate<=preferred+max_scan ))
+++ is_port_busy 8085
+++ local port=8085
+++ lsof -nP -iTCP:8085 -sTCP:LISTEN
+++ (( candidate++ ))
+++ (( candidate<=preferred+max_scan ))
+++ is_port_busy 8086
+++ local port=8086
+++ lsof -nP -iTCP:8086 -sTCP:LISTEN
+++ (( candidate++ ))
+++ (( candidate<=preferred+max_scan ))
+++ is_port_busy 8087
+++ local port=8087
+++ lsof -nP -iTCP:8087 -sTCP:LISTEN
+++ printf %s 8087
+++ return 0
++ SELECTED_PORT=8087
++ [[ 8087 != \8\0\8\0 ]]
++ echo 'Port 8080 is busy; using 8087 for AGUI and health endpoints.'
+Port 8080 is busy; using 8087 for AGUI and health endpoints.
++ [[ ! -d /Users/roman/Projects/DScope/CamelAIAgentComponent/samples/agent-support-service/target/classes ]]
++ [[ ! -f /Users/roman/Projects/DScope/CamelAIAgentComponent/samples/agent-support-service/target/runtime.classpath ]]
++ [[ -z /Users/roman/.sdkman/candidates/maven/current/bin/mvn ]]
++ mkdir -p /Users/roman/Projects/DScope/CamelAIAgentComponent/samples/agent-support-service/target
++ echo 'Generating dependency classpath: /Users/roman/Projects/DScope/CamelAIAgentComponent/samples/agent-support-service/target/runtime.classpath'
+Generating dependency classpath: /Users/roman/Projects/DScope/CamelAIAgentComponent/samples/agent-support-service/target/runtime.classpath
++ /Users/roman/.sdkman/candidates/maven/current/bin/mvn -f /Users/roman/Projects/DScope/CamelAIAgentComponent/samples/agent-support-service/pom.xml -DskipTests dependency:build-classpath -Dmdep.outputFile=/Users/roman/Projects/DScope/CamelAIAgentComponent/samples/agent-support-service/target/runtime.classpath
+EXIT:130

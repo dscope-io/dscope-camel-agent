@@ -23,9 +23,12 @@ import io.dscope.camel.agent.model.AgentBlueprint;
 import io.dscope.camel.agent.model.AuditGranularity;
 import io.dscope.camel.agent.model.AgentEvent;
 import io.dscope.camel.agent.model.RealtimeSpec;
+import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 import io.dscope.camel.agent.runtime.ConversationArchiveService;
 import io.dscope.camel.agent.runtime.RealtimeConfigResolver;
+import io.dscope.camel.agent.runtime.ResolvedAgentPlan;
 import io.dscope.camel.agent.runtime.RuntimeControlState;
+import io.dscope.camel.agent.util.TextEncodingSupport;
 
 public class RealtimeEventProcessor implements Processor {
 
@@ -33,6 +36,7 @@ public class RealtimeEventProcessor implements Processor {
 
     private static final String DEFAULT_MODEL = "gpt-4o-realtime-preview";
     private static final String DEFAULT_ENDPOINT = "wss://api.openai.com/v1/realtime";
+    private static final String DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
     private static final String SESSION_REGISTRY_BEAN = "supportRealtimeSessionRegistry";
     private static final String PERSISTENCE_FACADE_BEAN = "persistenceFacade";
     private static final int MAX_RECENT_TURNS = 16;
@@ -65,9 +69,11 @@ public class RealtimeEventProcessor implements Processor {
             UUID.randomUUID().toString()
         );
 
-        JsonNode root = parseJson(exchange.getMessage().getBody(String.class));
+        JsonNode root = parseJsonBody(exchange);
+        ResolvedAgentPlan resolvedPlan = resolvePlan(exchange, conversationId, root);
         String eventType = firstNonBlank(text(root, "type"), "unknown");
         String transcript = firstNonBlank(
+            text(root, "transcript"),
             text(root, "text"),
             text(root.path("payload"), "text"),
             text(root.path("payload"), "transcript")
@@ -91,6 +97,25 @@ public class RealtimeEventProcessor implements Processor {
 
         if ("transcript.observed".equals(eventType)) {
             archiveObservedRealtimeTranscript(exchange, conversationId, root);
+            String direction = firstNonBlank(text(root, "direction"), text(root.path("payload"), "direction"));
+            boolean relayManaged = root.path("relayManaged").asBoolean(false)
+                || root.path("payload").path("relayManaged").asBoolean(false);
+            if (relayManaged && "input".equalsIgnoreCase(direction) && !transcript.isBlank()) {
+                populateTranscriptRouteResponse(exchange, response, conversationId, transcript, auditGranularity, "voice-transcript");
+                writeJson(exchange, response);
+                return;
+            }
+            if (relayManaged && "output".equalsIgnoreCase(direction) && !transcript.isBlank()) {
+                var aguiMessages = objectMapper.createArrayNode();
+                aguiMessages.add(objectMapper.createObjectNode()
+                    .put("role", "assistant")
+                    .put("content", transcript)
+                    .put("source", "voice-output-transcript"));
+                response.set("aguiMessages", aguiMessages);
+                response.put("routedToAgent", false);
+                writeJson(exchange, response);
+                return;
+            }
         }
 
         if ("session.start".equals(eventType)) {
@@ -114,6 +139,7 @@ public class RealtimeEventProcessor implements Processor {
                 ? (ObjectNode) root.path("session").deepCopy()
                 : objectMapper.createObjectNode();
             ObjectNode sessionPayload = restoreSessionStartPayload(exchange, conversationId, incomingSession, config);
+            seedPlanMetadata(sessionPayload, resolvedPlan);
             if (sessionPayload.isObject() && !sessionPayload.isEmpty()) {
                 var sessionUpdate = objectMapper.createObjectNode();
                 sessionUpdate.put("type", "session.update");
@@ -150,8 +176,11 @@ public class RealtimeEventProcessor implements Processor {
         }
 
         if ("session.state".equals(eventType)) {
-            LOGGER.debug("Realtime session.state requested: conversationId={}", conversationId);
-            response.set("relayState", realtimeRelayClient.sessionState(conversationId));
+            JsonNode relayState = realtimeRelayClient.sessionState(conversationId);
+            LOGGER.info("Realtime session.state diagnostics: conversationId={}, {}",
+                conversationId,
+                summarizeRelayState(relayState));
+            response.set("relayState", relayState);
             writeJson(exchange, response);
             return;
         }
@@ -180,50 +209,9 @@ public class RealtimeEventProcessor implements Processor {
         }
 
         if ("transcript.final".equals(eventType) && !transcript.isBlank()) {
-            LOGGER.info("Realtime transcript received: conversationId={}, chars={}", conversationId, transcript.length());
-            ProducerTemplate template = exchange.getContext().createProducerTemplate();
-            RouteAssistantResult routeResult = routeTranscriptToAssistant(exchange, template, conversationId, transcript);
-            String assistant = routeResult.assistantMessage();
-            if (shouldPersistRealtimeTurns(auditGranularity)) {
-                persistRealtimeTurnEvents(exchange, conversationId, transcript, assistant);
-            }
-            archiveRealtimeTurn(exchange, conversationId, transcript, assistant);
-            response.put("assistantMessage", assistant == null ? "" : assistant);
-            ObjectNode realtimeSessionUpdate = composeRealtimeSessionUpdate(routeResult.sessionUpdate(), transcript, assistant);
-            LOGGER.info("Realtime context update composed: conversationId={}, routePatchPresent={}, keys={}, transcriptChars={}, assistantChars={}",
-                conversationId,
-                routeResult.sessionUpdate() != null && !routeResult.sessionUpdate().isEmpty(),
-                summarizeObjectKeys(realtimeSessionUpdate),
-                transcript.length(),
-                assistant == null ? 0 : assistant.length());
-            boolean sessionContextUpdated = applyRouteSessionUpdate(exchange, conversationId, realtimeSessionUpdate);
-            response.put("sessionContextUpdated", sessionContextUpdated);
-            LOGGER.info("Realtime context update apply result: conversationId={}, updated={}",
-                conversationId,
-                sessionContextUpdated);
-            boolean realtimeVoiceBranchStarted = false;
-            if (sessionContextUpdated) {
-                realtimeVoiceBranchStarted = maybeStartRealtimeVoiceBranch(conversationId);
-            } else {
-                LOGGER.info("Realtime voice branch skipped because session context update was not applied: conversationId={}",
-                    conversationId);
-            }
-            response.put("realtimeVoiceBranchStarted", realtimeVoiceBranchStarted);
-            var aguiMessages = objectMapper.createArrayNode();
-            var transcriptMessage = objectMapper.createObjectNode()
-                .put("role", "user")
-                .put("content", transcript)
-                .put("source", "voice-transcript");
-            aguiMessages.add(transcriptMessage);
-            if (assistant != null && !assistant.isBlank()) {
-                var assistantMessage = buildAssistantAgUiMessage(assistant);
-                aguiMessages.add(assistantMessage);
-            }
-            response.set("aguiMessages", aguiMessages);
-            response.put("routedToAgent", true);
-            LOGGER.info("Realtime transcript routed: conversationId={}, assistantChars={}",
-                conversationId,
-                assistant == null ? 0 : assistant.length());
+            populateTranscriptRouteResponse(exchange, response, conversationId, transcript, auditGranularity, "voice-transcript");
+        } else if ("transcript.final".equals(eventType)) {
+            LOGGER.warn("Realtime transcript.final received without transcript text: conversationId={}", conversationId);
         } else {
             response.put("routedToAgent", false);
             LOGGER.debug("Realtime event not routed to agent: conversationId={}, eventType={}", conversationId, eventType);
@@ -232,12 +220,62 @@ public class RealtimeEventProcessor implements Processor {
         writeJson(exchange, response);
     }
 
+    private void populateTranscriptRouteResponse(Exchange exchange,
+                                                ObjectNode response,
+                                                String conversationId,
+                                                String transcript,
+                                                AuditGranularity auditGranularity,
+                                                String userMessageSource) {
+        LOGGER.info("Realtime transcript received: conversationId={}, chars={}", conversationId, transcript.length());
+        ProducerTemplate template = exchange.getContext().createProducerTemplate();
+        RouteAssistantResult routeResult = routeTranscriptToAssistant(exchange, template, conversationId, transcript);
+        String assistant = routeResult.assistantMessage();
+        if (shouldPersistRealtimeTurns(auditGranularity) && !routeResult.turnEventsPersisted()) {
+            persistRealtimeTurnEvents(exchange, conversationId, transcript, assistant);
+        }
+        archiveRealtimeTurn(exchange, conversationId, transcript, assistant);
+        response.put("assistantMessage", assistant == null ? "" : assistant);
+        ObjectNode realtimeSessionUpdate = composeRealtimeSessionUpdate(routeResult.sessionUpdate(), transcript, assistant);
+        LOGGER.info("Realtime context update composed: conversationId={}, routePatchPresent={}, keys={}, transcriptChars={}, assistantChars={}",
+            conversationId,
+            routeResult.sessionUpdate() != null && !routeResult.sessionUpdate().isEmpty(),
+            summarizeObjectKeys(realtimeSessionUpdate),
+            transcript.length(),
+            assistant == null ? 0 : assistant.length());
+        boolean sessionContextUpdated = applyRouteSessionUpdate(exchange, conversationId, realtimeSessionUpdate);
+        response.put("sessionContextUpdated", sessionContextUpdated);
+        LOGGER.info("Realtime context update apply result: conversationId={}, updated={}",
+            conversationId,
+            sessionContextUpdated);
+        boolean realtimeVoiceBranchStarted = false;
+        if (sessionContextUpdated) {
+            realtimeVoiceBranchStarted = maybeStartRealtimeVoiceBranch(conversationId);
+        } else {
+            LOGGER.info("Realtime voice branch skipped because session context update was not applied: conversationId={}",
+                conversationId);
+        }
+        response.put("realtimeVoiceBranchStarted", realtimeVoiceBranchStarted);
+        var aguiMessages = objectMapper.createArrayNode();
+        aguiMessages.add(objectMapper.createObjectNode()
+            .put("role", "user")
+            .put("content", transcript)
+            .put("source", firstNonBlank(userMessageSource, "voice-transcript")));
+        if (assistant != null && !assistant.isBlank()) {
+            aguiMessages.add(buildAssistantAgUiMessage(assistant));
+        }
+        response.set("aguiMessages", aguiMessages);
+        response.put("routedToAgent", true);
+        LOGGER.info("Realtime transcript routed: conversationId={}, assistantChars={}",
+            conversationId,
+            assistant == null ? 0 : assistant.length());
+    }
+
     private void persistRealtimeTurnEvents(Exchange exchange,
                                            String conversationId,
                                            String transcript,
                                            String assistant) {
         persistRealtimeMessageEvent(exchange, conversationId, "user.message", transcript);
-        persistRealtimeMessageEvent(exchange, conversationId, "assistant.message", assistant);
+        persistRealtimeMessageEvent(exchange, conversationId, "agent.message", assistant);
     }
 
     private void persistRealtimeMessageEvent(Exchange exchange,
@@ -290,7 +328,47 @@ public class RealtimeEventProcessor implements Processor {
             text(root.path("payload"), "observedEventType"),
             text(root.path("payload"), "eventType")
         );
+        LOGGER.info("Realtime transcript observed: conversationId={}, direction={}, observedType={}, chars={}",
+            conversationId,
+            direction.isBlank() ? "unknown" : direction,
+            observedType.isBlank() ? "unknown" : observedType,
+            transcript.length());
         archiveService.appendRealtimeTranscriptObserved(conversationId, direction, transcript, observedType);
+    }
+
+    private String summarizeRelayState(JsonNode relayState) {
+        if (relayState == null || relayState.isNull() || relayState.isMissingNode()) {
+            return "relayState=missing";
+        }
+        boolean connected = relayState.path("connected").asBoolean(false);
+        String lastError = text(relayState, "lastError");
+        JsonNode events = relayState.path("events");
+        int eventCount = events.isArray() ? events.size() : 0;
+        boolean hasInputTranscript = false;
+        boolean hasResponseTextDone = false;
+        String lastEventType = "";
+        if (events.isArray()) {
+            for (JsonNode event : events) {
+                String type = firstNonBlank(text(event, "type"), text(event.path("data"), "type")).toLowerCase();
+                if (type.isBlank()) {
+                    continue;
+                }
+                lastEventType = type;
+                if (type.contains("input_audio_transcription") || type.contains("transcription.completed")) {
+                    hasInputTranscript = true;
+                }
+                if ("response.text.done".equals(type) || "response.audio_transcript.done".equals(type)) {
+                    hasResponseTextDone = true;
+                }
+            }
+        }
+        return String.format("connected=%s, lastError=%s, eventCount=%d, hasInputTranscript=%s, hasResponseTextDone=%s, lastEventType=%s",
+            connected,
+            lastError == null || lastError.isBlank() ? "none" : lastError,
+            eventCount,
+            hasInputTranscript,
+            hasResponseTextDone,
+            lastEventType.isBlank() ? "none" : lastEventType);
     }
 
     private void archiveRealtimeTurn(Exchange exchange, String conversationId, String transcript, String assistant) {
@@ -374,7 +452,7 @@ public class RealtimeEventProcessor implements Processor {
                 String ticketResponse = template.requestBody("direct:support-ticket-open", Map.of("query", transcript), String.class);
                 if (ticketResponse != null && !ticketResponse.isBlank()) {
                     LOGGER.info("Realtime transcript routed via ticket tool: conversationId={}", conversationId);
-                    return new RouteAssistantResult(ticketResponse, extractSessionUpdate(null, ticketResponse));
+                    return new RouteAssistantResult(ticketResponse, extractSessionUpdate(null, ticketResponse), false);
                 }
             } catch (Exception ticketRouteFailure) {
                 LOGGER.debug("Realtime ticket-route fallback unavailable: conversationId={}, reason={}",
@@ -387,9 +465,74 @@ public class RealtimeEventProcessor implements Processor {
         Exchange routeExchange = template.request(resolveAgentEndpoint(exchange), routed -> {
             routed.getMessage().setBody(transcript);
             routed.getMessage().setHeader(AgentHeaders.CONVERSATION_ID, conversationId);
+            copyHeader(exchange, routed, AgentHeaders.PLAN_NAME);
+            copyHeader(exchange, routed, AgentHeaders.PLAN_VERSION);
         });
         String assistant = routeExchange.getMessage().getBody(String.class);
-        return new RouteAssistantResult(assistant, extractSessionUpdate(routeExchange, assistant));
+        assistant = maybeCanonicalizeTicketAssistantMessage(template, conversationId, transcript, assistant);
+        boolean turnEventsPersisted = Boolean.TRUE.equals(
+            routeExchange.getProperty(AgentHeaders.RESPONSE_TURN_EVENTS_PERSISTED, Boolean.class)
+        );
+        return new RouteAssistantResult(assistant, extractSessionUpdate(routeExchange, assistant), turnEventsPersisted);
+    }
+
+    private String maybeCanonicalizeTicketAssistantMessage(ProducerTemplate template,
+                                                           String conversationId,
+                                                           String transcript,
+                                                           String assistantMessage) {
+        if (assistantMessage == null || assistantMessage.isBlank()) {
+            return assistantMessage;
+        }
+
+        JsonNode parsed = parseJson(assistantMessage);
+        if (parsed == null || !parsed.isObject() || parsed.isEmpty()) {
+            return assistantMessage;
+        }
+
+        String ticketId = text(parsed, "ticketId");
+        if (!ticketId.isBlank()) {
+            return assistantMessage;
+        }
+
+        boolean ticketLikeStructuredPayload = parsed.has("issueDescription")
+            || parsed.has("issue_description")
+            || parsed.has("problem")
+            || parsed.has("issue");
+        if (!ticketLikeStructuredPayload) {
+            return assistantMessage;
+        }
+
+        String ticketSummary = firstNonBlank(
+            text(parsed, "issueDescription"),
+            text(parsed, "issue_description"),
+            text(parsed, "summary"),
+            text(parsed, "description"),
+            text(parsed, "issue"),
+            text(parsed, "problem"),
+            text(parsed, "text"),
+            transcript
+        );
+
+        if (ticketSummary.isBlank()) {
+            return assistantMessage;
+        }
+
+        try {
+            String canonicalTicketJson = template.requestBody("direct:support-ticket-open", Map.of("query", ticketSummary), String.class);
+            JsonNode canonicalParsed = parseJson(canonicalTicketJson);
+            if (canonicalParsed != null && canonicalParsed.isObject() && !text(canonicalParsed, "ticketId").isBlank()) {
+                LOGGER.info("Realtime assistant payload canonicalized to ticket schema: conversationId={}", conversationId);
+                return canonicalTicketJson;
+            }
+        } catch (Exception canonicalizeFailure) {
+            LOGGER.debug("Realtime assistant ticket canonicalization skipped: conversationId={}, reason={}",
+                conversationId,
+                canonicalizeFailure.getMessage() == null
+                    ? canonicalizeFailure.getClass().getSimpleName()
+                    : canonicalizeFailure.getMessage());
+        }
+
+        return assistantMessage;
     }
 
     private boolean applyRouteSessionUpdate(Exchange exchange, String conversationId, ObjectNode sessionUpdate) {
@@ -431,6 +574,19 @@ public class RealtimeEventProcessor implements Processor {
 
         context.put("lastUpdatedAt", Instant.now().toString());
         return update;
+    }
+
+    private void seedPlanMetadata(ObjectNode sessionPayload, ResolvedAgentPlan resolvedPlan) {
+        if (sessionPayload == null || resolvedPlan == null || resolvedPlan.legacyMode()) {
+            return;
+        }
+        ObjectNode metadata = ensureObject(sessionPayload, "metadata");
+        ObjectNode camelAgent = ensureObject(metadata, "camelAgent");
+        ObjectNode plan = ensureObject(camelAgent, "plan");
+        plan.put("name", resolvedPlan.planName());
+        plan.put("version", resolvedPlan.planVersion());
+        plan.put("blueprint", resolvedPlan.blueprint());
+        plan.put("resolvedAt", Instant.now().toString());
     }
 
     private ObjectNode ensureObject(ObjectNode parent, String fieldName) {
@@ -708,6 +864,52 @@ public class RealtimeEventProcessor implements Processor {
             session.put("output_audio_format", config.outputAudioFormat());
         }
 
+        ObjectNode inputAudioTranscription = ensureObject(session, "input_audio_transcription");
+        if (!inputAudioTranscription.hasNonNull("model")) {
+            inputAudioTranscription.put("model", DEFAULT_TRANSCRIPTION_MODEL);
+        }
+
+        boolean turnDetectionDisabled = session.has("turn_detection") && session.path("turn_detection").isNull();
+        if (!turnDetectionDisabled) {
+            ObjectNode turnDetection = ensureObject(session, "turn_detection");
+            if (!turnDetection.hasNonNull("type")) {
+                turnDetection.put("type", "server_vad");
+            }
+            if (!turnDetection.hasNonNull("create_response")) {
+                turnDetection.put("create_response", false);
+            }
+        } else {
+            LOGGER.info("Realtime session config keeps turn_detection disabled (top-level)");
+        }
+
+        ObjectNode audio = ensureObject(session, "audio");
+        ObjectNode audioInput = ensureObject(audio, "input");
+        ObjectNode nestedTranscription = ensureObject(audioInput, "transcription");
+        if (!nestedTranscription.hasNonNull("model")) {
+            nestedTranscription.put("model", DEFAULT_TRANSCRIPTION_MODEL);
+        }
+        if (!nestedTranscription.hasNonNull("language") && !config.language().isBlank()) {
+            nestedTranscription.put("language", config.language());
+        }
+
+        boolean nestedTurnDetectionDisabled = audioInput.has("turn_detection") && audioInput.path("turn_detection").isNull();
+        if (!nestedTurnDetectionDisabled) {
+            ObjectNode nestedTurnDetection = ensureObject(audioInput, "turn_detection");
+            if (!nestedTurnDetection.hasNonNull("type")) {
+                nestedTurnDetection.put("type", "server_vad");
+            }
+            if (!nestedTurnDetection.hasNonNull("create_response")) {
+                nestedTurnDetection.put("create_response", false);
+            }
+        } else {
+            LOGGER.info("Realtime session config keeps turn_detection disabled (audio.input)");
+        }
+
+        ObjectNode audioOutput = ensureObject(audio, "output");
+        if (!audioOutput.hasNonNull("voice") && !config.voice().isBlank()) {
+            audioOutput.put("voice", config.voice());
+        }
+
     }
 
     private ResolvedRealtimeConfig resolveRealtimeConfig(Exchange exchange) {
@@ -780,7 +982,10 @@ public class RealtimeEventProcessor implements Processor {
     }
 
     private RealtimeSpec loadBlueprintRealtime(Exchange exchange) {
-        String blueprintLocation = property(exchange, "agent.blueprint", "");
+        String blueprintLocation = firstNonBlank(
+            exchange.getMessage().getHeader(AgentHeaders.RESOLVED_BLUEPRINT, String.class),
+            property(exchange, "agent.blueprint", "")
+        );
         if (blueprintLocation.isBlank()) {
             return null;
         }
@@ -814,6 +1019,51 @@ public class RealtimeEventProcessor implements Processor {
         return configured == null || configured.isBlank() ? defaultAgentEndpointUri : configured;
     }
 
+    private ResolvedAgentPlan resolvePlan(Exchange exchange, String conversationId, JsonNode root) {
+        AgentPlanSelectionResolver resolver = exchange.getContext().getRegistry().findSingleByType(AgentPlanSelectionResolver.class);
+        if (resolver == null) {
+            ResolvedAgentPlan legacy = ResolvedAgentPlan.legacy(property(exchange, "agent.blueprint", ""));
+            exchange.getMessage().setHeader(AgentHeaders.RESOLVED_BLUEPRINT, legacy.blueprint());
+            return legacy;
+        }
+        String requestedPlanName = firstNonBlank(
+            exchange.getMessage().getHeader(AgentHeaders.PLAN_NAME, String.class),
+            text(root, "planName"),
+            text(root.path("payload"), "planName")
+        );
+        String requestedPlanVersion = firstNonBlank(
+            exchange.getMessage().getHeader(AgentHeaders.PLAN_VERSION, String.class),
+            text(root, "planVersion"),
+            text(root.path("payload"), "planVersion")
+        );
+        if (!requestedPlanName.isBlank()) {
+            exchange.getMessage().setHeader(AgentHeaders.PLAN_NAME, requestedPlanName);
+        }
+        if (!requestedPlanVersion.isBlank()) {
+            exchange.getMessage().setHeader(AgentHeaders.PLAN_VERSION, requestedPlanVersion);
+        }
+        ResolvedAgentPlan resolved = resolver.resolve(
+            conversationId,
+            requestedPlanName.isBlank() ? null : requestedPlanName,
+            requestedPlanVersion.isBlank() ? null : requestedPlanVersion,
+            property(exchange, "agent.agents-config", ""),
+            property(exchange, "agent.blueprint", "")
+        );
+        if (!resolved.legacyMode()) {
+            exchange.getMessage().setHeader(AgentHeaders.RESOLVED_PLAN_NAME, resolved.planName());
+            exchange.getMessage().setHeader(AgentHeaders.RESOLVED_PLAN_VERSION, resolved.planVersion());
+        }
+        exchange.getMessage().setHeader(AgentHeaders.RESOLVED_BLUEPRINT, resolved.blueprint());
+        return resolved;
+    }
+
+    private void copyHeader(Exchange from, Exchange to, String headerName) {
+        Object value = from.getMessage().getHeader(headerName);
+        if (value != null) {
+            to.getMessage().setHeader(headerName, value);
+        }
+    }
+
     private boolean isRelayEvent(String eventType) {
         return eventType != null && (
             eventType.startsWith("input_audio_buffer.")
@@ -828,14 +1078,26 @@ public class RealtimeEventProcessor implements Processor {
         exchange.getMessage().setBody(body.toString());
     }
 
+    private JsonNode parseJsonBody(Exchange exchange) {
+        try {
+            byte[] bodyBytes = exchange.getMessage().getBody(byte[].class);
+            if (bodyBytes != null && bodyBytes.length > 0) {
+                return TextEncodingSupport.repairUtf8Mojibake(objectMapper.readTree(bodyBytes), objectMapper);
+            }
+        } catch (Exception ignored) {
+            // Fall back to the String-based path below.
+        }
+        return parseJson(exchange.getMessage().getBody(String.class));
+    }
+
     private JsonNode parseJson(String body) {
         if (body == null || body.isBlank()) {
             return objectMapper.createObjectNode();
         }
         try {
-            return objectMapper.readTree(body);
+            return TextEncodingSupport.repairUtf8Mojibake(objectMapper.readTree(body), objectMapper);
         } catch (Exception ignored) {
-            return objectMapper.createObjectNode().put("text", body);
+            return objectMapper.createObjectNode().put("text", TextEncodingSupport.repairUtf8Mojibake(body));
         }
     }
 
@@ -928,6 +1190,6 @@ public class RealtimeEventProcessor implements Processor {
         }
     }
 
-    private record RouteAssistantResult(String assistantMessage, ObjectNode sessionUpdate) {
+    private record RouteAssistantResult(String assistantMessage, ObjectNode sessionUpdate, boolean turnEventsPersisted) {
     }
 }

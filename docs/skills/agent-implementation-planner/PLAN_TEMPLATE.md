@@ -34,7 +34,30 @@
 - Fallback behavior:
 - MCP admin transport requirements (Streamable HTTP headers, protocol version):
 
+### WebRTC Flow Settings (Required when WebRTC is in scope)
+- Source of truth rule: define WebRTC flow from `samples/agent-support-service/src/main/resources/frontend/webrtc-test.html` only (do not use `index.html` to define WebRTC flow).
+- Reference page path (default: `samples/agent-support-service/src/main/resources/frontend/webrtc-test.html`):
+- Transport selector behavior (`#transport-mode` disabled/fixed to `webrtc`):
+- AGUI mode default (`#agui-transport-mode=post`):
+- Duplex mode default (`#duplex-mode=half`):
+- VAD pause default (`#vad-pause=normal` / 1200ms):
+- Voice default (`#voice-setting=alloy`):
+- Instruction debug panel behavior (shown + auto-open in WebRTC mode):
+- WebRTC transcript diagnostics (`WebRTC transcript log` + clear action):
+- Separation rule from relay flow (no relay finalize/commit logic in WebRTC baseline):
+
 ### Tooling Design
+- Blueprint `## Tools` section format rule (required): use a fenced YAML block with top-level `tools:` (do not use prose bullets for tool definitions).
+- MCP tool seed example (parser-compatible):
+  ```yaml
+  tools:
+    - name: calendar.mcp
+      description: Calendar MCP service seed
+      endpointUri: mcp:http://localhost:8080/mcp
+      inputSchemaInline:
+        type: object
+        properties: {}
+  ```
 - Tool list and purpose:
   - 
   - 
@@ -122,6 +145,7 @@ Quick decision hint:
 - Verification:
   - 
   - Generate fresh AGUI/realtime turn and verify non-empty `audit.conversation.sessionData`
+  - For WebRTC mode, verify configured defaults match HTML controls (`transport=webrtc`, `agui=post`, `duplex=half`, `pause=normal`, `voice=alloy`)
 
 ### Phase 5 — Hardening and Release
 - Tasks:

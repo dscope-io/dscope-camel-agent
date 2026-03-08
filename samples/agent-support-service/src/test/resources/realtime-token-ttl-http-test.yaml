@@ -1,4 +1,6 @@
 agent:
+  agents-config: classpath:agents/agents.yaml
+  blueprint: classpath:agents/support/agent.md
   runtime:
     routes-include-pattern: classpath:routes/realtime-token-http-test.camel.yaml
     agent-routes-enabled: false

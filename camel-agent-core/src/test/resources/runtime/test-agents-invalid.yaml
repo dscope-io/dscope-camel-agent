@@ -1,0 +1,12 @@
+plans:
+  - name: support
+    default: true
+    versions:
+      - version: v1
+        blueprint: classpath:agents/valid-agent.md
+  - name: billing
+    default: true
+    versions:
+      - version: v1
+        default: true
+        blueprint: classpath:agents/valid-agent-with-ticket-tools.md

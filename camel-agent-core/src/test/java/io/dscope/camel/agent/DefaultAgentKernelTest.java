@@ -15,6 +15,7 @@ import io.dscope.camel.agent.model.ToolSpec;
 import io.dscope.camel.agent.registry.DefaultToolRegistry;
 import io.dscope.camel.agent.validation.SchemaValidator;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -47,7 +48,40 @@ class DefaultAgentKernelTest {
         var response = kernel.handleUserMessage("c1", "hello");
         Assertions.assertEquals("c1", response.conversationId());
         Assertions.assertFalse(response.message().isBlank());
-        Assertions.assertTrue(response.events().stream().anyMatch(e -> "assistant.message".equals(e.type())));
+        Assertions.assertTrue(response.events().stream().anyMatch(e -> "agent.message".equals(e.type())));
+    }
+
+    @Test
+    void shouldContinueWhenEventPersistenceFails() {
+        ToolSpec toolSpec = new ToolSpec("support.ticket.open", "ticket", "ticket", null, null, null, new ToolPolicy(false, 0, 1000));
+        AgentBlueprint blueprint = blueprint(toolSpec);
+        ObjectMapper mapper = new ObjectMapper();
+        AtomicInteger toolCalls = new AtomicInteger();
+        ToolExecutor toolExecutor = (tool, args, ctx) -> {
+            toolCalls.incrementAndGet();
+            return new ToolResult("ok", mapper.createObjectNode().put("status", "OPEN"), List.of());
+        };
+        InMemoryPersistenceFacade flakyPersistence = new InMemoryPersistenceFacade() {
+            @Override
+            public void appendEvent(io.dscope.camel.agent.model.AgentEvent event, String idempotencyKey) {
+                throw new RuntimeException("persistence unavailable");
+            }
+        };
+
+        DefaultAgentKernel kernel = new DefaultAgentKernel(
+            blueprint,
+            new DefaultToolRegistry(blueprint.tools()),
+            toolExecutor,
+            (systemPrompt, history, tools, options, callback) -> new ModelResponse("", List.of(new AiToolCall("support.ticket.open", mapper.createObjectNode())), true),
+            flakyPersistence,
+            new SchemaValidator(),
+            mapper
+        );
+
+        var response = kernel.handleUserMessage("c-persist-fail", "open support ticket");
+        Assertions.assertEquals(1, toolCalls.get());
+        Assertions.assertFalse(response.message().isBlank());
+        Assertions.assertEquals(TaskStatus.FINISHED, response.taskState().status());
     }
 
     @Test
@@ -205,6 +239,43 @@ class DefaultAgentKernelTest {
     }
 
     @Test
+    void shouldAlwaysIncludeSystemInstructionAndMcpCatalogInModelCall() {
+        ObjectMapper mapper = new ObjectMapper();
+        ToolSpec toolSpec = new ToolSpec("echo", "echo", "echo", null, null, null, new ToolPolicy(false, 0, 1000));
+        var catalog = mapper.createObjectNode()
+            .put("serviceTool", "support.mcp")
+            .put("endpointUri", "mcp:http://localhost:3001")
+            .set("result", mapper.createObjectNode().putArray("tools").add(mapper.createObjectNode().put("name", "support.ticket.open").put("description", "Open support ticket")));
+        AgentBlueprint blueprint = new AgentBlueprint("demo", "0.1", "system", List.of(toolSpec), List.of(), List.of(catalog));
+        ToolExecutor noOpExecutor = (tool, args, ctx) -> new ToolResult("ok", mapper.createObjectNode(), List.of());
+        InMemoryPersistenceFacade persistence = new InMemoryPersistenceFacade();
+        AtomicInteger calls = new AtomicInteger();
+
+        DefaultAgentKernel kernel = new DefaultAgentKernel(
+            blueprint,
+            new DefaultToolRegistry(blueprint.tools()),
+            noOpExecutor,
+            (systemPrompt, history, tools, options, callback) -> {
+                calls.incrementAndGet();
+                Assertions.assertEquals("system", systemPrompt);
+                Assertions.assertTrue(history.stream().anyMatch(event -> "mcp.tools.discovered".equals(event.type())));
+                Assertions.assertTrue(history.stream()
+                    .filter(event -> "mcp.tools.discovered".equals(event.type()))
+                    .anyMatch(event -> event.payload() != null && event.payload().toString().contains("support.ticket.open")));
+                return new ModelResponse("ok", List.of(), true);
+            },
+            persistence,
+            new SchemaValidator(),
+            mapper
+        );
+
+        kernel.handleUserMessage("c-mcp-always", "hello one");
+        kernel.handleUserMessage("c-mcp-always", "hello two");
+
+        Assertions.assertEquals(2, calls.get());
+    }
+
+    @Test
     void shouldRouteRealtimeTranscriptFinalIntoUserMessageFlow() {
         ObjectMapper mapper = new ObjectMapper();
         ToolSpec toolSpec = new ToolSpec("echo", "echo", "echo", null, null, null, new ToolPolicy(false, 0, 1000));
@@ -227,7 +298,7 @@ class DefaultAgentKernelTest {
 
         Assertions.assertEquals("c-voice", response.conversationId());
         Assertions.assertTrue(response.events().stream().anyMatch(e -> "realtime.transcript.final".equals(e.type())));
-        Assertions.assertTrue(response.events().stream().anyMatch(e -> "assistant.message".equals(e.type())));
+        Assertions.assertTrue(response.events().stream().anyMatch(e -> "agent.message".equals(e.type())));
     }
 
     @Test
@@ -260,5 +331,36 @@ class DefaultAgentKernelTest {
         var response = kernel.handleUserMessage("c-tool-fallback", "open ticket");
         Assertions.assertFalse(response.message().isBlank());
         Assertions.assertTrue(response.message().contains("ticketId"));
+    }
+
+    @Test
+    void shouldIncludeTargetDetailsInToolStartEvent() {
+        ObjectMapper mapper = new ObjectMapper();
+        ToolSpec toolSpec = new ToolSpec("customerLookup", "crm lookup", null, "mcp:https://crm.example/mcp", null, null, new ToolPolicy(false, 0, 1000));
+        AgentBlueprint blueprint = blueprint(toolSpec);
+        ToolExecutor toolExecutor = (tool, args, ctx) -> new ToolResult("ok", mapper.createObjectNode().put("status", "ok"), List.of());
+
+        DefaultAgentKernel kernel = new DefaultAgentKernel(
+            blueprint,
+            new DefaultToolRegistry(blueprint.tools()),
+            toolExecutor,
+            (systemPrompt, history, tools, options, callback) -> new ModelResponse(
+                "done",
+                List.of(new AiToolCall("customerLookup", mapper.createObjectNode().put("phone", "421222200096"))),
+                true
+            ),
+            new InMemoryPersistenceFacade(),
+            new SchemaValidator(),
+            mapper
+        );
+
+        var response = kernel.handleUserMessage("c-tool-start-target", "find customer by phone");
+        var toolStart = response.events().stream()
+            .filter(e -> "tool.start".equals(e.type()))
+            .findFirst()
+            .orElseThrow();
+
+        Assertions.assertEquals("mcp:https://crm.example/mcp", toolStart.payload().path("target").asText());
+        Assertions.assertTrue(toolStart.payload().path("mcpTarget").asBoolean());
     }
 }

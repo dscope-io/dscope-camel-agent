@@ -1,11 +1,13 @@
 package io.dscope.camel.agent.agui;
 
 import io.dscope.camel.agent.blueprint.MarkdownBlueprintLoader;
-import io.dscope.camel.agent.model.AgUiPreRunSpec;
 import io.dscope.camel.agent.config.AgentHeaders;
+import io.dscope.camel.agent.model.AgUiPreRunSpec;
 import io.dscope.camel.agent.model.AgentBlueprint;
 import io.dscope.camel.agent.model.ToolSpec;
+import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 import io.dscope.camel.agent.runtime.ConversationArchiveService;
+import io.dscope.camel.agent.runtime.ResolvedAgentPlan;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -23,7 +25,7 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentAgUiPreRunTextProcessor.class);
 
     private static final String DEFAULT_PROMPT = "Please help me with support.";
-    private static final String DEFAULT_AGENT_ENDPOINT_URI = "agent:default?blueprint={{agent.blueprint}}";
+    private static final String DEFAULT_AGENT_ENDPOINT_URI = "agent:default?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}";
 
     private final MarkdownBlueprintLoader markdownBlueprintLoader;
     private final Map<String, AgentBlueprint> blueprintCache;
@@ -56,14 +58,10 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             stringValue(params.get("sessionId")),
             UUID.randomUUID().toString()
         );
-        String sessionId = firstNonBlank(
-            stringValue(params.get("sessionId")),
-            threadId
-        );
-        String runId = firstNonBlank(
-            stringValue(params.get("runId")),
-            UUID.randomUUID().toString()
-        );
+        String sessionId = firstNonBlank(stringValue(params.get("sessionId")), threadId);
+        String runId = firstNonBlank(stringValue(params.get("runId")), UUID.randomUUID().toString());
+        String requestedPlanName = stringValue(params.get("planName"));
+        String requestedPlanVersion = stringValue(params.get("planVersion"));
 
         LOGGER.info("AGUI pre-run started: threadId={}, sessionId={}, runId={}, promptChars={}",
             threadId,
@@ -71,22 +69,24 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             runId,
             prompt.length());
 
+        ResolvedAgentPlan resolvedPlan = resolvePlan(exchange, threadId, requestedPlanName, requestedPlanVersion);
+        RuntimeConfig runtimeConfig = resolveRuntimeConfig(exchange, resolvedPlan);
+
         ProducerTemplate template = exchange.getContext().createProducerTemplate();
         String outputText;
-        RuntimeConfig runtimeConfig = resolveRuntimeConfig(exchange);
         try {
-            Map<String, Object> headers = Map.of(
-                AgentHeaders.CONVERSATION_ID, threadId,
-                AgentHeaders.AGUI_SESSION_ID, sessionId,
-                AgentHeaders.AGUI_RUN_ID, runId,
-                AgentHeaders.AGUI_THREAD_ID, threadId
-            );
-            outputText = template.requestBodyAndHeaders(
-                runtimeConfig.agentEndpointUri(),
-                prompt,
-                headers,
-                String.class
-            );
+            Map<String, Object> headers = new HashMap<>();
+            headers.put(AgentHeaders.CONVERSATION_ID, threadId);
+            headers.put(AgentHeaders.AGUI_SESSION_ID, sessionId);
+            headers.put(AgentHeaders.AGUI_RUN_ID, runId);
+            headers.put(AgentHeaders.AGUI_THREAD_ID, threadId);
+            if (requestedPlanName != null && !requestedPlanName.isBlank()) {
+                headers.put(AgentHeaders.PLAN_NAME, requestedPlanName);
+            }
+            if (requestedPlanVersion != null && !requestedPlanVersion.isBlank()) {
+                headers.put(AgentHeaders.PLAN_VERSION, requestedPlanVersion);
+            }
+            outputText = template.requestBodyAndHeaders(runtimeConfig.agentEndpointUri(), prompt, headers, String.class);
             LOGGER.debug("AGUI pre-run primary agent response: threadId={}, outputChars={}",
                 threadId,
                 outputText == null ? 0 : outputText.length());
@@ -105,6 +105,10 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
         params.put("runId", runId);
         params.put("sessionId", sessionId);
         params.put("threadId", threadId);
+        if (!resolvedPlan.legacyMode()) {
+            params.put("planName", resolvedPlan.planName());
+            params.put("planVersion", resolvedPlan.planVersion());
+        }
         exchange.setProperty(AgentAgUiExchangeProperties.PARAMS, params);
 
         ConversationArchiveService archiveService = exchange.getContext().getRegistry().findSingleByType(ConversationArchiveService.class);
@@ -117,8 +121,22 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             outputText == null ? 0 : outputText.length());
     }
 
-    private RuntimeConfig resolveRuntimeConfig(Exchange exchange) {
-        AgentBlueprint blueprint = loadBlueprint(exchange);
+    private ResolvedAgentPlan resolvePlan(Exchange exchange, String conversationId, String planName, String planVersion) {
+        AgentPlanSelectionResolver resolver = exchange.getContext().getRegistry().findSingleByType(AgentPlanSelectionResolver.class);
+        if (resolver == null) {
+            return ResolvedAgentPlan.legacy(firstNonBlank(propertyOrNull(exchange, "agent.blueprint"), "classpath:agents/support/agent.md"));
+        }
+        return resolver.resolve(
+            conversationId,
+            blankToNull(planName),
+            blankToNull(planVersion),
+            propertyOrNull(exchange, "agent.agents-config"),
+            propertyOrNull(exchange, "agent.blueprint")
+        );
+    }
+
+    private RuntimeConfig resolveRuntimeConfig(Exchange exchange, ResolvedAgentPlan resolvedPlan) {
+        AgentBlueprint blueprint = loadBlueprint(resolvedPlan);
         AgUiPreRunSpec agUiPreRunSpec = blueprint == null ? null : blueprint.aguiPreRun();
 
         String kbToolName = firstNonBlank(
@@ -156,7 +174,6 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             resolveToolInvokeUri(blueprint, ticketToolName),
             "direct:support-ticket-open"
         );
-
         String agentEndpointUri = firstNonBlank(
             agUiPreRunSpec == null ? null : agUiPreRunSpec.agentEndpointUri(),
             propertyOrNull(exchange, "agent.runtime.agui.pre-run.agent-endpoint-uri"),
@@ -165,7 +182,6 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             propertyOrNull(exchange, "agent.agui.pre-run.agentEndpointUri"),
             DEFAULT_AGENT_ENDPOINT_URI
         );
-
         boolean fallbackEnabled = boolOrDefault(
             agUiPreRunSpec == null ? null : agUiPreRunSpec.fallbackEnabled(),
             propertyOrNull(exchange, "agent.runtime.agui.pre-run.fallback-enabled"),
@@ -174,7 +190,6 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             propertyOrNull(exchange, "agent.agui.pre-run.fallbackEnabled"),
             true
         );
-
         List<String> ticketKeywords = firstNonEmpty(
             agUiPreRunSpec == null ? List.of() : agUiPreRunSpec.ticketKeywords(),
             csvValues(firstNonBlank(
@@ -185,7 +200,6 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             )),
             csvValues("ticket,open,create,submit,escalate")
         );
-
         List<String> fallbackErrorMarkers = firstNonEmpty(
             agUiPreRunSpec == null ? List.of() : agUiPreRunSpec.fallbackErrorMarkers(),
             csvValues(firstNonBlank(
@@ -196,21 +210,11 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             )),
             csvValues("api key is missing,openai api key,set -dopenai.api.key")
         );
-
-        return new RuntimeConfig(
-            agentEndpointUri,
-            kbFallbackUri,
-            ticketFallbackUri,
-            fallbackEnabled,
-            ticketKeywords,
-            fallbackErrorMarkers
-        );
+        return new RuntimeConfig(agentEndpointUri, kbFallbackUri, ticketFallbackUri, fallbackEnabled, ticketKeywords, fallbackErrorMarkers);
     }
 
-    private AgentBlueprint loadBlueprint(Exchange exchange) {
-        String location = firstNonBlank(
-            propertyOrNull(exchange, "agent.blueprint")
-        );
+    private AgentBlueprint loadBlueprint(ResolvedAgentPlan resolvedPlan) {
+        String location = resolvedPlan == null ? "" : firstNonBlank(resolvedPlan.blueprint());
         if (location.isBlank()) {
             return null;
         }
@@ -317,6 +321,10 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             }
         }
         return "";
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 
     private boolean boolOrDefault(Boolean blueprintValue, String runtimeValue1, String runtimeValue2, String runtimeValue3, String runtimeValue4, boolean defaultValue) {

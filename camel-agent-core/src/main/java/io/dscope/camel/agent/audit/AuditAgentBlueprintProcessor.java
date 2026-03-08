@@ -3,6 +3,7 @@ package io.dscope.camel.agent.audit;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dscope.camel.agent.api.PersistenceFacade;
 import io.dscope.camel.agent.model.AgentEvent;
+import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,11 +15,19 @@ public class AuditAgentBlueprintProcessor implements Processor {
 
     private final PersistenceFacade persistenceFacade;
     private final ObjectMapper objectMapper;
+    private final AgentPlanSelectionResolver planSelectionResolver;
+    private final String plansConfig;
     private final String blueprintUri;
 
-    public AuditAgentBlueprintProcessor(PersistenceFacade persistenceFacade, ObjectMapper objectMapper, String blueprintUri) {
+    public AuditAgentBlueprintProcessor(PersistenceFacade persistenceFacade,
+                                        ObjectMapper objectMapper,
+                                        AgentPlanSelectionResolver planSelectionResolver,
+                                        String plansConfig,
+                                        String blueprintUri) {
         this.persistenceFacade = persistenceFacade;
         this.objectMapper = objectMapper;
+        this.planSelectionResolver = planSelectionResolver;
+        this.plansConfig = plansConfig == null || plansConfig.isBlank() ? null : plansConfig;
         this.blueprintUri = blueprintUri == null || blueprintUri.isBlank() ? null : blueprintUri;
     }
 
@@ -33,9 +42,10 @@ public class AuditAgentBlueprintProcessor implements Processor {
 
         List<AgentEvent> events = persistenceFacade.loadConversation(conversationId, 300);
         boolean conversationFound = !events.isEmpty();
-        String content = AuditMetadataSupport.loadBlueprintContent(blueprintUri);
+        String effectiveBlueprint = resolveBlueprint(conversationId);
+        String content = AuditMetadataSupport.loadBlueprintContent(effectiveBlueprint);
         if (content == null) {
-            writeError(exchange, 404, "not_found", "Agent blueprint file not found: " + blueprintUri);
+            writeError(exchange, 404, "not_found", "Agent blueprint file not found: " + effectiveBlueprint);
             return;
         }
 
@@ -45,7 +55,7 @@ public class AuditAgentBlueprintProcessor implements Processor {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("conversationId", conversationId);
         response.put("conversationFound", conversationFound);
-        response.put("blueprintUri", blueprintUri);
+        response.put("blueprintUri", effectiveBlueprint);
         response.put("metadata", conversationMetadata);
         response.put("content", content);
 
@@ -56,6 +66,13 @@ public class AuditAgentBlueprintProcessor implements Processor {
     private static String headerText(Message in, String name) {
         Object value = in.getHeader(name);
         return value == null ? null : String.valueOf(value);
+    }
+
+    private String resolveBlueprint(String conversationId) {
+        if (planSelectionResolver == null) {
+            return blueprintUri;
+        }
+        return planSelectionResolver.resolveBlueprintForConversation(conversationId, plansConfig, blueprintUri);
     }
 
     private void writeError(Exchange exchange, int code, String error, String message) throws Exception {

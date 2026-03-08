@@ -26,6 +26,10 @@ public class AgentEndpoint extends DefaultEndpoint {
     @Metadata(description = "Blueprint location, for example classpath:agents/support/agent.md.")
     private String blueprint = "classpath:agents/support/agent.md";
 
+    @UriParam
+    @Metadata(description = "Agent catalog configuration, for example classpath:agents/agents.yaml.")
+    private String plansConfig;
+
     @UriParam(defaultValue = "redis_jdbc")
     @Metadata(description = "Persistence backend mode: redis, jdbc, redis_jdbc.")
     private String persistenceMode = "redis_jdbc";
@@ -77,6 +81,14 @@ public class AgentEndpoint extends DefaultEndpoint {
 
     public void setBlueprint(String blueprint) {
         this.blueprint = blueprint;
+    }
+
+    public String getPlansConfig() {
+        return plansConfig;
+    }
+
+    public void setPlansConfig(String plansConfig) {
+        this.plansConfig = plansConfig;
     }
 
     public String getPersistenceMode() {

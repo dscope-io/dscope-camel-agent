@@ -3,6 +3,7 @@ package io.dscope.camel.agent.audit;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dscope.camel.agent.api.PersistenceFacade;
 import io.dscope.camel.agent.model.AgentEvent;
+import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -21,11 +22,19 @@ public class AuditConversationListProcessor implements Processor {
 
     private final PersistenceFacade persistenceFacade;
     private final ObjectMapper objectMapper;
+    private final AgentPlanSelectionResolver planSelectionResolver;
+    private final String plansConfig;
     private final String blueprintUri;
 
-    public AuditConversationListProcessor(PersistenceFacade persistenceFacade, ObjectMapper objectMapper, String blueprintUri) {
+    public AuditConversationListProcessor(PersistenceFacade persistenceFacade,
+                                          ObjectMapper objectMapper,
+                                          AgentPlanSelectionResolver planSelectionResolver,
+                                          String plansConfig,
+                                          String blueprintUri) {
         this.persistenceFacade = persistenceFacade;
         this.objectMapper = objectMapper;
+        this.planSelectionResolver = planSelectionResolver;
+        this.plansConfig = plansConfig == null || plansConfig.isBlank() ? null : plansConfig;
         this.blueprintUri = blueprintUri == null || blueprintUri.isBlank() ? null : blueprintUri;
     }
 
@@ -38,14 +47,21 @@ public class AuditConversationListProcessor implements Processor {
         String sortBy = normalizeSortBy(readText(in, "sortBy"));
         boolean ascending = isAscending(readText(in, "order"));
 
-        String content = AuditMetadataSupport.loadBlueprintContent(blueprintUri);
-        AuditMetadataSupport.BlueprintMetadata blueprintMetadata = AuditMetadataSupport.parseBlueprintMetadata(content);
-
         List<String> conversationIds = persistenceFacade.listConversationIds(limit * 5);
         List<ConversationListItem> matchedItems = new ArrayList<>();
         for (String conversationId : conversationIds) {
             List<AgentEvent> events = persistenceFacade.loadConversation(conversationId, EVENT_SCAN_LIMIT);
-            Map<String, Object> metadata = AuditMetadataSupport.buildConversationMetadata(conversationId, events, blueprintMetadata);
+            String effectiveBlueprint = resolveBlueprint(conversationId);
+            AuditMetadataSupport.BlueprintMetadata blueprintMetadata = AuditMetadataSupport.loadBlueprintMetadata(effectiveBlueprint);
+            AuditMetadataSupport.AgentStepMetadata agentStepMetadata = AuditMetadataSupport.deriveAgentStepMetadata(events, effectiveBlueprint);
+            Map<String, Object> metadata = AuditMetadataSupport.buildConversationMetadata(
+                conversationId,
+                events,
+                blueprintMetadata,
+                agentStepMetadata
+            );
+            metadata = new LinkedHashMap<>(metadata);
+            metadata.put("blueprintUri", effectiveBlueprint == null ? "" : effectiveBlueprint);
             if (!matchesQuery(query, metadata, conversationId)) {
                 continue;
             }
@@ -74,7 +90,7 @@ public class AuditConversationListProcessor implements Processor {
         response.put("order", ascending ? "asc" : "desc");
         response.put("limit", limit);
         response.put("count", items.size());
-        response.put("blueprintUri", blueprintUri);
+        response.put("blueprintUri", blueprintUri == null ? "" : blueprintUri);
         response.put("items", items);
 
         exchange.getMessage().setHeader(Exchange.CONTENT_TYPE, "application/json");
@@ -193,6 +209,13 @@ public class AuditConversationListProcessor implements Processor {
 
     private static boolean containsIgnoreCase(String value, String query) {
         return value != null && value.toLowerCase(Locale.ROOT).contains(query);
+    }
+
+    private String resolveBlueprint(String conversationId) {
+        if (planSelectionResolver == null) {
+            return blueprintUri;
+        }
+        return planSelectionResolver.resolveBlueprintForConversation(conversationId, plansConfig, blueprintUri);
     }
 
     private record ConversationListItem(String conversationId, Map<String, Object> metadata) {

@@ -16,7 +16,7 @@ public class RealtimeBrowserTokenProcessor implements Processor {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(RealtimeBrowserTokenProcessor.class);
 
-    private static final String OPENAI_CLIENT_SECRET_ENDPOINT = "https://api.openai.com/v1/realtime/client_secrets";
+    private static final String OPENAI_SESSIONS_ENDPOINT = "https://api.openai.com/v1/realtime/sessions";
     private static final String DEFAULT_MODEL = "gpt-realtime";
 
     private final HttpClient httpClient;
@@ -69,7 +69,6 @@ public class RealtimeBrowserTokenProcessor implements Processor {
             return;
         }
 
-        ObjectNode outboundPayload = objectMapper.createObjectNode();
         if (session == null) {
             session = sessionRegistry == null
                 ? objectMapper.createObjectNode()
@@ -103,35 +102,26 @@ public class RealtimeBrowserTokenProcessor implements Processor {
         }
 
         session.remove("metadata");
+        session.remove("type");
 
+        // Flatten voice: /v1/realtime/sessions expects top-level "voice", not "audio.output.voice"
         String configuredVoice = firstNonBlank(
+            text(session, "voice"),
             text(session.path("audio").path("output"), "voice"),
             property(exchange, "agent.runtime.realtime.voice", ""),
             property(exchange, "agent.realtime.voice", "")
         );
+        session.remove("audio");
         if (!configuredVoice.isBlank()) {
-            ObjectNode audio = session.path("audio").isObject()
-                ? (ObjectNode) session.path("audio")
-                : objectMapper.createObjectNode();
-            ObjectNode output = audio.path("output").isObject()
-                ? (ObjectNode) audio.path("output")
-                : objectMapper.createObjectNode();
-            if (!output.hasNonNull("voice")) {
-                output.put("voice", configuredVoice);
-            }
-            if (!audio.path("output").isObject()) {
-                audio.set("output", output);
-            }
-            if (!session.path("audio").isObject()) {
-                session.set("audio", audio);
-            }
+            session.put("voice", configuredVoice);
         }
 
-        outboundPayload.set("session", session);
-        String payloadJson = objectMapper.writeValueAsString(outboundPayload);
+        // /v1/realtime/sessions expects flat body, not wrapped in { session: {...} }
+        String payloadJson = objectMapper.writeValueAsString(session);
+        LOGGER.debug("Realtime sessions payload: conversationId={}, body={}", conversationId, payloadJson);
 
         HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(OPENAI_CLIENT_SECRET_ENDPOINT))
+            .uri(URI.create(OPENAI_SESSIONS_ENDPOINT))
             .header("Authorization", "Bearer " + apiKey)
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(payloadJson))

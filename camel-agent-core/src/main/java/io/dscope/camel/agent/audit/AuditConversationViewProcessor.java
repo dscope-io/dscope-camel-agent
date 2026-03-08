@@ -6,6 +6,8 @@ import io.dscope.camel.agent.api.PersistenceFacade;
 import io.dscope.camel.agent.config.CorrelationKeys;
 import io.dscope.camel.agent.model.AgentEvent;
 import io.dscope.camel.agent.registry.CorrelationRegistry;
+import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
+import io.dscope.camel.agent.util.TextEncodingSupport;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,10 +23,24 @@ public class AuditConversationViewProcessor implements Processor {
 
     private final PersistenceFacade persistenceFacade;
     private final ObjectMapper objectMapper;
+    private final AgentPlanSelectionResolver planSelectionResolver;
+    private final String plansConfig;
+    private final String blueprintUri;
 
     public AuditConversationViewProcessor(PersistenceFacade persistenceFacade, ObjectMapper objectMapper) {
+        this(persistenceFacade, objectMapper, null, null, null);
+    }
+
+    public AuditConversationViewProcessor(PersistenceFacade persistenceFacade,
+                                          ObjectMapper objectMapper,
+                                          AgentPlanSelectionResolver planSelectionResolver,
+                                          String plansConfig,
+                                          String blueprintUri) {
         this.persistenceFacade = persistenceFacade;
         this.objectMapper = objectMapper;
+        this.planSelectionResolver = planSelectionResolver;
+        this.plansConfig = plansConfig == null || plansConfig.isBlank() ? null : plansConfig;
+        this.blueprintUri = blueprintUri == null || blueprintUri.isBlank() ? null : blueprintUri;
     }
 
     @Override
@@ -62,14 +78,22 @@ public class AuditConversationViewProcessor implements Processor {
         }
 
         List<Map<String, Object>> perspective = new ArrayList<>();
+        String effectiveBlueprint = resolveBlueprint(conversationId);
+        AuditMetadataSupport.AgentStepMetadata currentAgentState = AuditMetadataSupport.deriveAgentStepMetadata(events, effectiveBlueprint);
+        AuditMetadataSupport.AgentStepMetadata stepAgentState = AuditMetadataSupport.AgentStepMetadata.fromBlueprint(
+            effectiveBlueprint,
+            AuditMetadataSupport.loadBlueprintMetadata(effectiveBlueprint)
+        );
         for (AgentEvent event : events) {
             if (event == null) {
                 continue;
             }
+            stepAgentState = AuditMetadataSupport.advanceAgentStepMetadata(stepAgentState, event);
             String type = safeLower(event.type());
             String role = inferRole(type);
-            String text = extractText(event.payload());
-            if (text.isBlank() && !type.contains("message")) {
+            JsonNode normalizedPayload = TextEncodingSupport.repairUtf8Mojibake(event.payload(), objectMapper);
+            String text = extractVisibleText(type, normalizedPayload);
+            if (text.isBlank() && !isVisibleEvent(type)) {
                 continue;
             }
 
@@ -79,7 +103,8 @@ public class AuditConversationViewProcessor implements Processor {
             row.put("text", text);
             row.put("timestamp", event.timestamp() == null ? "" : event.timestamp().toString());
             row.put("manual", "assistant.manual.message".equals(event.type()));
-            row.put("payload", event.payload());
+            row.put("payload", normalizedPayload);
+            row.put("agent", stepAgentState.asMap());
             perspective.add(row);
         }
 
@@ -96,9 +121,17 @@ public class AuditConversationViewProcessor implements Processor {
             "messageCount", perspective.size(),
             "messages", perspective
         ));
+        response.put("agent", currentAgentState.asMap());
 
         exchange.getMessage().setHeader(Exchange.CONTENT_TYPE, "application/json");
         exchange.getMessage().setBody(objectMapper.writeValueAsString(response));
+    }
+
+    private String resolveBlueprint(String conversationId) {
+        if (planSelectionResolver == null) {
+            return blueprintUri;
+        }
+        return planSelectionResolver.resolveBlueprintForConversation(conversationId, plansConfig, blueprintUri);
     }
 
     private String resolveCorrelation(String conversationId, String key) {
@@ -106,6 +139,9 @@ public class AuditConversationViewProcessor implements Processor {
     }
 
     private String inferRole(String type) {
+        if (isTranscriptEvent(type)) {
+            return inferTranscriptRole(type);
+        }
         if (type.contains("assistant") || type.startsWith("agent.")) {
             return "assistant";
         }
@@ -130,6 +166,48 @@ public class AuditConversationViewProcessor implements Processor {
         return null;
     }
 
+    private String extractVisibleText(String type, JsonNode payload) {
+        if (isTranscriptEvent(type)) {
+            String transcript = extractTranscriptText(payload);
+            if (!transcript.isBlank()) {
+                return transcript;
+            }
+        }
+        return extractText(payload);
+    }
+
+    private String extractTranscriptText(JsonNode payload) {
+        if (payload == null || payload.isNull() || payload.isMissingNode()) {
+            return "";
+        }
+
+        List<String> transcriptCandidates = List.of(
+            payload.path("transcript").asText(""),
+            payload.path("finalTranscript").asText(""),
+            payload.path("final_transcript").asText(""),
+            payload.path("utterance").asText(""),
+            payload.path("text").asText(""),
+            payload.path("item").path("content").path(0).path("transcript").asText(""),
+            payload.path("item").path("content").path(0).path("text").asText("")
+        );
+        for (String candidate : transcriptCandidates) {
+            String normalized = nonBlank(candidate);
+            if (!normalized.isBlank()) {
+                return TextEncodingSupport.repairUtf8Mojibake(normalized);
+            }
+        }
+
+        JsonNode nestedPayload = payload.path("payload");
+        if (nestedPayload.isObject()) {
+            String nestedTranscript = extractTranscriptText(nestedPayload);
+            if (!nestedTranscript.isBlank()) {
+                return nestedTranscript;
+            }
+        }
+
+        return "";
+    }
+
     private String extractText(JsonNode payload) {
         if (payload == null || payload.isNull() || payload.isMissingNode()) {
             return "";
@@ -148,7 +226,7 @@ public class AuditConversationViewProcessor implements Processor {
         for (String candidate : directCandidates) {
             String normalized = nonBlank(candidate);
             if (!normalized.isBlank()) {
-                return normalized;
+                return TextEncodingSupport.repairUtf8Mojibake(normalized);
             }
         }
 
@@ -161,9 +239,24 @@ public class AuditConversationViewProcessor implements Processor {
         }
 
         if (payload.isTextual()) {
-            return nonBlank(payload.asText(""));
+            return TextEncodingSupport.repairUtf8Mojibake(nonBlank(payload.asText("")));
         }
         return "";
+    }
+
+    private static boolean isVisibleEvent(String type) {
+        return type.contains("message") || isTranscriptEvent(type);
+    }
+
+    private static boolean isTranscriptEvent(String type) {
+        return type.contains("transcript") || type.contains("input_audio_transcription") || type.contains("output_audio_transcript");
+    }
+
+    private static String inferTranscriptRole(String type) {
+        if (type.startsWith("response.") || type.contains("assistant") || type.contains("output_audio_transcript") || type.contains("output_text")) {
+            return "assistant";
+        }
+        return "user";
     }
 
     private static String safeLower(String value) {

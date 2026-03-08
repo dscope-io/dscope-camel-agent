@@ -6,6 +6,7 @@ camel:
       url: jdbc:derby:memory:agent-playwright-audit;create=true
 
 agent:
+  agents-config: classpath:agents/agents.yaml
   blueprint: classpath:agents/support/agent.md
   audit:
     granularity: debug
@@ -18,7 +19,7 @@ agent:
       bind-default-beans: true
       bind-pre-run-processor: true
       pre-run:
-        agent-endpoint-uri: agent:support?blueprint={{agent.blueprint}}
+        agent-endpoint-uri: agent:support?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}
         fallback-enabled: false
         fallback:
           ticket-keywords: ticket,open,create,support,login

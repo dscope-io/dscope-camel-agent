@@ -1,6 +1,5 @@
 package io.dscope.camel.agent.component;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dscope.camel.agent.api.AgentKernel;
 import io.dscope.camel.agent.api.AiModelClient;
@@ -13,23 +12,22 @@ import io.dscope.camel.agent.executor.TemplateAwareCamelToolExecutor;
 import io.dscope.camel.agent.kernel.DefaultAgentKernel;
 import io.dscope.camel.agent.kernel.InMemoryPersistenceFacade;
 import io.dscope.camel.agent.kernel.StaticAiModelClient;
+import io.dscope.camel.agent.mcp.McpToolDiscoveryResolver;
 import io.dscope.camel.agent.model.AgentBlueprint;
 import io.dscope.camel.agent.model.RealtimeSpec;
-import io.dscope.camel.agent.model.ToolPolicy;
-import io.dscope.camel.agent.model.ToolSpec;
 import io.dscope.camel.agent.registry.CorrelationRegistry;
 import io.dscope.camel.agent.registry.DefaultToolRegistry;
+import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 import io.dscope.camel.agent.runtime.RealtimeConfigResolver;
+import io.dscope.camel.agent.runtime.ResolvedAgentPlan;
 import io.dscope.camel.agent.validation.SchemaValidator;
-import io.dscope.camel.mcp.McpClient;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.camel.Endpoint;
+import org.apache.camel.Exchange;
 import org.apache.camel.ProducerTemplate;
 import org.apache.camel.spi.annotations.Component;
 import org.apache.camel.support.DefaultComponent;
@@ -37,28 +35,91 @@ import org.apache.camel.support.DefaultComponent;
 @Component("agent")
 public class AgentComponent extends DefaultComponent {
 
+    private final Map<String, AgentKernel> kernelCache = new ConcurrentHashMap<>();
+
     @Override
     protected Endpoint createEndpoint(String uri, String remaining, Map<String, Object> parameters) throws Exception {
         AgentEndpoint endpoint = new AgentEndpoint(uri, this);
         endpoint.setAgentId(remaining);
         setProperties(endpoint, parameters);
-
-        BlueprintLoader blueprintLoader = new MarkdownBlueprintLoader();
-        AgentBlueprint loadedBlueprint = applyRealtimeFallback(blueprintLoader.load(endpoint.getBlueprint()));
-
-        ObjectMapper mapper = findRegistry(ObjectMapper.class).orElseGet(ObjectMapper::new);
-        ProducerTemplate producerTemplate = getCamelContext().createProducerTemplate();
-        AgentBlueprint blueprint = resolveMcpTools(loadedBlueprint, producerTemplate, mapper);
-
-        ToolRegistry toolRegistry = findRegistry(ToolRegistry.class)
-            .orElseGet(() -> new DefaultToolRegistry(blueprint.tools()));
-        PersistenceFacade persistenceFacade = findRegistry(PersistenceFacade.class).orElseGet(InMemoryPersistenceFacade::new);
-        ToolExecutor toolExecutor = findRegistry(ToolExecutor.class)
-            .orElseGet(() -> new TemplateAwareCamelToolExecutor(getCamelContext(), producerTemplate, mapper, blueprint.jsonRouteTemplates()));
-        AiModelClient aiModelClient = findRegistry(AiModelClient.class).orElseGet(StaticAiModelClient::new);
         CorrelationRegistry correlationRegistry = findRegistry(CorrelationRegistry.class).orElseGet(CorrelationRegistry::global);
+        endpoint.setCorrelationRegistry(correlationRegistry);
+        return endpoint;
+    }
 
-        AgentKernel kernel = new DefaultAgentKernel(
+    public void clearKernelCache() {
+        kernelCache.clear();
+    }
+
+    public ResolvedAgentPlan resolvePlan(AgentEndpoint endpoint, Exchange exchange, String conversationId) {
+        String requestedPlanName = exchange.getMessage().getHeader("agent.planName", String.class);
+        String requestedPlanVersion = exchange.getMessage().getHeader("agent.planVersion", String.class);
+        return planResolver().resolve(
+            conversationId,
+            requestedPlanName,
+            requestedPlanVersion,
+            resolvePlansConfig(endpoint),
+            resolveLegacyBlueprint(endpoint)
+        );
+    }
+
+    public AgentKernel resolveKernel(AgentEndpoint endpoint, ResolvedAgentPlan resolvedPlan) {
+        String blueprintLocation = resolvedPlan == null || resolvedPlan.blueprint() == null || resolvedPlan.blueprint().isBlank()
+            ? resolveLegacyBlueprint(endpoint)
+            : resolvedPlan.blueprint();
+        String cacheKey = (resolvedPlan == null || resolvedPlan.legacyMode())
+            ? "legacy|" + blueprintLocation
+            : resolvedPlan.planName() + "|" + resolvedPlan.planVersion() + "|" + blueprintLocation;
+        return kernelCache.computeIfAbsent(cacheKey, ignored -> buildKernel(blueprintLocation));
+    }
+
+    public AgentPlanSelectionResolver planResolver() {
+        return findRegistry(AgentPlanSelectionResolver.class)
+            .orElseGet(() -> new AgentPlanSelectionResolver(persistenceFacade(), objectMapper()));
+    }
+
+    public PersistenceFacade persistenceFacade() {
+        return findRegistry(PersistenceFacade.class).orElseGet(InMemoryPersistenceFacade::new);
+    }
+
+    public String resolvePlansConfig(AgentEndpoint endpoint) {
+        String configured = endpoint == null ? null : endpoint.getPlansConfig();
+        if (configured != null && !configured.isBlank()) {
+            return configured;
+        }
+        return runtimeProperty("agent.agents-config");
+    }
+
+    public String resolveLegacyBlueprint(AgentEndpoint endpoint) {
+        String configured = endpoint == null ? null : endpoint.getBlueprint();
+        if (configured != null && !configured.isBlank()) {
+            return configured;
+        }
+        return defaultIfBlank(runtimeProperty("agent.blueprint"), "classpath:agents/support/agent.md");
+    }
+
+    public ObjectMapper objectMapper() {
+        return findRegistry(ObjectMapper.class).orElseGet(ObjectMapper::new);
+    }
+
+    private <T> Optional<T> findRegistry(Class<T> type) {
+        return Optional.ofNullable(getCamelContext().getRegistry().findSingleByType(type));
+    }
+
+    private AgentKernel buildKernel(String blueprintLocation) {
+        BlueprintLoader blueprintLoader = new MarkdownBlueprintLoader();
+        AgentBlueprint loadedBlueprint = applyRealtimeFallback(blueprintLoader.load(blueprintLocation));
+
+        ObjectMapper mapper = objectMapper();
+        ProducerTemplate producerTemplate = getCamelContext().createProducerTemplate();
+        AgentBlueprint blueprint = McpToolDiscoveryResolver.resolve(loadedBlueprint, producerTemplate, mapper);
+
+        ToolRegistry toolRegistry = new DefaultToolRegistry(blueprint.tools());
+        ToolExecutor toolExecutor = createToolExecutor(producerTemplate, mapper, blueprint);
+        AiModelClient aiModelClient = findRegistry(AiModelClient.class).orElseGet(StaticAiModelClient::new);
+        PersistenceFacade persistenceFacade = persistenceFacade();
+
+        return new DefaultAgentKernel(
             blueprint,
             toolRegistry,
             toolExecutor,
@@ -67,117 +128,18 @@ public class AgentComponent extends DefaultComponent {
             new SchemaValidator(),
             mapper
         );
-
-        endpoint.setAgentKernel(kernel);
-        endpoint.setCorrelationRegistry(correlationRegistry);
-        return endpoint;
     }
 
-    private <T> Optional<T> findRegistry(Class<T> type) {
-        return Optional.ofNullable(getCamelContext().getRegistry().findSingleByType(type));
-    }
-
-    private AgentBlueprint resolveMcpTools(AgentBlueprint blueprint, ProducerTemplate producerTemplate, ObjectMapper mapper) {
-        List<ToolSpec> resolvedTools = new ArrayList<>();
-        List<JsonNode> catalogs = new ArrayList<>();
-        Set<String> seenToolNames = new HashSet<>();
-
-        for (ToolSpec toolSpec : blueprint.tools()) {
-            if (!isMcpEndpoint(toolSpec.endpointUri())) {
-                if (seenToolNames.add(toolSpec.name())) {
-                    resolvedTools.add(toolSpec);
-                }
-                continue;
-            }
-
-            try {
-                JsonNode resultNode = McpClient.toolsListResultJson(producerTemplate, toolSpec.endpointUri());
-                catalogs.add(mapper.createObjectNode()
-                    .put("serviceTool", toolSpec.name())
-                    .put("endpointUri", toolSpec.endpointUri())
-                    .set("result", resultNode));
-
-                List<ToolSpec> discoveredTools = toDiscoveredTools(toolSpec, resultNode);
-                if (discoveredTools.isEmpty()) {
-                    if (seenToolNames.add(toolSpec.name())) {
-                        resolvedTools.add(toolSpec);
-                    }
-                    continue;
-                }
-                for (ToolSpec discoveredTool : discoveredTools) {
-                    if (seenToolNames.add(discoveredTool.name())) {
-                        resolvedTools.add(discoveredTool);
-                    }
-                }
-            } catch (Exception e) {
-                catalogs.add(mapper.createObjectNode()
-                    .put("serviceTool", toolSpec.name())
-                    .put("endpointUri", toolSpec.endpointUri())
-                    .put("error", e.getMessage()));
-                if (seenToolNames.add(toolSpec.name())) {
-                    resolvedTools.add(toolSpec);
-                }
-            }
-        }
-
-        return new AgentBlueprint(
-            blueprint.name(),
-            blueprint.version(),
-            blueprint.systemInstruction(),
-            List.copyOf(resolvedTools),
-            blueprint.jsonRouteTemplates(),
-            List.copyOf(catalogs),
-            blueprint.realtime(),
-            blueprint.aguiPreRun()
-        );
-    }
-
-    private List<ToolSpec> toDiscoveredTools(ToolSpec sourceTool, JsonNode toolsListResult) {
-        JsonNode toolsNode = toolsListResult.path("tools");
-        if (!toolsNode.isArray()) {
-            if (toolsListResult.isArray()) {
-                toolsNode = toolsListResult;
-            } else {
-                return List.of();
-            }
-        }
-
-        List<ToolSpec> discovered = new ArrayList<>();
-        for (JsonNode toolNode : toolsNode) {
-            String name = text(toolNode, "name");
-            if (name == null || name.isBlank()) {
-                continue;
-            }
-            String description = text(toolNode, "description");
-            JsonNode inputSchema = toolNode.path("inputSchema");
-            if (inputSchema.isMissingNode()) {
-                inputSchema = null;
-            }
-            JsonNode outputSchema = toolNode.path("outputSchema");
-            if (outputSchema.isMissingNode()) {
-                outputSchema = null;
-            }
-            ToolPolicy policy = sourceTool.policy() != null ? sourceTool.policy() : new ToolPolicy(false, 0, 1000);
-            discovered.add(new ToolSpec(
-                name,
-                description,
-                null,
-                sourceTool.endpointUri(),
-                inputSchema,
-                outputSchema,
-                policy
+    private ToolExecutor createToolExecutor(ProducerTemplate producerTemplate,
+                                            ObjectMapper objectMapper,
+                                            AgentBlueprint blueprint) {
+        return findRegistry(ToolExecutor.class)
+            .orElseGet(() -> new TemplateAwareCamelToolExecutor(
+                getCamelContext(),
+                producerTemplate,
+                objectMapper,
+                defaultIfNull(blueprint.jsonRouteTemplates(), List.of())
             ));
-        }
-        return discovered;
-    }
-
-    private String text(JsonNode node, String fieldName) {
-        JsonNode value = node.get(fieldName);
-        return value == null || value.isNull() ? null : value.asText();
-    }
-
-    private boolean isMcpEndpoint(String endpointUri) {
-        return endpointUri != null && endpointUri.startsWith("mcp:");
     }
 
     private AgentBlueprint applyRealtimeFallback(AgentBlueprint blueprint) {
@@ -214,5 +176,13 @@ public class AgentComponent extends DefaultComponent {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private <T> T defaultIfNull(T value, T fallback) {
+        return value == null ? fallback : value;
+    }
+
+    private String defaultIfBlank(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 }

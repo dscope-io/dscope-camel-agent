@@ -3,13 +3,14 @@ package io.dscope.camel.agent.audit;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dscope.camel.agent.api.PersistenceFacade;
 import io.dscope.camel.agent.model.AgentEvent;
+import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.stream.Stream;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.Processor;
@@ -21,15 +22,23 @@ public class AuditTrailSearchProcessor implements Processor {
 
     private final PersistenceFacade persistenceFacade;
     private final ObjectMapper objectMapper;
+    private final AgentPlanSelectionResolver planSelectionResolver;
+    private final String plansConfig;
     private final String blueprintUri;
 
     public AuditTrailSearchProcessor(PersistenceFacade persistenceFacade, ObjectMapper objectMapper) {
-        this(persistenceFacade, objectMapper, null);
+        this(persistenceFacade, objectMapper, null, null, null);
     }
 
-    public AuditTrailSearchProcessor(PersistenceFacade persistenceFacade, ObjectMapper objectMapper, String blueprintUri) {
+    public AuditTrailSearchProcessor(PersistenceFacade persistenceFacade,
+                                     ObjectMapper objectMapper,
+                                     AgentPlanSelectionResolver planSelectionResolver,
+                                     String plansConfig,
+                                     String blueprintUri) {
         this.persistenceFacade = persistenceFacade;
         this.objectMapper = objectMapper;
+        this.planSelectionResolver = planSelectionResolver;
+        this.plansConfig = plansConfig == null || plansConfig.isBlank() ? null : plansConfig;
         this.blueprintUri = blueprintUri == null || blueprintUri.isBlank() ? null : blueprintUri;
     }
 
@@ -60,37 +69,16 @@ public class AuditTrailSearchProcessor implements Processor {
         }
 
         List<AgentEvent> loaded = persistenceFacade.loadConversation(conversationId, limit);
-        Stream<AgentEvent> filteredStream = loaded.stream();
-
-        if (type != null && !type.isBlank()) {
-            String normalizedType = type.trim().toLowerCase(Locale.ROOT);
-            filteredStream = filteredStream.filter(event -> event.type() != null
-                && event.type().toLowerCase(Locale.ROOT).equals(normalizedType));
-        }
-
-        if (from != null) {
-            filteredStream = filteredStream.filter(event -> event.timestamp() != null && !event.timestamp().isBefore(from));
-        }
-        if (to != null) {
-            filteredStream = filteredStream.filter(event -> event.timestamp() != null && !event.timestamp().isAfter(to));
-        }
-
-        if (query != null && !query.isBlank()) {
-            String normalizedQuery = query.toLowerCase(Locale.ROOT);
-            filteredStream = filteredStream.filter(event -> containsIgnoreCase(event.conversationId(), normalizedQuery)
-                || containsIgnoreCase(event.taskId(), normalizedQuery)
-                || containsIgnoreCase(event.type(), normalizedQuery)
-                || containsIgnoreCase(String.valueOf(event.payload()), normalizedQuery));
-        }
-
-        List<Map<String, Object>> events = filteredStream
-            .limit(limit)
-            .map(this::toJson)
-            .toList();
-
-        String blueprintContent = AuditMetadataSupport.loadBlueprintContent(blueprintUri);
-        AuditMetadataSupport.BlueprintMetadata blueprintMetadata = AuditMetadataSupport.parseBlueprintMetadata(blueprintContent);
-        Map<String, Object> conversationMetadata = AuditMetadataSupport.buildConversationMetadata(conversationId, loaded, blueprintMetadata);
+        String effectiveBlueprint = resolveBlueprint(conversationId);
+        AuditMetadataSupport.BlueprintMetadata blueprintMetadata = AuditMetadataSupport.loadBlueprintMetadata(effectiveBlueprint);
+        AuditMetadataSupport.AgentStepMetadata currentAgentState = AuditMetadataSupport.deriveAgentStepMetadata(loaded, effectiveBlueprint);
+        Map<String, Object> conversationMetadata = AuditMetadataSupport.buildConversationMetadata(
+            conversationId,
+            loaded,
+            blueprintMetadata,
+            currentAgentState
+        );
+        List<Map<String, Object>> events = projectEvents(loaded, type, query, from, to, limit, effectiveBlueprint);
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("conversationId", conversationId);
@@ -145,13 +133,69 @@ public class AuditTrailSearchProcessor implements Processor {
         return value != null && value.toLowerCase(Locale.ROOT).contains(query);
     }
 
-    private Map<String, Object> toJson(AgentEvent event) {
+    private List<Map<String, Object>> projectEvents(List<AgentEvent> loaded,
+                                                    String type,
+                                                    String query,
+                                                    Instant from,
+                                                    Instant to,
+                                                    int limit,
+                                                    String effectiveBlueprint) {
+        List<Map<String, Object>> projected = new ArrayList<>();
+        String normalizedType = type == null || type.isBlank() ? null : type.trim().toLowerCase(Locale.ROOT);
+        String normalizedQuery = query == null || query.isBlank() ? null : query.toLowerCase(Locale.ROOT);
+        AuditMetadataSupport.AgentStepMetadata agentState = AuditMetadataSupport.AgentStepMetadata.fromBlueprint(
+            effectiveBlueprint,
+            AuditMetadataSupport.loadBlueprintMetadata(effectiveBlueprint)
+        );
+
+        for (AgentEvent event : loaded) {
+            agentState = AuditMetadataSupport.advanceAgentStepMetadata(agentState, event);
+            if (!matchesFilters(event, normalizedType, normalizedQuery, from, to)) {
+                continue;
+            }
+            projected.add(toJson(event, agentState));
+            if (projected.size() >= limit) {
+                break;
+            }
+        }
+        return projected;
+    }
+
+    private boolean matchesFilters(AgentEvent event,
+                                   String normalizedType,
+                                   String normalizedQuery,
+                                   Instant from,
+                                   Instant to) {
+        if (event == null) {
+            return false;
+        }
+        if (normalizedType != null && (event.type() == null || !event.type().toLowerCase(Locale.ROOT).equals(normalizedType))) {
+            return false;
+        }
+        if (from != null && (event.timestamp() == null || event.timestamp().isBefore(from))) {
+            return false;
+        }
+        if (to != null && (event.timestamp() == null || event.timestamp().isAfter(to))) {
+            return false;
+        }
+        if (normalizedQuery != null
+            && !containsIgnoreCase(event.conversationId(), normalizedQuery)
+            && !containsIgnoreCase(event.taskId(), normalizedQuery)
+            && !containsIgnoreCase(event.type(), normalizedQuery)
+            && !containsIgnoreCase(String.valueOf(event.payload()), normalizedQuery)) {
+            return false;
+        }
+        return true;
+    }
+
+    private Map<String, Object> toJson(AgentEvent event, AuditMetadataSupport.AgentStepMetadata agentState) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("conversationId", event.conversationId());
         data.put("taskId", event.taskId());
         data.put("type", event.type());
         data.put("payload", event.payload());
         data.put("timestamp", event.timestamp() == null ? null : event.timestamp().toString());
+        data.put("agent", agentState == null ? Map.of() : agentState.asMap());
         return data;
     }
 
@@ -162,5 +206,12 @@ public class AuditTrailSearchProcessor implements Processor {
             "error", "bad_request",
             "message", message
         )));
+    }
+
+    private String resolveBlueprint(String conversationId) {
+        if (planSelectionResolver == null) {
+            return blueprintUri;
+        }
+        return planSelectionResolver.resolveBlueprintForConversation(conversationId, plansConfig, blueprintUri);
     }
 }

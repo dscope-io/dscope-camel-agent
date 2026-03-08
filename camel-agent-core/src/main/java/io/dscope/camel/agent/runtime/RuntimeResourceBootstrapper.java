@@ -23,6 +23,7 @@ final class RuntimeResourceBootstrapper {
     private static final Logger LOGGER = LoggerFactory.getLogger(RuntimeResourceBootstrapper.class);
 
     private static final String PROP_BLUEPRINT = "agent.blueprint";
+    private static final String PROP_AGENTS_CONFIG = "agent.agents-config";
     private static final String PROP_ROUTES_PATTERN = "agent.runtime.routes-include-pattern";
     private static final String PROP_KAMELET_URLS = "agent.runtime.kamelets-include-pattern";
     private static final String PROP_KAMELET_URLS_ALIAS = "agent.runtime.kameletsIncludePattern";
@@ -36,6 +37,7 @@ final class RuntimeResourceBootstrapper {
         resolved.putAll(source);
 
         BootstrapWorkspace workspace = new BootstrapWorkspace();
+        resolveAgentsConfig(resolved, workspace);
         resolveBlueprint(resolved, workspace);
         resolveRoutes(resolved, workspace);
         resolveKamelets(resolved, workspace);
@@ -54,6 +56,40 @@ final class RuntimeResourceBootstrapper {
         String replacement = toFileUri(staged);
         properties.setProperty(PROP_BLUEPRINT, replacement);
         LOGGER.info("Runtime resource bootstrap: staged blueprint {} -> {}", blueprint, replacement);
+    }
+
+    private static void resolveAgentsConfig(Properties properties, BootstrapWorkspace workspace) {
+        String config = trimToNull(properties.getProperty(PROP_AGENTS_CONFIG));
+        if (config == null || !isHttpUrl(config)) {
+            return;
+        }
+        Path staged = workspace.downloadTo("agents", config, ".yaml");
+        String replacement = toFileUri(staged);
+        properties.setProperty(PROP_AGENTS_CONFIG, replacement);
+        LOGGER.info("Runtime resource bootstrap: staged agents-config {} -> {}", config, replacement);
+        stageRemoteBlueprintsFromCatalog(properties, workspace, replacement);
+    }
+
+    private static void stageRemoteBlueprintsFromCatalog(Properties properties, BootstrapWorkspace workspace, String catalogLocation) {
+        try {
+            AgentPlanCatalog catalog = new AgentPlanCatalogLoader().load(catalogLocation);
+            for (AgentPlanSpec plan : catalog.plans()) {
+                if (plan == null || plan.versions() == null) {
+                    continue;
+                }
+                for (AgentPlanVersionSpec version : plan.versions()) {
+                    if (version == null || !isHttpUrl(version.blueprint())) {
+                        continue;
+                    }
+                    Path staged = workspace.downloadTo("agents", version.blueprint(), ".md");
+                    LOGGER.info("Runtime resource bootstrap: staged catalog blueprint {} -> {}", version.blueprint(), toFileUri(staged));
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Runtime resource bootstrap: failed to stage catalog blueprints from {} ({})",
+                catalogLocation,
+                e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+        }
     }
 
     private static void resolveRoutes(Properties properties, BootstrapWorkspace workspace) {

@@ -1,0 +1,151 @@
+Port 8080 is busy; using 8087 for AGUI and health endpoints.
+Generating dependency classpath: /Users/roman/Projects/DScope/CamelAIAgentComponent/samples/agent-support-service/target/runtime.classpath
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ---------------< io.dscope.camel:agent-support-service >----------------
+[INFO] Building Camel Agent Support Sample Service 0.5.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- dependency:2.8:build-classpath (default-cli) @ agent-support-service ---
+[WARNING] Parameter 'local' is deprecated core expression; Avoid use of ArtifactRepository type. If you need access to local repository, switch to '${repositorySystemSession}' expression and get LRM from it instead.
+[INFO] Wrote classpath file '/Users/roman/Projects/DScope/CamelAIAgentComponent/samples/agent-support-service/target/runtime.classpath'.
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  01:24 min
+[INFO] Finished at: 2026-03-02T20:37:32-08:00
+[INFO] ------------------------------------------------------------------------
+Starting agent-support-service from compiled classes
+UI:     http://localhost:8087/agui/ui
+Health: http://localhost:8087/health
+Hot edit path: /Users/roman/Projects/DScope/CamelAIAgentComponent/samples/agent-support-service/src/main/resources/frontend
+[main] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime bootstrap started: applicationYamlPath=application.yaml, propertiesLoaded=72
+[main] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime routes include pattern applied: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/admin-platform.camel.yaml
+[main] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime persistence selected: dscope factory
+[main] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime conversation persistence initialized: enabled=false
+[main] INFO io.dscope.camel.mcp.service.McpUiSessionRegistry - MCP UI Session Registry started with timeout=3600000ms
+[main] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime AI model client bound: spring-ai mode
+[main] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime AGUI default beans bound
+[main] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime AGUI pre-run processor bound: beanName=agUiAgentPreRunTextProcessor
+[main] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime realtime relay bound: openAiRealtimeRelayClient
+[main] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime realtime processor bound: beanName=supportRealtimeEventProcessorCore, endpointUri=agent:support?blueprint={{agent.blueprint}}
+[main] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime realtime session registry bound: beanName=supportRealtimeSessionRegistry, ttlMs=600000
+[main] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime realtime init processor bound: beanName=supportRealtimeSessionInitProcessor
+[main] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime realtime token processor bound: beanName=supportRealtimeTokenProcessor
+[main] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime route builder enabled
+[main] INFO io.dscope.camel.agent.runtime.AgentRuntimeBootstrap - Agent runtime bootstrap completed
+[main] INFO org.apache.camel.main.MainSupport - Apache Camel (Main) 4.15.0 is starting
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext - Apache Camel 4.15.0 (agent-support-service) is starting
+Mar 02, 2026 8:38:31 PM org.xnio.Xnio <clinit>
+INFO: XNIO version 3.8.16.Final
+Mar 02, 2026 8:38:31 PM org.xnio.nio.NioXnio <clinit>
+INFO: XNIO NIO Implementation Version 3.8.16.Final
+[main] INFO org.apache.camel.component.undertow.DefaultUndertowHost - Starting Undertow server on http://0.0.0.0:8087
+Mar 02, 2026 8:38:33 PM io.undertow.Undertow start
+INFO: starting server: Undertow - 2.3.19.Final
+[main] INFO org.apache.camel.main.BaseMainSupport - Property-placeholders summary
+[main] INFO org.apache.camel.main.BaseMainSupport -     [JVM System Property]          agui.health.port = 8087
+[main] INFO org.apache.camel.main.BaseMainSupport -     [JVM System Property]          agui.rpc.port = 8087
+[main] INFO org.apache.camel.main.BaseMainSupport -     [JVM System Property]          agui.ui.static-root = /Users/roman/Projects/DScope/CamelAIAgentComponent/samples/agent-support-service/src/main/resources/frontend
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext - Routes startup (total:30 started:30 kamelets:1)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started sample-agent-invoke (timer://agent-demo)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started kb-search (direct://kb-search)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started route1 (http://0.0.0.0:8087/health)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started agui-diagnostics (http://0.0.0.0:8087/diagnostics)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started agui-agent-post-sse (http://0.0.0.0:8087/agui/agent)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started agui-backend-tool-rendering-post-sse (http://0.0.0.0:8087/agui/backend_tool_rendering)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started agui-stream (http://0.0.0.0:8087/agui/stream/%7BrunId%7D)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started agui-agent-rpc-websocket (ws://0.0.0.0:8087/agui/rpc)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started agui-ui (http://0.0.0.0:8087/agui/ui)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started agui-ui-static (http://0.0.0.0:8087/agui/ui/%7BassetPath%7D)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started realtime-session-event (http://0.0.0.0:8087/realtime/session/%7BconversationId%7D/event)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started realtime-session-token (http://0.0.0.0:8087/realtime/session/%7BconversationId%7D/token)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started realtime-session-init (http://0.0.0.0:8087/realtime/session/%7BconversationId%7D/init)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started sample-admin-mcp-api (http://0.0.0.0:8087/mcp/admin)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started sample-admin-mcp-health (http://0.0.0.0:8087/mcp/admin/health)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started sample-admin-mcp-stream (http://0.0.0.0:8087/mcp/admin/stream)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started sample-kamelet-echo-smoke (http://0.0.0.0:8087/smoke/kamelet/echo)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started sample-runtime-refresh-all (http://0.0.0.0:8087/runtime/refresh)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started sample-runtime-refresh-conversation (http://0.0.0.0:8087/runtime/refresh/%7BconversationId%7D)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started sample-runtime-close-conversation (http://0.0.0.0:8087/runtime/conversation/%7BconversationId%7D/close)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started sample-runtime-purge-preview (http://0.0.0.0:8087/runtime/purge/preview)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started sample-audit-search-api (http://0.0.0.0:8087/audit/search)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started sample-audit-conversations-api (http://0.0.0.0:8087/audit/conversations)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started sample-audit-conversation-view-api (http://0.0.0.0:8087/audit/conversation/view)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started sample-audit-conversation-agent-message-api (http://0.0.0.0:8087/audit/conversation/agent-message)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started sample-audit-copilotkit-view-alias-api (http://0.0.0.0:8087/audit/copilotkit)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started sample-audit-copilotkit-agent-message-alias-api (http://0.0.0.0:8087/audit/copilotkit/agent-message)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started sample-audit-agent-md-api (http://0.0.0.0:8087/audit/agent-md)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started sample-audit-ui (http://0.0.0.0:8087/audit/ui)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Started support-ticket-open (direct://support-ticket-open)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext - Apache Camel 4.15.0 (agent-support-service) started in 4s230ms (build:0ms init:0ms start:4s230ms boot:13s327ms)
+[Camel (camel-1) thread #2 - timer://agent-demo] INFO io.dscope.camel.agent.kernel.DefaultAgentKernel - Kernel handleUserMessage started: conversationId=sample-0B1B62A11966716-0000000000000000, chars=49
+[Camel (camel-1) thread #2 - timer://agent-demo] INFO io.dscope.camel.agent.kernel.DefaultAgentKernel - Kernel tool execution started: conversationId=sample-0B1B62A11966716-0000000000000000, tool=support.ticket.open
+[Camel (camel-1) thread #2 - timer://agent-demo] INFO io.dscope.camel.agent.kernel.DefaultAgentKernel - Kernel tool execution completed: conversationId=sample-0B1B62A11966716-0000000000000000, tool=support.ticket.open, contentChars=176, hasData=true
+[Camel (camel-1) thread #2 - timer://agent-demo] INFO io.dscope.camel.agent.kernel.DefaultAgentKernel - Kernel final assistant message ready: conversationId=sample-0B1B62A11966716-0000000000000000, chars=176
+[Camel (camel-1) thread #2 - timer://agent-demo] INFO io.dscope.camel.agent.kernel.DefaultAgentKernel - Kernel handleUserMessage completed: conversationId=sample-0B1B62A11966716-0000000000000000, emittedEvents=6
+[Camel (camel-1) thread #2 - timer://agent-demo] INFO sample-agent-invoke - Agent response: {"ticketId":"TCK-0B1B62A11966716-0000000000000001","status":"OPEN","summary":"My login is failing","assignedQueue":"L1-SUPPORT","message":"Support ticket created successfully"}
+[Camel (camel-1) thread #2 - timer://agent-demo] INFO sample-agent-invoke - Audit trail for sample-0B1B62A11966716-0000000000000000: [{"conversationId":"sample-0B1B62A11966716-0000000000000000","taskId":null,"type":"user.message","payload":"My login is failing, please open a support ticket","timestamp":"2026-03-03T04:38:40.366362Z"},{"conversationId":"sample-0B1B62A11966716-0000000000000000","taskId":null,"type":"mcp.tools.discovered","payload":{"services":[{"serviceTool":"support.mcp","endpointUri":"mcp:http://localhost:3001/mcp","error":"Exception occurred during execution on the exchange: Exchange[]"}]},"timestamp":"2026-03-03T04:38:42.096392Z"},{"conversationId":"sample-0B1B62A11966716-0000000000000000","taskId":null,"type":"tool.start","payload":{"name":"s[Camel Thread #1 - CamelHangupInterceptor] INFO org.apache.camel.main.DefaultMainShutdownStrategy - JVM shutdown hook triggered by SIGTERM (PID 24338). Shutting down Apache Camel (Main) 4.15.0
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext - Apache Camel 4.15.0 (agent-support-service) is shutting down (timeout:45s)
+[Camel (camel-1) thread #3 - ShutdownTask] INFO org.apache.camel.component.undertow.DefaultUndertowHost - Stopping Undertow server on http://0.0.0.0:8083
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext - Routes stopped (total:30 stopped:30 kamelets:1)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped support-ticket-open (direct://support-ticket-open)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-ui (http://0.0.0.0:8083/audit/ui)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-agent-md-api (http://0.0.0.0:8083/audit/agent-md)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-copilotkit-agent-message-alias-api (http://0.0.0.0:8083/audit/copilotkit/agent-message)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-copilotkit-view-alias-api (http://0.0.0.0:8083/audit/copilotkit)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-conversation-agent-message-api (http://0.0.0.0:8083/audit/conversation/agent-message)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-conversation-view-api (http://0.0.0.0:8083/audit/conversation/view)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-conversations-api (http://0.0.0.0:8083/audit/conversations)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-search-api (http://0.0.0.0:8083/audit/search)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-runtime-purge-preview (http://0.0.0.0:8083/runtime/purge/preview)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-runtime-close-conversation (http://0.0.0.0:8083/runtime/conversation/%7BconversationId%7D/close)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-runtime-refresh-conversation (http://0.0.0.0:8083/runtime/refresh/%7BconversationId%7D)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-runtime-refresh-all (http://0.0.0.0:8083/runtime/refresh)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-kamelet-echo-smoke (http://0.0.0.0:8083/smoke/kamelet/echo)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-admin-mcp-stream (http://0.0.0.0:8083/mcp/admin/stream)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-admin-mcp-health (http://0.0.0.0:8083/mcp/admin/health)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-admin-mcp-api (http://0.0.0.0:8083/mcp/admin)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped realtime-session-init (http://0.0.0.0:8083/realtime/[Camel (camel-1) thread #3 - ShutdownTask] INFO org.apache.camel.component.undertow.DefaultUndertowHost - Stopping Undertow server on http://0.0.0.0:8086
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext - Routes stopped (total:30 stopped:30 kamelets:1)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped support-ticket-open (direct://support-ticket-open)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-ui (http://0.0.0.0:8086/audit/ui)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-agent-md-api (http://0.0.0.0:8086/audit/agent-md)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-copilotkit-agent-message-alias-api (http://0.0.0.0:8086/audit/copilotkit/agent-message)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-copilotkit-view-alias-api (http://0.0.0.0:8086/audit/copilotkit)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-conversation-agent-message-api (http://0.0.0.0:8086/audit/conversation/agent-message)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-conversation-view-api (http://0.0.0.0:8086/audit/conversation/view)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-conversations-api (http://0.0.0.0:8086/audit/conversations)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-audit-search-api (http://0.0.0.0:8086/audit/search)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-runtime-purge-preview (http://0.0.0.0:8086/runtime/purge/preview)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-runtime-close-conversation (http://0.0.0.0:8086/runtime/conversation/%7BconversationId%7D/close)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-runtime-refresh-conversation (http://0.0.0.0:8086/runtime/refresh/%7BconversationId%7D)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-runtime-refresh-all (http://0.0.0.0:8086/runtime/refresh)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-kamelet-echo-smoke (http://0.0.0.0:8086/smoke/kamelet/echo)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-admin-mcp-stream (http://0.0.0.0:8086/mcp/admin/stream)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-admin-mcp-health (http://0.0.0.0:8086/mcp/admin/health)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-admin-mcp-api (http://0.0.0.0:8086/mcp/admin)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped realtime-session-init (http://0.0.0.0:8086/realtime/session/%7BconversationId%7D/init)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped realtime-session-token (http://0.0.0.0:8086/realtime/session/%7BconversationId%7D/token)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped realtime-session-event (http://0.0.0.0:8086/realtime/session/%7BconversationId%7D/event)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-ui-static (http://0.0.0.0:8086/agui/ui/%7BassetPath%7D)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-ui (http://0.0.0.0:8086/agui/ui)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-agent-rpc-websocket (ws://0.0.0.0:8086/agui/rpc)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-stream (http://0.0.0.0:8086/agui/stream/%7BrunId%7D)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-backend-tool-rendering-post-sse (http://0.0.0.0:8086/agui/backend_tool_rendering)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-agent-post-sse (http://0.0.0.0:8086/agui/agent)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped agui-diagnostics (http://0.0.0.0:8086/diagnostics)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped route1 (http://0.0.0.0:8086/health)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped kb-search (direct://kb-search)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-agent-invoke (timer://agent-demo)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.impl.engine.AbstractCamelContext - Apache Camel 4.15.0 (agent-support-service) shutdown in 4s315ms (uptime:9m20s)
+[io.dscope.camel.agent.samples.Main.main()] INFO org.apache.camel.main.MainSupport - Apache Camel (Main) 4.15.0 shutdown
+[Camel Thread #1 - CamelHangupInterceptor] INFO org.apache.camel.main.DefaultMainShutdownStrategy - Apache Camel (Main) 4.15.0 is shutdown
+cs (http://0.0.0.0:8087/diagnostics)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped route1 (http://0.0.0.0:8087/health)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped kb-search (direct://kb-search)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext -     Stopped sample-agent-invoke (timer://agent-demo)
+[main] INFO org.apache.camel.impl.engine.AbstractCamelContext - Apache Camel 4.15.0 (agent-support-service) shutdown in 4s758ms (uptime:6m20s)
+[main] INFO org.apache.camel.main.MainSupport - Apache Camel (Main) 4.15.0 shutdown
+[Camel Thread #1 - CamelHangupInterceptor] INFO org.apache.camel.main.DefaultMainShutdownStrategy - Apache Camel (Main) 4.15.0 is shutdown

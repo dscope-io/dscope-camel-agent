@@ -3,6 +3,7 @@ package io.dscope.camel.agent.audit.mcp;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dscope.camel.agent.audit.AuditAgentBlueprintProcessor;
+import io.dscope.camel.agent.audit.AuditAgentCatalogProcessor;
 import io.dscope.camel.agent.audit.AuditConversationAgentMessageProcessor;
 import io.dscope.camel.agent.audit.AuditConversationListProcessor;
 import io.dscope.camel.agent.audit.AuditConversationSessionDataProcessor;
@@ -35,6 +36,7 @@ public class AuditMcpToolsCallProcessor extends AbstractMcpResponseProcessor {
     private final AuditConversationSessionDataProcessor auditConversationSessionDataProcessor;
     private final AuditConversationAgentMessageProcessor auditConversationAgentMessageProcessor;
     private final AuditAgentBlueprintProcessor auditAgentBlueprintProcessor;
+    private final AuditAgentCatalogProcessor auditAgentCatalogProcessor;
     private final RuntimeAuditGranularityProcessor runtimeAuditGranularityProcessor;
     private final RuntimeResourceRefreshProcessor runtimeResourceRefreshProcessor;
     private final RuntimeConversationPersistenceProcessor runtimeConversationPersistenceProcessor;
@@ -48,6 +50,7 @@ public class AuditMcpToolsCallProcessor extends AbstractMcpResponseProcessor {
                                       AuditConversationSessionDataProcessor auditConversationSessionDataProcessor,
                                       AuditConversationAgentMessageProcessor auditConversationAgentMessageProcessor,
                                       AuditAgentBlueprintProcessor auditAgentBlueprintProcessor,
+                                      AuditAgentCatalogProcessor auditAgentCatalogProcessor,
                                       RuntimeAuditGranularityProcessor runtimeAuditGranularityProcessor,
                                       RuntimeResourceRefreshProcessor runtimeResourceRefreshProcessor,
                                       RuntimeConversationPersistenceProcessor runtimeConversationPersistenceProcessor,
@@ -60,6 +63,7 @@ public class AuditMcpToolsCallProcessor extends AbstractMcpResponseProcessor {
         this.auditConversationSessionDataProcessor = auditConversationSessionDataProcessor;
         this.auditConversationAgentMessageProcessor = auditConversationAgentMessageProcessor;
         this.auditAgentBlueprintProcessor = auditAgentBlueprintProcessor;
+        this.auditAgentCatalogProcessor = auditAgentCatalogProcessor;
         this.runtimeAuditGranularityProcessor = runtimeAuditGranularityProcessor;
         this.runtimeResourceRefreshProcessor = runtimeResourceRefreshProcessor;
         this.runtimeConversationPersistenceProcessor = runtimeConversationPersistenceProcessor;
@@ -92,6 +96,9 @@ public class AuditMcpToolsCallProcessor extends AbstractMcpResponseProcessor {
                     setHeaders(message, effectiveArguments, "conversationId", "message", "text", "sessionId", "runId", "threadId");
                     message.setHeader(Exchange.CONTENT_TYPE, "application/json");
                     message.setBody(objectMapper.writeValueAsString(effectiveArguments));
+                }));
+            case "audit.agent.catalog" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, auditAgentCatalogProcessor,
+                message -> {
                 }));
             case "audit.agent.blueprint" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, auditAgentBlueprintProcessor,
                 message -> setHeaders(message, effectiveArguments, "conversationId")));

@@ -1,6 +1,7 @@
 package io.dscope.camel.agent.kernel;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.dscope.camel.agent.api.AgentKernel;
 import io.dscope.camel.agent.api.AiModelClient;
 import io.dscope.camel.agent.api.PersistenceFacade;
@@ -36,6 +37,7 @@ public class DefaultAgentKernel implements AgentKernel {
     private final ToolExecutor toolExecutor;
     private final AiModelClient aiModelClient;
     private final PersistenceFacade persistenceFacade;
+    private final InMemoryPersistenceFacade conversationStore;
     private final SchemaValidator schemaValidator;
     private final ObjectMapper objectMapper;
     private final String nodeOwnerId;
@@ -66,6 +68,7 @@ public class DefaultAgentKernel implements AgentKernel {
         this.toolExecutor = toolExecutor;
         this.aiModelClient = aiModelClient;
         this.persistenceFacade = persistenceFacade;
+        this.conversationStore = new InMemoryPersistenceFacade();
         this.schemaValidator = schemaValidator;
         this.objectMapper = objectMapper;
         this.nodeOwnerId = nodeOwnerId == null || nodeOwnerId.isBlank() ? "node-" + UUID.randomUUID() : nodeOwnerId;
@@ -135,7 +138,7 @@ public class DefaultAgentKernel implements AgentKernel {
             return new AgentResponse(conversationId, "Dynamic route started: " + routeId, emitted, finished);
         }
 
-        List<AgentEvent> history = new ArrayList<>(persistenceFacade.loadConversation(conversationId, 20));
+        List<AgentEvent> history = new ArrayList<>(conversationStore.loadConversation(conversationId, 20));
         emitMcpToolsDiscoveredIfNeeded(conversationId, history, emitted);
         StringBuilder streamed = new StringBuilder();
         String lastToolResultFallback = "";
@@ -165,8 +168,19 @@ public class DefaultAgentKernel implements AgentKernel {
             ToolSpec toolSpec = toolRegistry.getTool(toolCall.name())
                 .orElseThrow(() -> new IllegalArgumentException("Tool not allowed: " + toolCall.name()));
 
+            String toolTarget = (toolSpec.endpointUri() != null && !toolSpec.endpointUri().isBlank())
+                ? toolSpec.endpointUri()
+                : (toolSpec.routeId() != null && !toolSpec.routeId().isBlank() ? "direct:" + toolSpec.routeId() : "");
+            LOGGER.info("Kernel tool target resolved: conversationId={}, tool={}, target={}",
+                conversationId,
+                toolSpec.name(),
+                toolTarget);
+
             schemaValidator.validate(toolSpec.inputSchema(), toolCall.arguments(), "tool input " + toolCall.name());
-            AgentEvent start = event(conversationId, null, "tool.start", objectMapper.valueToTree(toolCall));
+            ObjectNode toolStartPayload = objectMapper.valueToTree(toolCall);
+            toolStartPayload.put("target", toolTarget);
+            toolStartPayload.put("mcpTarget", toolTarget.startsWith("mcp:"));
+            AgentEvent start = event(conversationId, null, "tool.start", toolStartPayload);
             persist(start);
             emitted.add(start);
 
@@ -215,7 +229,7 @@ public class DefaultAgentKernel implements AgentKernel {
             conversationId,
             finalMessage == null ? 0 : finalMessage.length());
 
-        AgentEvent assistant = event(conversationId, null, "assistant.message", objectMapper.valueToTree(finalMessage));
+        AgentEvent assistant = event(conversationId, null, "agent.message", objectMapper.valueToTree(finalMessage));
         persist(assistant);
         emitted.add(assistant);
 
@@ -278,7 +292,7 @@ public class DefaultAgentKernel implements AgentKernel {
             "Resumed task completed"
         );
         persistenceFacade.saveTask(finished);
-        AgentEvent assistant = event(task.conversationId(), task.taskId(), "assistant.message",
+        AgentEvent assistant = event(task.conversationId(), task.taskId(), "agent.message",
             objectMapper.valueToTree("Resumed task completed"));
         persist(assistant);
         return new AgentResponse(task.conversationId(), "Resumed task completed", List.of(resumedEvent, assistant), finished);
@@ -342,7 +356,21 @@ public class DefaultAgentKernel implements AgentKernel {
     }
 
     private void persist(AgentEvent event) {
-        persistenceFacade.appendEvent(event, UUID.randomUUID().toString());
+        conversationStore.appendEvent(event, null);
+        try {
+            persistenceFacade.appendEvent(event, UUID.randomUUID().toString());
+        } catch (RuntimeException failure) {
+            Throwable root = failure;
+            while (root.getCause() != null && root.getCause() != root) {
+                root = root.getCause();
+            }
+            String rootMessage = root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
+            LOGGER.warn("Kernel event persistence failed; continuing without persisted event: conversationId={}, type={}, reason={}",
+                event.conversationId(),
+                event.type(),
+                rootMessage);
+            LOGGER.debug("Kernel event persistence failure details", failure);
+        }
     }
 
     private com.fasterxml.jackson.databind.JsonNode taskPayload(TaskState taskState) {
