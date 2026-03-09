@@ -62,7 +62,7 @@ agent:
       # - responses-http -> reserved (not yet implemented)
       # - responses-ws -> delegated to a pluggable OpenAiResponsesGateway
       api-mode: ${AGENT_OPENAI_API_MODE:chat}
-      model: gpt-4o-mini
+      model: gpt-5.4
       temperature: 0.2
       max-tokens: 800
       openai:
@@ -72,8 +72,8 @@ agent:
         project-system-property: openai.project
         responses-ws:
           # Enable by switching api-mode to responses-ws.
-          endpoint-uri: wss://api.openai.com/v1/realtime
-          model: gpt-realtime
+          endpoint-uri: wss://api.openai.com/v1/responses
+          model: gpt-5.4
           request-timeout-ms: 30000
           poll-interval-ms: 50
           max-send-retries: 3
