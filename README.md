@@ -24,6 +24,7 @@
 ## Release Notes
 
 - Changelog: `docs/CHANGELOG.md`
+- Product guide: `docs/PRODUCT_GUIDE.md`
 
 ## Build
 
