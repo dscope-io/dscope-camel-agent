@@ -1,5 +1,10 @@
 # New Agent Implementation Plan Template
 
+Companion examples:
+
+- generic fill-in template: this file
+- worked Spring Boot example: `docs/skills/agent-implementation-planner/SPRING_BOOT_EXAMPLE_PLAN.md`
+
 ## 1. Goal and Scope
 
 ### Goal
@@ -27,6 +32,28 @@
 - Agent name/title:
 - Blueprint path:
 - Versioning approach:
+
+### Spring Application Bootstrap (Required when Spring Boot or application embedding is in scope)
+- Deployment style: Camel Main / Spring Boot / both
+- Starter usage: `camel-agent-starter` yes/no
+- Spring Boot module or sample target:
+- Blueprint resource path inside the application:
+- Externalized configuration keys:
+  - `agent.blueprint`
+  - `agent.agents-config`
+  - `agent.persistence-mode`
+  - `agent.audit-granularity`
+  - `agent.chat-memory-enabled`
+- Live model bean strategy:
+  - default starter limitation: `AiModelClient` falls back to noop gateway unless overridden
+  - planned replacement bean or override path:
+- Route invocation pattern inside the application:
+  - `to("agent:...")`
+  - `ProducerTemplate`
+- Credentials strategy:
+  - OpenAI / Anthropic / Gemini source:
+- Reference docs:
+  - `docs/PRODUCT_GUIDE.md`
 
 ### Interaction Model
 - Channels: AGUI / Realtime / Backend-only
@@ -72,6 +99,7 @@
 - Dependency scan commands and findings:
   - `mvn -q -pl camel-agent-core -am dependency:tree`
   - `mvn -q -pl samples/agent-support-service -am dependency:tree`
+  - `mvn -q -pl camel-agent-starter -am dependency:tree`
 
 | groupId | artifactId | Scope | Version Source | Target Module (pom.xml) | Reason |
 |---|---|---|---|---|---|
@@ -137,13 +165,15 @@ Quick decision hint:
   - MCP `get/set/get` verification for audit granularity
   - MCP `get/set/get` verification for conversation persistence
 
-### Phase 4 — UX/Realtime Integration (if applicable)
+### Phase 4 — Spring/UX/Realtime Integration (if applicable)
 - Tasks:
   - 
 - Deliverables:
   - 
 - Verification:
   - 
+  - Spring context starts with planned beans and configuration overrides
+  - Agent route or controller path successfully invokes `agent:` inside the application
   - Generate fresh AGUI/realtime turn and verify non-empty `audit.conversation.sessionData`
   - For WebRTC mode, verify configured defaults match HTML controls (`transport=webrtc`, `agui=post`, `duplex=half`, `pause=normal`, `voice=alloy`)
 
@@ -164,6 +194,7 @@ Quick decision hint:
 ### Integration Tests
 - 
 - 
+- Spring Boot context test or equivalent bean wiring verification when Spring is in scope
 - MCP tools/list includes expected runtime/archive methods
 - MCP tools/call returns expected structuredContent for runtime controls
 
@@ -193,6 +224,7 @@ Quick decision hint:
 ### Observability Checks
 - 
 - 
+- Verify Spring application logs show the planned model client and agent bootstrap path
 - Verify archive event types in persistence store (`conversation.user.message`, `conversation.assistant.message`, `conversation.realtime.observed` as applicable)
 - Verify MCP response includes expected `structuredContent` payloads for control/read methods
 
@@ -219,6 +251,7 @@ Map each requirement to implementation/testing items.
 |---|---|---|
 |  |  |  |
 |  |  |  |
+| Spring application bootstrap | Spring Application Bootstrap / Phase 4 | Spring context start + agent invocation |
 
 ## Dependency Traceability
 

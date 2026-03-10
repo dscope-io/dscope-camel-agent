@@ -8,6 +8,7 @@ The output of this skill is a practical, execution-ready plan that covers:
 
 - architecture choices
 - resource layout (agent blueprint, routes, kamelets)
+- Spring application bootstrap path and bean wiring (when Spring Boot is in scope)
 - persistence and audit strategy
 - AGUI and realtime behavior (if required)
 - testing strategy (unit, integration, smoke)
@@ -55,6 +56,7 @@ Collect these inputs before writing the plan:
 
 5. Environment and delivery constraints
 - local-only or CI/CD deployment
+- Camel Main, Spring Boot, or mixed runtime deployment model
 - required databases and auth mode
 - non-functional constraints (security, latency, cost)
 
@@ -73,6 +75,8 @@ When requirements are ambiguous, use these defaults:
 - persistence: jdbc for non-trivial implementations
 - audit granularity: info by default, debug in test/staging
 - AGUI enabled for human-facing workflows
+- Spring Boot embedding via `camel-agent-starter` when the agent must run inside an application instead of only Camel Main
+- for live Spring Boot model execution, plan an explicit `AiModelClient` bean instead of relying on the starter default noop gateway
 - runtime admin endpoints enabled for refresh/close/purge preview
 - conversation archive persistence default disabled via `agent.conversation.persistence.enabled=false`
 - MCP Streamable HTTP usage with `Accept: application/json, text/event-stream`
@@ -87,6 +91,19 @@ Use these as current-state anchors when drafting plans:
   - `runtime.conversation.persistence.get`
   - `runtime.conversation.persistence.set`
   - `audit.conversation.sessionData`
+
+- Spring application bootstrap is now a first-class planning concern:
+  - starter module: `camel-agent-starter`
+  - product guide bootstrap reference: `docs/PRODUCT_GUIDE.md`
+  - starter auto-configures `AgentKernel`, `PersistenceFacade`, `BlueprintLoader`, and optional chat memory
+  - starter default `AiModelClient` uses `NoopSpringAiChatGateway`, so live-provider plans must include a replacement `AiModelClient` bean or equivalent override strategy
+
+- Current sample Spring AI defaults should be treated as the most recent planning baseline unless requirements say otherwise:
+  - `agent.runtime.spring-ai.provider=openai`
+  - `agent.runtime.spring-ai.model=gpt-5.4`
+  - `agent.runtime.spring-ai.openai.api-mode=chat`
+  - `agent.runtime.spring-ai.openai.responses-ws.endpoint-uri=wss://api.openai.com/v1/responses`
+  - `agent.runtime.spring-ai.openai.responses-ws.model=gpt-5.4`
 
 - Conversation archive persistence is now a separate capability from core audit trail:
   - default flag: `agent.conversation.persistence.enabled`
@@ -243,9 +260,17 @@ Output:
 - retention/purge policy mapping
 - MCP runtime control matrix (method name, inputs, expected state transition)
 
-### Phase 5: Integration and UX
+### Phase 5: Integration, Spring Bootstrap, and UX
 
-If AGUI or realtime is needed, define:
+If Spring Boot embedding, AGUI, or realtime is needed, define:
+
+- Spring Boot bootstrap path
+- application properties to externalize
+- required beans and override points
+- how routes call the `agent:` endpoint
+- whether the app uses `camel-agent-starter`, direct core wiring, or both
+
+If AGUI or realtime is needed, also define:
 
 - AGUI routes/endpoints and expected UI controls
 - realtime session init/token/event behavior
@@ -255,6 +280,7 @@ If AGUI or realtime is needed, define:
 Output:
 
 - endpoint list
+- Spring bootstrap design notes tied to actual beans, config keys, and route entrypoints
 - UX behavior notes tied to endpoints
 - MCP method list for UI/ops integration:
   - `runtime.audit.granularity.get`
@@ -333,6 +359,7 @@ When using this skill, always produce the plan with this exact section order:
 2. Assumptions
 3. Architecture Decisions
   - Must include subsection: `Maven Dependencies`
+  - Must include subsection: `Spring Application Bootstrap` when Spring Boot or application embedding is in scope
 4. Implementation Phases
 5. Test Plan
 6. Deployment and Rollback
@@ -342,6 +369,7 @@ When using this skill, always produce the plan with this exact section order:
 Companion fill-in template:
 
 - `docs/skills/agent-implementation-planner/PLAN_TEMPLATE.md`
+- worked Spring Boot sample plan: `docs/skills/agent-implementation-planner/SPRING_BOOT_EXAMPLE_PLAN.md`
 
 ## Plan Quality Rules
 
@@ -354,6 +382,8 @@ A valid plan must:
 - avoid broad placeholders such as "implement feature" without file/component targets
 - include an explicit Maven dependency decision for each major feature area (reuse existing vs add new)
 - include target module `pom.xml` for every new dependency
+- include explicit Spring bootstrap notes when the agent must run inside a Spring application
+- include the live-model bean strategy when Spring Boot + real provider execution is in scope
 - include explicit runtime control plan when audit or conversation persistence is in scope
 - include at least one MCP smoke step that proves `tools/list` and one `tools/call` path
 
@@ -407,4 +437,5 @@ The planning task is complete when:
 - known risks and unknowns are documented
 - next implementation action can start without additional clarification
 - Maven dependency plan is complete with module targets and scopes
+- Spring application bootstrap steps are explicit when Spring deployment is in scope
 - runtime control and archive-read verification steps are explicitly defined when applicable
