@@ -171,6 +171,18 @@ final class AuditMetadataSupport {
         metadata.put("eventCount", events.size());
         metadata.put("firstEventAt", firstEventAt == null ? "" : firstEventAt.toString());
         metadata.put("lastEventAt", lastEventAt == null ? "" : lastEventAt.toString());
+        A2ACorrelationMetadata a2a = deriveA2ACorrelation(events);
+        if (a2a.present()) {
+            metadata.put("conversationKind", "a2a-linked");
+            metadata.put("a2aAgentId", a2a.agentId());
+            metadata.put("a2aRemoteConversationId", a2a.remoteConversationId());
+            metadata.put("a2aRemoteTaskId", a2a.remoteTaskId());
+            metadata.put("a2aLinkedConversationId", a2a.linkedConversationId());
+            metadata.put("a2aParentConversationId", a2a.parentConversationId());
+            metadata.put("a2aRootConversationId", a2a.rootConversationId());
+        } else {
+            metadata.put("conversationKind", "standard");
+        }
         if (!agentStepMetadata.planName().isBlank()) {
             metadata.put("planName", agentStepMetadata.planName());
         }
@@ -181,6 +193,21 @@ final class AuditMetadataSupport {
             metadata.put("blueprintUri", agentStepMetadata.blueprintUri());
         }
         return metadata;
+    }
+
+    static A2ACorrelationMetadata deriveA2ACorrelation(List<AgentEvent> events) {
+        if (events == null) {
+            return A2ACorrelationMetadata.EMPTY;
+        }
+        A2ACorrelationMetadata current = A2ACorrelationMetadata.EMPTY;
+        for (AgentEvent event : events) {
+            JsonNode correlation = extractCorrelation(event == null ? null : event.payload());
+            if (correlation == null) {
+                continue;
+            }
+            current = current.merge(correlation);
+        }
+        return current;
     }
 
     static AgentStepMetadata deriveAgentStepMetadata(List<AgentEvent> events, String blueprintUri) {
@@ -237,6 +264,24 @@ final class AuditMetadataSupport {
         }
         JsonNode value = node.path(field);
         return value.isMissingNode() || value.isNull() ? "" : value.asText("");
+    }
+
+    private static JsonNode extractCorrelation(JsonNode payload) {
+        if (payload == null || payload.isNull() || payload.isMissingNode()) {
+            return null;
+        }
+        List<JsonNode> candidates = List.of(
+            payload.path("correlation"),
+            payload.path("_correlation"),
+            payload.path("payload").path("correlation"),
+            payload.path("payload").path("_correlation")
+        );
+        for (JsonNode candidate : candidates) {
+            if (candidate != null && candidate.isObject()) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     private static String firstNonBlank(String... values) {
@@ -302,6 +347,58 @@ final class AuditMetadataSupport {
             }
             if (!agentVersion.isBlank()) {
                 data.put("agentVersion", agentVersion);
+            }
+            return data;
+        }
+    }
+
+    record A2ACorrelationMetadata(String agentId,
+                                  String remoteConversationId,
+                                  String remoteTaskId,
+                                  String linkedConversationId,
+                                  String parentConversationId,
+                                  String rootConversationId) {
+        private static final A2ACorrelationMetadata EMPTY = new A2ACorrelationMetadata("", "", "", "", "", "");
+
+        boolean present() {
+            return !agentId.isBlank()
+                || !remoteConversationId.isBlank()
+                || !remoteTaskId.isBlank()
+                || !linkedConversationId.isBlank()
+                || !parentConversationId.isBlank()
+                || !rootConversationId.isBlank();
+        }
+
+        A2ACorrelationMetadata merge(JsonNode node) {
+            return new A2ACorrelationMetadata(
+                firstNonBlank(agentId, text(node, "a2aAgentId")),
+                firstNonBlank(remoteConversationId, text(node, "a2aRemoteConversationId")),
+                firstNonBlank(remoteTaskId, text(node, "a2aRemoteTaskId")),
+                firstNonBlank(linkedConversationId, text(node, "a2aLinkedConversationId")),
+                firstNonBlank(parentConversationId, text(node, "a2aParentConversationId")),
+                firstNonBlank(rootConversationId, text(node, "a2aRootConversationId"))
+            );
+        }
+
+        Map<String, Object> asMap() {
+            Map<String, Object> data = new LinkedHashMap<>();
+            if (!agentId.isBlank()) {
+                data.put("agentId", agentId);
+            }
+            if (!remoteConversationId.isBlank()) {
+                data.put("remoteConversationId", remoteConversationId);
+            }
+            if (!remoteTaskId.isBlank()) {
+                data.put("remoteTaskId", remoteTaskId);
+            }
+            if (!linkedConversationId.isBlank()) {
+                data.put("linkedConversationId", linkedConversationId);
+            }
+            if (!parentConversationId.isBlank()) {
+                data.put("parentConversationId", parentConversationId);
+            }
+            if (!rootConversationId.isBlank()) {
+                data.put("rootConversationId", rootConversationId);
             }
             return data;
         }

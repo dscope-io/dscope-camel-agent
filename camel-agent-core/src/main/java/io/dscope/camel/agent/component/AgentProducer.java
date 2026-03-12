@@ -96,6 +96,12 @@ public class AgentProducer extends DefaultProducer {
         String aguiSessionId = exchange.getMessage().getHeader(AgentHeaders.AGUI_SESSION_ID, String.class);
         String aguiRunId = exchange.getMessage().getHeader(AgentHeaders.AGUI_RUN_ID, String.class);
         String aguiThreadId = exchange.getMessage().getHeader(AgentHeaders.AGUI_THREAD_ID, String.class);
+        String a2aAgentId = exchange.getMessage().getHeader(AgentHeaders.A2A_AGENT_ID, String.class);
+        String a2aRemoteConversationId = exchange.getMessage().getHeader(AgentHeaders.A2A_REMOTE_CONVERSATION_ID, String.class);
+        String a2aRemoteTaskId = exchange.getMessage().getHeader(AgentHeaders.A2A_REMOTE_TASK_ID, String.class);
+        String a2aLinkedConversationId = exchange.getMessage().getHeader(AgentHeaders.A2A_LINKED_CONVERSATION_ID, String.class);
+        String a2aParentConversationId = exchange.getMessage().getHeader(AgentHeaders.A2A_PARENT_CONVERSATION_ID, String.class);
+        String a2aRootConversationId = exchange.getMessage().getHeader(AgentHeaders.A2A_ROOT_CONVERSATION_ID, String.class);
 
         if (aguiSessionId != null && !aguiSessionId.isBlank()) {
             correlationRegistry.bind(conversationId, CorrelationKeys.AGUI_SESSION_ID, aguiSessionId);
@@ -105,6 +111,24 @@ public class AgentProducer extends DefaultProducer {
         }
         if (aguiThreadId != null && !aguiThreadId.isBlank()) {
             correlationRegistry.bind(conversationId, CorrelationKeys.AGUI_THREAD_ID, aguiThreadId);
+        }
+        if (a2aAgentId != null && !a2aAgentId.isBlank()) {
+            correlationRegistry.bind(conversationId, CorrelationKeys.A2A_AGENT_ID, a2aAgentId);
+        }
+        if (a2aRemoteConversationId != null && !a2aRemoteConversationId.isBlank()) {
+            correlationRegistry.bind(conversationId, CorrelationKeys.A2A_REMOTE_CONVERSATION_ID, a2aRemoteConversationId);
+        }
+        if (a2aRemoteTaskId != null && !a2aRemoteTaskId.isBlank()) {
+            correlationRegistry.bind(conversationId, CorrelationKeys.A2A_REMOTE_TASK_ID, a2aRemoteTaskId);
+        }
+        if (a2aLinkedConversationId != null && !a2aLinkedConversationId.isBlank()) {
+            correlationRegistry.bind(conversationId, CorrelationKeys.A2A_LINKED_CONVERSATION_ID, a2aLinkedConversationId);
+        }
+        if (a2aParentConversationId != null && !a2aParentConversationId.isBlank()) {
+            correlationRegistry.bind(conversationId, CorrelationKeys.A2A_PARENT_CONVERSATION_ID, a2aParentConversationId);
+        }
+        if (a2aRootConversationId != null && !a2aRootConversationId.isBlank()) {
+            correlationRegistry.bind(conversationId, CorrelationKeys.A2A_ROOT_CONVERSATION_ID, a2aRootConversationId);
         }
     }
 }

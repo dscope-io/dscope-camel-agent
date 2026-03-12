@@ -50,6 +50,11 @@
       <artifactId>camel-mcp</artifactId>
       <version>1.4.0</version>
     </dependency>
+    <dependency>
+      <groupId>io.dscope.camel</groupId>
+      <artifactId>camel-a2a-component</artifactId>
+      <version>${a2a.version}</version>
+    </dependency>
 
     <dependency>
       <groupId>org.junit.jupiter</groupId>

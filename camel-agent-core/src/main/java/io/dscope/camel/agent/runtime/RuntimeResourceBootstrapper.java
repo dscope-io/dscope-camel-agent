@@ -24,6 +24,7 @@ final class RuntimeResourceBootstrapper {
 
     private static final String PROP_BLUEPRINT = "agent.blueprint";
     private static final String PROP_AGENTS_CONFIG = "agent.agents-config";
+    private static final String PROP_A2A_EXPOSED_AGENTS_CONFIG = "agent.runtime.a2a.exposed-agents-config";
     private static final String PROP_ROUTES_PATTERN = "agent.runtime.routes-include-pattern";
     private static final String PROP_KAMELET_URLS = "agent.runtime.kamelets-include-pattern";
     private static final String PROP_KAMELET_URLS_ALIAS = "agent.runtime.kameletsIncludePattern";
@@ -38,6 +39,7 @@ final class RuntimeResourceBootstrapper {
 
         BootstrapWorkspace workspace = new BootstrapWorkspace();
         resolveAgentsConfig(resolved, workspace);
+        resolveA2aExposedAgentsConfig(resolved, workspace);
         resolveBlueprint(resolved, workspace);
         resolveRoutes(resolved, workspace);
         resolveKamelets(resolved, workspace);
@@ -68,6 +70,17 @@ final class RuntimeResourceBootstrapper {
         properties.setProperty(PROP_AGENTS_CONFIG, replacement);
         LOGGER.info("Runtime resource bootstrap: staged agents-config {} -> {}", config, replacement);
         stageRemoteBlueprintsFromCatalog(properties, workspace, replacement);
+    }
+
+    private static void resolveA2aExposedAgentsConfig(Properties properties, BootstrapWorkspace workspace) {
+        String config = trimToNull(properties.getProperty(PROP_A2A_EXPOSED_AGENTS_CONFIG));
+        if (config == null || !isHttpUrl(config)) {
+            return;
+        }
+        Path staged = workspace.downloadTo("agents", config, ".yaml");
+        String replacement = toFileUri(staged);
+        properties.setProperty(PROP_A2A_EXPOSED_AGENTS_CONFIG, replacement);
+        LOGGER.info("Runtime resource bootstrap: staged a2a exposed-agents config {} -> {}", config, replacement);
     }
 
     private static void stageRemoteBlueprintsFromCatalog(Properties properties, BootstrapWorkspace workspace, String catalogLocation) {

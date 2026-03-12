@@ -17,6 +17,7 @@
     <jackson.version>2.20.0</jackson.version>
     <junit.jupiter.version>5.10.2</junit.jupiter.version>
     <persistence.version>1.1.0</persistence.version>
+    <a2a.version>0.5.0-SNAPSHOT</a2a.version>
     <spring.ai.version>1.0.3</spring.ai.version>
     <spring.boot.version>3.5.11</spring.boot.version>
     <spring.framework.version>6.2.0</spring.framework.version>
