@@ -7,6 +7,7 @@ import io.dscope.camel.agent.api.BlueprintLoader;
 import io.dscope.camel.agent.api.PersistenceFacade;
 import io.dscope.camel.agent.api.ToolExecutor;
 import io.dscope.camel.agent.api.ToolRegistry;
+import io.dscope.camel.agent.a2a.A2AToolContext;
 import io.dscope.camel.agent.blueprint.MarkdownBlueprintLoader;
 import io.dscope.camel.agent.executor.CamelToolExecutor;
 import io.dscope.camel.agent.kernel.DefaultAgentKernel;
@@ -117,21 +118,22 @@ public class AgentAutoConfiguration {
                                    AgentStarterProperties properties,
                                    ObjectMapper objectMapper) {
         String blueprintLocation = properties.getBlueprint();
+        ResolvedAgentPlan resolvedPlan = null;
         if (properties.getAgentsConfig() != null && !properties.getAgentsConfig().isBlank()) {
-            ResolvedAgentPlan resolved = planSelectionResolver.resolve(
+            resolvedPlan = planSelectionResolver.resolve(
                 null,
                 null,
                 null,
                 properties.getAgentsConfig(),
                 properties.getBlueprint()
             );
-            blueprintLocation = resolved.blueprint();
+            blueprintLocation = resolvedPlan.blueprint();
         }
         AgentBlueprint loadedBlueprint = blueprintLoader.load(blueprintLocation);
         ProducerTemplate producerTemplate = camelContext.createProducerTemplate();
         AgentBlueprint blueprint = McpToolDiscoveryResolver.resolve(loadedBlueprint, producerTemplate, objectMapper);
         ToolRegistry toolRegistry = new DefaultToolRegistry(blueprint.tools());
-        ToolExecutor toolExecutor = createToolExecutor(camelContext, producerTemplate, objectMapper, blueprint);
+        ToolExecutor toolExecutor = createToolExecutor(camelContext, producerTemplate, objectMapper, blueprint, persistenceFacade, resolvedPlan);
         return new DefaultAgentKernel(
             blueprint,
             toolRegistry,
@@ -148,15 +150,41 @@ public class AgentAutoConfiguration {
     private ToolExecutor createToolExecutor(CamelContext camelContext,
                                             ProducerTemplate producerTemplate,
                                             ObjectMapper objectMapper,
-                                            AgentBlueprint blueprint) {
+                                            AgentBlueprint blueprint,
+                                            PersistenceFacade persistenceFacade,
+                                            ResolvedAgentPlan resolvedPlan) {
         try {
             java.util.List<?> templates = readJsonRouteTemplates(blueprint);
             Class<?> type = Class.forName("io.dscope.camel.agent.executor.TemplateAwareCamelToolExecutor");
             return (ToolExecutor) type
-                .getConstructor(CamelContext.class, ProducerTemplate.class, ObjectMapper.class, java.util.List.class)
-                .newInstance(camelContext, producerTemplate, objectMapper, templates);
+                .getConstructor(CamelContext.class, ProducerTemplate.class, ObjectMapper.class, java.util.List.class,
+                    PersistenceFacade.class, A2AToolContext.class)
+                .newInstance(
+                    camelContext,
+                    producerTemplate,
+                    objectMapper,
+                    templates,
+                    persistenceFacade,
+                    new A2AToolContext(
+                        resolvedPlan == null || resolvedPlan.legacyMode() ? "" : resolvedPlan.planName(),
+                        resolvedPlan == null || resolvedPlan.legacyMode() ? "" : resolvedPlan.planVersion(),
+                        blueprint.name() == null ? "" : blueprint.name(),
+                        blueprint.version() == null ? "" : blueprint.version()
+                    )
+                );
         } catch (Exception ignored) {
-            return new CamelToolExecutor(producerTemplate, objectMapper);
+            return new CamelToolExecutor(
+                camelContext,
+                producerTemplate,
+                objectMapper,
+                persistenceFacade,
+                new A2AToolContext(
+                    resolvedPlan == null || resolvedPlan.legacyMode() ? "" : resolvedPlan.planName(),
+                    resolvedPlan == null || resolvedPlan.legacyMode() ? "" : resolvedPlan.planVersion(),
+                    blueprint.name() == null ? "" : blueprint.name(),
+                    blueprint.version() == null ? "" : blueprint.version()
+                )
+            );
         }
     }
 

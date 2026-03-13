@@ -7,6 +7,7 @@ import io.dscope.camel.agent.api.BlueprintLoader;
 import io.dscope.camel.agent.api.PersistenceFacade;
 import io.dscope.camel.agent.api.ToolExecutor;
 import io.dscope.camel.agent.api.ToolRegistry;
+import io.dscope.camel.agent.a2a.A2AToolContext;
 import io.dscope.camel.agent.blueprint.MarkdownBlueprintLoader;
 import io.dscope.camel.agent.executor.TemplateAwareCamelToolExecutor;
 import io.dscope.camel.agent.kernel.DefaultAgentKernel;
@@ -70,7 +71,7 @@ public class AgentComponent extends DefaultComponent {
         String cacheKey = (resolvedPlan == null || resolvedPlan.legacyMode())
             ? "legacy|" + blueprintLocation
             : resolvedPlan.planName() + "|" + resolvedPlan.planVersion() + "|" + blueprintLocation;
-        return kernelCache.computeIfAbsent(cacheKey, ignored -> buildKernel(blueprintLocation));
+        return kernelCache.computeIfAbsent(cacheKey, ignored -> buildKernel(blueprintLocation, resolvedPlan));
     }
 
     public AgentPlanSelectionResolver planResolver() {
@@ -106,7 +107,7 @@ public class AgentComponent extends DefaultComponent {
         return Optional.ofNullable(getCamelContext().getRegistry().findSingleByType(type));
     }
 
-    private AgentKernel buildKernel(String blueprintLocation) {
+    private AgentKernel buildKernel(String blueprintLocation, ResolvedAgentPlan resolvedPlan) {
         BlueprintLoader blueprintLoader = new MarkdownBlueprintLoader();
         AgentBlueprint loadedBlueprint = applyRealtimeFallback(blueprintLoader.load(blueprintLocation));
 
@@ -115,9 +116,9 @@ public class AgentComponent extends DefaultComponent {
         AgentBlueprint blueprint = McpToolDiscoveryResolver.resolve(loadedBlueprint, producerTemplate, mapper);
 
         ToolRegistry toolRegistry = new DefaultToolRegistry(blueprint.tools());
-        ToolExecutor toolExecutor = createToolExecutor(producerTemplate, mapper, blueprint);
         AiModelClient aiModelClient = findRegistry(AiModelClient.class).orElseGet(StaticAiModelClient::new);
         PersistenceFacade persistenceFacade = persistenceFacade();
+        ToolExecutor toolExecutor = createToolExecutor(producerTemplate, mapper, blueprint, persistenceFacade, resolvedPlan);
 
         return new DefaultAgentKernel(
             blueprint,
@@ -132,13 +133,22 @@ public class AgentComponent extends DefaultComponent {
 
     private ToolExecutor createToolExecutor(ProducerTemplate producerTemplate,
                                             ObjectMapper objectMapper,
-                                            AgentBlueprint blueprint) {
+                                            AgentBlueprint blueprint,
+                                            PersistenceFacade persistenceFacade,
+                                            ResolvedAgentPlan resolvedPlan) {
         return findRegistry(ToolExecutor.class)
             .orElseGet(() -> new TemplateAwareCamelToolExecutor(
                 getCamelContext(),
                 producerTemplate,
                 objectMapper,
-                defaultIfNull(blueprint.jsonRouteTemplates(), List.of())
+                defaultIfNull(blueprint.jsonRouteTemplates(), List.of()),
+                persistenceFacade,
+                new A2AToolContext(
+                    resolvedPlan == null || resolvedPlan.legacyMode() ? "" : defaultIfBlank(resolvedPlan.planName(), ""),
+                    resolvedPlan == null || resolvedPlan.legacyMode() ? "" : defaultIfBlank(resolvedPlan.planVersion(), ""),
+                    defaultIfBlank(blueprint.name(), ""),
+                    defaultIfBlank(blueprint.version(), "")
+                )
             ));
     }
 

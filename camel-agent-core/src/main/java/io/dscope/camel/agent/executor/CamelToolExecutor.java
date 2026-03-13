@@ -3,6 +3,9 @@ package io.dscope.camel.agent.executor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dscope.camel.agent.api.ToolExecutor;
+import io.dscope.camel.agent.a2a.A2AToolClient;
+import io.dscope.camel.agent.a2a.A2AToolContext;
+import io.dscope.camel.agent.api.PersistenceFacade;
 import io.dscope.camel.agent.config.AgentHeaders;
 import io.dscope.camel.agent.model.ExecutionContext;
 import io.dscope.camel.agent.model.ToolResult;
@@ -12,6 +15,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.camel.CamelContext;
 import org.apache.camel.ProducerTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,17 +24,32 @@ public class CamelToolExecutor implements ToolExecutor {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CamelToolExecutor.class);
 
+    private final CamelContext camelContext;
     private final ProducerTemplate producerTemplate;
     private final ObjectMapper objectMapper;
+    private final A2AToolClient a2aToolClient;
 
     public CamelToolExecutor(ProducerTemplate producerTemplate, ObjectMapper objectMapper) {
+        this(null, producerTemplate, objectMapper, null, A2AToolContext.EMPTY);
+    }
+
+    public CamelToolExecutor(CamelContext camelContext,
+                             ProducerTemplate producerTemplate,
+                             ObjectMapper objectMapper,
+                             PersistenceFacade persistenceFacade,
+                             A2AToolContext a2aToolContext) {
+        this.camelContext = camelContext;
         this.producerTemplate = producerTemplate;
         this.objectMapper = objectMapper;
+        this.a2aToolClient = new A2AToolClient(camelContext, objectMapper, persistenceFacade, a2aToolContext);
     }
 
     @Override
     public ToolResult execute(ToolSpec toolSpec, JsonNode arguments, ExecutionContext context) {
         String target = target(toolSpec);
+        if (isA2ATarget(target)) {
+            return a2aToolClient.execute(target, toolSpec, arguments, context);
+        }
         Map<String, Object> headers = new HashMap<>();
         headers.put(AgentHeaders.CONVERSATION_ID, context.conversationId());
         headers.put(AgentHeaders.TASK_ID, context.taskId());
@@ -102,6 +121,10 @@ public class CamelToolExecutor implements ToolExecutor {
 
     private boolean isMcpTarget(String target) {
         return target != null && target.startsWith("mcp:");
+    }
+
+    private boolean isA2ATarget(String target) {
+        return target != null && target.startsWith("a2a:");
     }
 
     private String argumentShape(Object arguments) {
