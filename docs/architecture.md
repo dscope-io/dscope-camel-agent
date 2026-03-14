@@ -24,6 +24,7 @@ Plan-aware runtime behavior:
 - first successful resolution appends `conversation.plan.selected`
 - later explicit overrides append a new `conversation.plan.selected`
 - audit and runtime refresh derive active blueprint from persisted plan-selection events instead of assuming one global blueprint
+- A2A-exposed public agents are mapped separately from the internal plan catalog
 
 Runtime bootstrap also binds mutable operational controls and optional archive services:
 
@@ -66,6 +67,63 @@ Internal request headers:
 - `agent.dynamicRoute` => dynamic route metadata snapshots
 
 `camel-agent-persistence-dscope` maps these flows to `FlowStateStore` operations.
+
+## A2A Integration
+
+Camel Agent uses `camel-a2a-component` as the protocol/runtime layer and keeps agent-specific behavior on top.
+
+Agent-side responsibilities:
+
+- exposed-agent mapping (`agent.runtime.a2a.exposed-agents-config`)
+- mapping public A2A agent ids to local `{planName, planVersion}`
+- parent/root/linked conversation correlation
+- agent audit events and routed-back parent notifications
+- AGUI/A2A correlation metadata
+
+Generic A2A responsibilities delegated to `camel-a2a-component`:
+
+- task lifecycle
+- idempotency
+- task event streaming
+- push notification config handling
+- optional persistence-backed A2A task/event stores
+- JSON-RPC envelope, dispatch, SSE, and agent-card plumbing
+
+Inbound A2A request flow:
+
+1. `POST /a2a/rpc` receives a core A2A method.
+2. `SendMessage` / `SendStreamingMessage` resolve a public A2A agent id from exposed-agent config.
+3. The public agent maps to a local `planName` / `planVersion`.
+4. Runtime creates or reuses a linked local conversation for the A2A task.
+5. The selected local plan is invoked through `agent:`.
+6. Result is written back into the shared A2A task service and audit trail.
+
+Outbound A2A tool flow:
+
+1. A local agent selects a tool with `endpointUri: a2a:...`.
+2. `A2AToolClient` sends an A2A JSON-RPC request to the remote agent.
+3. Remote task id / remote conversation id / linked local conversation id are persisted as correlation.
+4. Audit records outbound start/completion and linked conversation metadata.
+
+### Shared Task/Session Model
+
+Camel Agent does not require a private A2A task store.
+
+Startup behavior:
+
+- if `a2aTaskService`, `a2aTaskEventService`, and `a2aPushConfigService` already exist in the Camel registry, runtime reuses them
+- otherwise runtime creates shared defaults using the same persistence configuration rules as `camel-a2a-component`
+
+This design keeps one A2A task/session space available to:
+
+- agent-backed A2A handlers
+- outbound `a2a:` tools
+- non-agent Camel routes that also use the same bound A2A services
+
+Implementation note:
+
+- `AgentA2ATaskAdapter` is the thin agent-side layer that adds agent metadata and audit behavior on top of the shared `A2ATaskService`
+- the older duplicate agent-owned A2A task repository model is no longer the active design
 
 ## Non-Blocking Audit Path
 
@@ -137,6 +195,15 @@ Correlation between agent conversations and transport identifiers is handled in 
 - correlation keys: `agui.sessionId`, `agui.runId`, `agui.threadId`
 
 Debug audit trail includes available correlation metadata in payload (`payload._correlation`).
+
+A2A correlation keys now also include:
+
+- `a2a.agentId`
+- `a2a.remoteConversationId`
+- `a2a.remoteTaskId`
+- `a2a.linkedConversationId`
+- `a2a.parentConversationId`
+- `a2a.rootConversationId`
 
 Plan-aware request behavior:
 
@@ -241,6 +308,14 @@ Conversation-level audit metadata now includes:
 Per-step audit projections also include the same resolved agent block so operators can see which plan/version produced each message or tool step.
 
 When async audit is enabled, these projections include both persisted and still-queued events because the read path merges pending async entries before rendering audit responses.
+
+A2A audit additions:
+
+- `conversation.a2a.request.accepted`
+- `conversation.a2a.response.completed`
+- `conversation.a2a.outbound.started`
+- `conversation.a2a.outbound.completed`
+- conversation metadata projection for linked A2A conversations and remote task ids
 
 ### Event Flow Scenarios
 

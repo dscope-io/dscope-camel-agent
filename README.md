@@ -49,6 +49,71 @@ This activates `-Pdscope-local` for local DScope dependency alignment used by ru
 agent:agentId?blueprint=classpath:agents/support/agent.md&persistenceMode=redis_jdbc&strictSchema=true&timeoutMs=30000&streaming=true
 ```
 
+## Multi-Agent Plan Catalog
+
+Runtime can resolve agents from a catalog instead of a single blueprint:
+
+```yaml
+agent:
+  agents-config: classpath:agents/agents.yaml
+  blueprint: classpath:agents/support/agent.md # optional legacy fallback
+```
+
+Catalog behavior:
+
+- multiple named plans
+- multiple versions per plan
+- one default plan
+- one default version per plan
+- sticky conversation selection persisted as `conversation.plan.selected`
+
+Request entrypoints can pass `planName` and `planVersion`. When omitted, runtime uses sticky selection for the conversation, then catalog defaults.
+
+## A2A Runtime
+
+Camel Agent now integrates `camel-a2a-component` as a first-class protocol bridge.
+
+Runtime config:
+
+```yaml
+agent:
+  runtime:
+    a2a:
+      enabled: true
+      public-base-url: http://localhost:8080
+      exposed-agents-config: classpath:agents/a2a-exposed-agents.yaml
+```
+
+Exposed-agent config is separate from `agents.yaml`. It maps public A2A identities to local plans:
+
+```yaml
+agents:
+  - agentId: support-ticket-service
+    name: Support Ticket Service
+    defaultAgent: true
+    planName: ticketing
+    planVersion: v1
+```
+
+Inbound endpoints:
+
+- `POST /a2a/rpc`
+- `GET /a2a/sse/{taskId}`
+- `GET /.well-known/agent-card.json`
+
+Outbound behavior:
+
+- blueprint tools can target `a2a:` endpoints
+- runtime persists remote task/conversation correlation
+- audit trail records outbound/inbound A2A transitions
+
+Shared infrastructure behavior:
+
+- agent-side A2A classes stay in `camel-agent-core`
+- generic task/session/event persistence comes from `camel-a2a-component`
+- if `a2aTaskService`, `a2aTaskEventService`, and `a2aPushConfigService` are already bound, Camel Agent reuses them instead of creating a private task space
+- this allows multiple agent flows and non-agent routes to share the same A2A session/task runtime
+
 ## Persistence Defaults
 
 Default mode is `redis_jdbc` (Redis fast path + JDBC source-of-truth behavior inherited from `camel-persistence`).
@@ -133,6 +198,19 @@ samples/agent-support-service/run-sample.sh
 See sample-specific usage and test guidance in:
 
 - `samples/agent-support-service/README.md`
+
+For local no-key A2A demo runs, the sample also includes:
+
+- `io.dscope.camel.agent.samples.DemoA2ATicketGateway`
+
+Use it to simulate support-agent -> A2A ticket-service -> local ticket route behavior without a live model backend:
+
+```bash
+./mvnw -q -f samples/agent-support-service/pom.xml \
+  -Dagent.runtime.spring-ai.gateway-class=io.dscope.camel.agent.samples.DemoA2ATicketGateway \
+  -Dagent.runtime.routes-include-pattern=classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ticket-service.camel.yaml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/admin-platform.camel.yaml \
+  exec:java
+```
 
 ## Spring AI Runtime Config (Sample)
 
@@ -220,7 +298,7 @@ mvn -U -f pom.xml verify
 Sample integration tests verify route selection and context carry-over behavior:
 
 - first prompt asks for knowledge base help, route/tool selected: `kb.search`
-- second prompt asks to file a ticket, route/tool selected: `support.ticket.open`
+- second prompt asks to file a ticket, route/tool selected: `support.ticket.manage`
 - second-turn LLM evaluation context includes first-turn KB result
 - negative case: direct ticket prompt without prior KB turn does not inject KB context
 
