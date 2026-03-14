@@ -41,14 +41,22 @@ import io.dscope.camel.a2a.processor.GetPushNotificationConfigProcessor;
 import io.dscope.camel.a2a.processor.ListPushNotificationConfigsProcessor;
 import io.dscope.camel.a2a.processor.A2ATaskSseProcessor;
 import io.dscope.camel.a2a.service.A2APushNotificationConfigService;
+import io.dscope.camel.a2a.service.A2ATaskService;
+import io.dscope.camel.a2a.service.InMemoryA2ATaskService;
 import io.dscope.camel.a2a.service.InMemoryPushNotificationConfigService;
 import io.dscope.camel.a2a.service.InMemoryTaskEventService;
+import io.dscope.camel.a2a.service.PersistentA2ATaskEventService;
+import io.dscope.camel.a2a.service.PersistentA2ATaskService;
 import io.dscope.camel.a2a.service.WebhookPushNotificationNotifier;
+import io.dscope.camel.persistence.core.FlowStateStore;
+import io.dscope.camel.persistence.core.FlowStateStoreFactory;
+import io.dscope.camel.persistence.core.PersistenceConfiguration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Properties;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.ProducerTemplate;
@@ -64,6 +72,7 @@ public final class AgentA2AProtocolSupport {
     }
 
     public static void bindIfEnabled(Main main,
+                                     Properties properties,
                                      A2ARuntimeProperties runtimeProperties,
                                      PersistenceFacade persistenceFacade,
                                      AgentPlanSelectionResolver planSelectionResolver,
@@ -75,11 +84,8 @@ public final class AgentA2AProtocolSupport {
             new A2AExposedAgentCatalogLoader().load(runtimeProperties.exposedAgentsConfig());
         validatePlanMappings(planSelectionResolver, runtimeProperties, exposedAgentCatalog);
 
-        InMemoryTaskEventService taskEventService = new InMemoryTaskEventService();
-        AgentA2ATaskRepository taskRepository = new AgentA2ATaskRepository(persistenceFacade, objectMapper, taskEventService);
-        A2APushNotificationConfigService pushConfigService =
-            new InMemoryPushNotificationConfigService(new WebhookPushNotificationNotifier());
-        taskEventService.addListener(pushConfigService::onTaskEvent);
+        SharedA2AInfrastructure shared = resolveSharedInfrastructure(main, properties);
+        AgentA2ATaskAdapter taskAdapter = new AgentA2ATaskAdapter(shared.taskService(), persistenceFacade, objectMapper);
 
         AgentCardCatalog agentCardCatalog =
             new AgentA2AAgentCardCatalog(exposedAgentCatalog, runtimeProperties.rpcEndpointUrl());
@@ -87,13 +93,14 @@ public final class AgentA2AProtocolSupport {
         Processor sendMessageProcessor = new SendMessageProcessor(
             runtimeProperties.agentEndpointUri(),
             exposedAgentCatalog,
-            taskRepository,
-            objectMapper
+            taskAdapter,
+            objectMapper,
+            new A2AParentConversationNotifier(persistenceFacade, objectMapper)
         );
         Processor sendStreamingMessageProcessor = new SendStreamingMessageProcessor(
             sendMessageProcessor,
-            taskRepository,
-            taskEventService,
+            taskAdapter,
+            shared.taskEventService(),
             objectMapper,
             runtimeProperties
         );
@@ -102,7 +109,7 @@ public final class AgentA2AProtocolSupport {
             if (request.getTaskId() == null || request.getTaskId().isBlank()) {
                 throw new A2AInvalidParamsException("GetTask requires taskId");
             }
-            Task task = taskRepository.getTask(request.getTaskId());
+            Task task = taskAdapter.getTask(request.getTaskId());
             GetTaskResponse response = new GetTaskResponse();
             response.setTask(task);
             exchange.setProperty(A2AExchangeProperties.METHOD_RESULT, response);
@@ -114,7 +121,7 @@ public final class AgentA2AProtocolSupport {
                 throw new A2AInvalidParamsException("ListTasks limit must be greater than zero");
             }
             ListTasksResponse response = new ListTasksResponse();
-            response.setTasks(taskRepository.listTasks(request.getState(), request.getLimit()));
+            response.setTasks(taskAdapter.listTasks(request.getState(), request.getLimit()));
             response.setNextCursor(null);
             exchange.setProperty(A2AExchangeProperties.METHOD_RESULT, response);
         };
@@ -123,8 +130,8 @@ public final class AgentA2AProtocolSupport {
             if (request.getTaskId() == null || request.getTaskId().isBlank()) {
                 throw new A2AInvalidParamsException("CancelTask requires taskId");
             }
-            Task task = taskRepository.cancelTask(request.getTaskId(), request.getReason());
-            taskRepository.appendConversationEvent(
+            Task task = taskAdapter.cancelTask(request.getTaskId(), request.getReason());
+            taskAdapter.appendConversationEvent(
                 conversationId(task),
                 task.getTaskId(),
                 "conversation.a2a.task.canceled",
@@ -144,21 +151,21 @@ public final class AgentA2AProtocolSupport {
             if (request.getTaskId() == null || request.getTaskId().isBlank()) {
                 throw new A2AInvalidParamsException("SubscribeToTask requires taskId");
             }
-            taskRepository.getTask(request.getTaskId());
+            taskAdapter.getTask(request.getTaskId());
             long afterSequence = request.getAfterSequence() == null ? 0L : Math.max(0L, request.getAfterSequence());
-            TaskSubscription subscription = taskEventService.createSubscription(request.getTaskId(), afterSequence);
+            TaskSubscription subscription = shared.taskEventService().createSubscription(request.getTaskId(), afterSequence);
             SubscribeToTaskResponse response = new SubscribeToTaskResponse();
             response.setSubscriptionId(subscription.getSubscriptionId());
             response.setTaskId(request.getTaskId());
             response.setAfterSequence(afterSequence);
-            response.setTerminal(taskEventService.isTaskTerminal(request.getTaskId()));
+            response.setTerminal(shared.taskEventService().isTaskTerminal(request.getTaskId()));
             response.setStreamUrl(buildStreamUrl(runtimeProperties, request.getTaskId(), subscription.getSubscriptionId(), afterSequence, request.getLimit()));
             exchange.setProperty(A2AExchangeProperties.METHOD_RESULT, response);
         };
-        Processor createPushConfigProcessor = new CreatePushNotificationConfigProcessor(pushConfigService);
-        Processor getPushConfigProcessor = new GetPushNotificationConfigProcessor(pushConfigService);
-        Processor listPushConfigsProcessor = new ListPushNotificationConfigsProcessor(pushConfigService);
-        Processor deletePushConfigProcessor = new DeletePushNotificationConfigProcessor(pushConfigService);
+        Processor createPushConfigProcessor = new CreatePushNotificationConfigProcessor(shared.pushConfigService());
+        Processor getPushConfigProcessor = new GetPushNotificationConfigProcessor(shared.pushConfigService());
+        Processor listPushConfigsProcessor = new ListPushNotificationConfigsProcessor(shared.pushConfigService());
+        Processor deletePushConfigProcessor = new DeletePushNotificationConfigProcessor(shared.pushConfigService());
         Processor getExtendedAgentCardProcessor = new GetExtendedAgentCardProcessor(agentCardCatalog);
 
         Map<String, Processor> methods = Map.ofEntries(
@@ -175,9 +182,9 @@ public final class AgentA2AProtocolSupport {
             Map.entry(A2AProtocolMethods.GET_EXTENDED_AGENT_CARD, getExtendedAgentCardProcessor)
         );
 
-        bind(main, A2AComponentApplicationSupport.BEAN_TASK_EVENT_SERVICE, taskEventService);
-        bind(main, A2AComponentApplicationSupport.BEAN_PUSH_CONFIG_SERVICE, pushConfigService);
-        bind(main, A2AComponentApplicationSupport.BEAN_TASK_SERVICE, taskRepository);
+        bind(main, A2AComponentApplicationSupport.BEAN_TASK_EVENT_SERVICE, shared.taskEventService());
+        bind(main, A2AComponentApplicationSupport.BEAN_PUSH_CONFIG_SERVICE, shared.pushConfigService());
+        bind(main, A2AComponentApplicationSupport.BEAN_TASK_SERVICE, shared.taskService());
         bind(main, A2AComponentApplicationSupport.BEAN_AGENT_CARD_CATALOG, agentCardCatalog);
         bind(main, A2AComponentApplicationSupport.BEAN_CREATE_PUSH_CONFIG_PROCESSOR, createPushConfigProcessor);
         bind(main, A2AComponentApplicationSupport.BEAN_GET_PUSH_CONFIG_PROCESSOR, getPushConfigProcessor);
@@ -186,7 +193,7 @@ public final class AgentA2AProtocolSupport {
         bind(main, A2AComponentApplicationSupport.BEAN_ENVELOPE_PROCESSOR, new A2AJsonRpcEnvelopeProcessor(A2AProtocolMethods.CORE_METHODS));
         bind(main, A2AComponentApplicationSupport.BEAN_ERROR_PROCESSOR, new A2AErrorProcessor());
         bind(main, A2AComponentApplicationSupport.BEAN_METHOD_PROCESSOR, new A2AMethodDispatchProcessor(methods));
-        bind(main, A2AComponentApplicationSupport.BEAN_SSE_PROCESSOR, new A2ATaskSseProcessor(taskEventService));
+        bind(main, A2AComponentApplicationSupport.BEAN_SSE_PROCESSOR, new A2ATaskSseProcessor(shared.taskEventService()));
         bind(main, A2AComponentApplicationSupport.BEAN_AGENT_CARD_DISCOVERY_PROCESSOR, new AgentCardDiscoveryProcessor(agentCardCatalog));
         bind(main, A2AComponentApplicationSupport.BEAN_GET_EXTENDED_AGENT_CARD_PROCESSOR, getExtendedAgentCardProcessor);
 
@@ -211,10 +218,53 @@ public final class AgentA2AProtocolSupport {
         }
     }
 
+    private static SharedA2AInfrastructure resolveSharedInfrastructure(Main main, Properties properties) {
+        InMemoryTaskEventService taskEventService =
+            main.lookup(A2AComponentApplicationSupport.BEAN_TASK_EVENT_SERVICE, InMemoryTaskEventService.class);
+        A2ATaskService taskService =
+            main.lookup(A2AComponentApplicationSupport.BEAN_TASK_SERVICE, A2ATaskService.class);
+        A2APushNotificationConfigService pushConfigService =
+            main.lookup(A2AComponentApplicationSupport.BEAN_PUSH_CONFIG_SERVICE, A2APushNotificationConfigService.class);
+
+        if (taskEventService != null && taskService != null && pushConfigService != null) {
+            return new SharedA2AInfrastructure(taskEventService, taskService, pushConfigService);
+        }
+
+        PersistenceConfiguration persistenceConfiguration = PersistenceConfiguration.fromProperties(
+            properties == null ? new Properties() : properties
+        );
+        if (taskEventService == null) {
+            if (persistenceConfiguration.enabled()) {
+                FlowStateStore stateStore = FlowStateStoreFactory.create(persistenceConfiguration);
+                taskEventService = new PersistentA2ATaskEventService(stateStore);
+            } else {
+                taskEventService = new InMemoryTaskEventService();
+            }
+        }
+        if (taskService == null) {
+            if (persistenceConfiguration.enabled()) {
+                FlowStateStore stateStore = FlowStateStoreFactory.create(persistenceConfiguration);
+                taskService = new PersistentA2ATaskService(stateStore, taskEventService, persistenceConfiguration.rehydrationPolicy());
+            } else {
+                taskService = new InMemoryA2ATaskService(taskEventService);
+            }
+        }
+        if (pushConfigService == null) {
+            pushConfigService = new InMemoryPushNotificationConfigService(new WebhookPushNotificationNotifier());
+            taskEventService.addListener(pushConfigService::onTaskEvent);
+        }
+        return new SharedA2AInfrastructure(taskEventService, taskService, pushConfigService);
+    }
+
     private static void bind(Main main, String beanName, Object bean) {
         if (main.lookup(beanName, Object.class) == null) {
             main.bind(beanName, bean);
         }
+    }
+
+    private record SharedA2AInfrastructure(InMemoryTaskEventService taskEventService,
+                                           A2ATaskService taskService,
+                                           A2APushNotificationConfigService pushConfigService) {
     }
 
     private static Object requiredParams(Exchange exchange, String message) {
@@ -257,17 +307,20 @@ public final class AgentA2AProtocolSupport {
 
         private final String agentEndpointUri;
         private final A2AExposedAgentCatalog exposedAgentCatalog;
-        private final AgentA2ATaskRepository taskRepository;
+        private final AgentA2ATaskAdapter taskAdapter;
         private final ObjectMapper objectMapper;
+        private final A2AParentConversationNotifier parentConversationNotifier;
 
         private SendMessageProcessor(String agentEndpointUri,
                                      A2AExposedAgentCatalog exposedAgentCatalog,
-                                     AgentA2ATaskRepository taskRepository,
-                                     ObjectMapper objectMapper) {
+                                     AgentA2ATaskAdapter taskAdapter,
+                                     ObjectMapper objectMapper,
+                                     A2AParentConversationNotifier parentConversationNotifier) {
             this.agentEndpointUri = agentEndpointUri;
             this.exposedAgentCatalog = exposedAgentCatalog;
-            this.taskRepository = taskRepository;
+            this.taskAdapter = taskAdapter;
             this.objectMapper = objectMapper;
+            this.parentConversationNotifier = parentConversationNotifier;
         }
 
         @Override
@@ -275,14 +328,6 @@ public final class AgentA2AProtocolSupport {
             SendMessageRequest request = objectMapper.convertValue(requiredParams(exchange, "SendMessage requires params object"), SendMessageRequest.class);
             if (request.getMessage() == null) {
                 throw new A2AInvalidParamsException("SendMessage requires message");
-            }
-            String idempotencyKey = normalizeIdempotencyKey(request);
-            Task existing = taskRepository.existingByIdempotency(idempotencyKey);
-            if (existing != null) {
-                SendMessageResponse response = new SendMessageResponse();
-                response.setTask(existing);
-                exchange.setProperty(A2AExchangeProperties.METHOD_RESULT, response);
-                return;
             }
 
             A2AExposedAgentSpec exposedAgent = resolveExposedAgent(request);
@@ -302,10 +347,21 @@ public final class AgentA2AProtocolSupport {
                 localConversationId
             );
             String remoteConversationId = firstNonBlank(request.getConversationId(), metadataValue(request.getMetadata(), "remoteConversationId"));
+            String aguiSessionId = firstNonBlank(
+                metadataValue(request.getMetadata(), "aguiSessionId"),
+                metadataValue(request.getMetadata(), "camelAgent.aguiSessionId")
+            );
+            String aguiRunId = firstNonBlank(
+                metadataValue(request.getMetadata(), "aguiRunId"),
+                metadataValue(request.getMetadata(), "camelAgent.aguiRunId")
+            );
+            String aguiThreadId = firstNonBlank(
+                metadataValue(request.getMetadata(), "aguiThreadId"),
+                metadataValue(request.getMetadata(), "camelAgent.aguiThreadId")
+            );
             String userText = extractMessageText(request.getMessage());
-            String taskId = UUID.randomUUID().toString();
 
-            bindCorrelation(localConversationId, exposedAgent.getAgentId(), remoteConversationId, taskId, parentConversationId, rootConversationId);
+            bindCorrelation(localConversationId, exposedAgent.getAgentId(), remoteConversationId, "", parentConversationId, rootConversationId);
 
             Map<String, Object> headers = new LinkedHashMap<>();
             headers.put(AgentHeaders.CONVERSATION_ID, localConversationId);
@@ -313,12 +369,45 @@ public final class AgentA2AProtocolSupport {
             headers.put(AgentHeaders.PLAN_VERSION, exposedAgent.getPlanVersion());
             headers.put(AgentHeaders.A2A_AGENT_ID, exposedAgent.getAgentId());
             headers.put(AgentHeaders.A2A_REMOTE_CONVERSATION_ID, remoteConversationId);
-            headers.put(AgentHeaders.A2A_REMOTE_TASK_ID, taskId);
+            headers.put(AgentHeaders.A2A_REMOTE_TASK_ID, "");
             headers.put(AgentHeaders.A2A_LINKED_CONVERSATION_ID, localConversationId);
             headers.put(AgentHeaders.A2A_PARENT_CONVERSATION_ID, parentConversationId);
             headers.put(AgentHeaders.A2A_ROOT_CONVERSATION_ID, rootConversationId);
+            if (!aguiSessionId.isBlank()) {
+                headers.put(AgentHeaders.AGUI_SESSION_ID, aguiSessionId);
+            }
+            if (!aguiRunId.isBlank()) {
+                headers.put(AgentHeaders.AGUI_RUN_ID, aguiRunId);
+            }
+            if (!aguiThreadId.isBlank()) {
+                headers.put(AgentHeaders.AGUI_THREAD_ID, aguiThreadId);
+            }
 
-            taskRepository.appendConversationEvent(
+            Map<String, Object> metadata = taskMetadata(
+                exposedAgent,
+                localConversationId,
+                remoteConversationId,
+                "",
+                parentConversationId,
+                rootConversationId,
+                aguiSessionId,
+                aguiRunId,
+                aguiThreadId,
+                request.getMetadata()
+            );
+
+            Task acceptedTask = taskAdapter.accept(request, metadata);
+            if (taskAdapter.isResponseCompleted(acceptedTask)) {
+                SendMessageResponse response = new SendMessageResponse();
+                response.setTask(acceptedTask);
+                exchange.setProperty(A2AExchangeProperties.METHOD_RESULT, response);
+                return;
+            }
+            String taskId = acceptedTask.getTaskId();
+            headers.put(AgentHeaders.A2A_REMOTE_TASK_ID, taskId);
+            bindCorrelation(localConversationId, exposedAgent.getAgentId(), remoteConversationId, taskId, parentConversationId, rootConversationId);
+
+            taskAdapter.appendConversationEvent(
                 localConversationId,
                 taskId,
                 "conversation.a2a.request.accepted",
@@ -343,26 +432,53 @@ public final class AgentA2AProtocolSupport {
             }
 
             Message assistantMessage = assistantMessage(request.getMessage(), agentReply);
-            Task task = taskRepository.createCompletedTask(
-                taskId,
-                idempotencyKey,
+            Map<String, Object> completedMetadata = taskMetadata(
+                exposedAgent,
                 localConversationId,
-                request.getMessage(),
+                remoteConversationId,
+                taskId,
+                parentConversationId,
+                rootConversationId,
+                aguiSessionId,
+                aguiRunId,
+                aguiThreadId,
+                request.getMetadata()
+            );
+            Task task = taskAdapter.complete(
+                acceptedTask,
                 assistantMessage,
-                taskMetadata(exposedAgent, localConversationId, remoteConversationId, taskId, parentConversationId, rootConversationId, request.getMetadata())
+                completedMetadata,
+                "Camel Agent completed the task"
             );
 
-            taskRepository.appendConversationEvent(
+            taskAdapter.appendConversationEvent(
                 localConversationId,
                 taskId,
                 "conversation.a2a.response.completed",
-                Map.of(
-                    "agentId", exposedAgent.getAgentId(),
-                    "planName", exposedAgent.getPlanName(),
-                    "planVersion", exposedAgent.getPlanVersion(),
-                    "responseText", agentReply,
-                    "linkedConversationId", localConversationId
+                taskMetadata(
+                    exposedAgent,
+                    localConversationId,
+                    remoteConversationId,
+                    taskId,
+                    parentConversationId,
+                    rootConversationId,
+                    aguiSessionId,
+                    aguiRunId,
+                    aguiThreadId,
+                    request.getMetadata()
                 )
+            );
+            parentConversationNotifier.notifyParent(
+                parentConversationId,
+                localConversationId,
+                taskId,
+                exposedAgent.getAgentId(),
+                exposedAgent.getPlanName(),
+                exposedAgent.getPlanVersion(),
+                aguiSessionId,
+                aguiRunId,
+                aguiThreadId,
+                agentReply
             );
 
             SendMessageResponse response = new SendMessageResponse();
@@ -410,6 +526,9 @@ public final class AgentA2AProtocolSupport {
                                                  String taskId,
                                                  String parentConversationId,
                                                  String rootConversationId,
+                                                 String aguiSessionId,
+                                                 String aguiRunId,
+                                                 String aguiThreadId,
                                                  Map<String, Object> requestMetadata) {
             Map<String, Object> metadata = new LinkedHashMap<>();
             if (requestMetadata != null && !requestMetadata.isEmpty()) {
@@ -425,6 +544,9 @@ public final class AgentA2AProtocolSupport {
             camelAgent.put("remoteTaskId", taskId);
             camelAgent.put("parentConversationId", parentConversationId == null ? "" : parentConversationId);
             camelAgent.put("rootConversationId", rootConversationId == null ? "" : rootConversationId);
+            camelAgent.put("aguiSessionId", aguiSessionId == null ? "" : aguiSessionId);
+            camelAgent.put("aguiRunId", aguiRunId == null ? "" : aguiRunId);
+            camelAgent.put("aguiThreadId", aguiThreadId == null ? "" : aguiThreadId);
             camelAgent.put("selectedAt", Instant.now().toString());
             metadata.put("camelAgent", camelAgent);
             metadata.put("agentId", exposedAgent.getAgentId());
@@ -433,6 +555,11 @@ public final class AgentA2AProtocolSupport {
             metadata.put("linkedConversationId", localConversationId);
             metadata.put("remoteConversationId", remoteConversationId == null ? "" : remoteConversationId);
             metadata.put("remoteTaskId", taskId);
+            metadata.put("parentConversationId", parentConversationId == null ? "" : parentConversationId);
+            metadata.put("rootConversationId", rootConversationId == null ? "" : rootConversationId);
+            metadata.put("aguiSessionId", aguiSessionId == null ? "" : aguiSessionId);
+            metadata.put("aguiRunId", aguiRunId == null ? "" : aguiRunId);
+            metadata.put("aguiThreadId", aguiThreadId == null ? "" : aguiThreadId);
             return metadata;
         }
 
@@ -462,16 +589,6 @@ public final class AgentA2AProtocolSupport {
                 .orElse("");
         }
 
-        private String normalizeIdempotencyKey(SendMessageRequest request) {
-            if (request.getIdempotencyKey() != null && !request.getIdempotencyKey().isBlank()) {
-                return request.getIdempotencyKey().trim();
-            }
-            if (request.getMessage() != null && request.getMessage().getMessageId() != null && !request.getMessage().getMessageId().isBlank()) {
-                return request.getMessage().getMessageId().trim();
-            }
-            return "";
-        }
-
         private String metadataValue(Map<String, Object> metadata, String key) {
             if (metadata == null || metadata.isEmpty() || key == null || key.isBlank()) {
                 return "";
@@ -495,18 +612,18 @@ public final class AgentA2AProtocolSupport {
     private static final class SendStreamingMessageProcessor implements Processor {
 
         private final Processor sendMessageProcessor;
-        private final AgentA2ATaskRepository taskRepository;
+        private final AgentA2ATaskAdapter taskAdapter;
         private final InMemoryTaskEventService taskEventService;
         private final ObjectMapper objectMapper;
         private final A2ARuntimeProperties runtimeProperties;
 
         private SendStreamingMessageProcessor(Processor sendMessageProcessor,
-                                              AgentA2ATaskRepository taskRepository,
+                                              AgentA2ATaskAdapter taskAdapter,
                                               InMemoryTaskEventService taskEventService,
                                               ObjectMapper objectMapper,
                                               A2ARuntimeProperties runtimeProperties) {
             this.sendMessageProcessor = sendMessageProcessor;
-            this.taskRepository = taskRepository;
+            this.taskAdapter = taskAdapter;
             this.taskEventService = taskEventService;
             this.objectMapper = objectMapper;
             this.runtimeProperties = runtimeProperties;
@@ -533,7 +650,7 @@ public final class AgentA2AProtocolSupport {
             Task task = sendMessageResponse.getTask();
             TaskSubscription subscription = taskEventService.createSubscription(task.getTaskId(), 0L);
             SendStreamingMessageResponse response = new SendStreamingMessageResponse();
-            response.setTask(taskRepository.getTask(task.getTaskId()));
+            response.setTask(taskAdapter.getTask(task.getTaskId()));
             response.setSubscriptionId(subscription.getSubscriptionId());
             response.setStreamUrl(buildStreamUrl(runtimeProperties, task.getTaskId(), subscription.getSubscriptionId(), 0L, null));
             exchange.setProperty(A2AExchangeProperties.METHOD_RESULT, response);

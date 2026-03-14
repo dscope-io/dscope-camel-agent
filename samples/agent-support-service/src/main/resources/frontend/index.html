@@ -157,6 +157,7 @@
     let selectedPlanVersion = (runtimeUrl.searchParams.get('planVersion') || '').trim();
     let agentCatalog = null;
     let sessionId = `session-${Date.now()}`;
+    let ticketUpdatePollTimer = null;
     let audioContext = null;
     let mediaStream = null;
     let sourceNode = null;
@@ -168,6 +169,7 @@
     let realtimePollInFlight = false;
     const handledTranscriptKeys = new Set();
     const displayedVoiceMessages = new Set();
+    const displayedTicketUpdateKeys = new Set();
     let lastRelayError = '';
     let lastPollError = '';
     let lastPollErrorAt = 0;
@@ -810,13 +812,17 @@
     function renderTicketWidget(data) {
       const ticketId = normalizeDisplayText(String(data.ticketId ?? 'N/A'));
       const status = normalizeDisplayText(String(data.status ?? 'OPEN'));
+      const action = normalizeDisplayText(String(data.action ?? ''));
       const assignedQueue = normalizeDisplayText(String(data.assignedQueue ?? 'L1-SUPPORT'));
       const summary = normalizeDisplayText(String(data.summary ?? ''));
       const message = normalizeDisplayText(String(data.message ?? ''));
       const card = document.createElement('div');
       card.className = 'ticket';
+      const title = action
+        ? `Ticket ${action.charAt(0).toUpperCase()}${action.slice(1).toLowerCase()}`
+        : 'Ticket Update';
       card.innerHTML = `
-        <h4>Ticket Created</h4>
+        <h4>${title}</h4>
         <div class="ticket-row"><strong>ID:</strong> ${ticketId}</div>
         <div class="ticket-row"><strong>Status:</strong> ${status}</div>
         <div class="ticket-row"><strong>Queue:</strong> ${assignedQueue}</div>
@@ -824,6 +830,63 @@
         <div class="ticket-row">${message}</div>
       `;
       return card;
+    }
+
+    function clearTicketUpdatePolling() {
+      if (ticketUpdatePollTimer) {
+        clearInterval(ticketUpdatePollTimer);
+        ticketUpdatePollTimer = null;
+      }
+    }
+
+    function ticketUpdateKey(event) {
+      return [
+        event?.timestamp || '',
+        event?.taskId || '',
+        event?.source || '',
+        event?.text || ''
+      ].join('|');
+    }
+
+    async function pollTicketUpdates() {
+      if (!sessionId) {
+        return;
+      }
+      try {
+        const params = new URLSearchParams({
+          conversationId: sessionId,
+          sessionId,
+          limit: '120'
+        });
+        const response = await fetch(`/audit/conversation/session-data?${params.toString()}`);
+        if (!response.ok) {
+          return;
+        }
+        const payload = await response.json();
+        const events = Array.isArray(payload?.events) ? payload.events : [];
+        for (const event of events) {
+          if (String(event?.source || '') !== 'a2a.ticketing') {
+            continue;
+          }
+          const key = ticketUpdateKey(event);
+          if (displayedTicketUpdateKeys.has(key)) {
+            continue;
+          }
+          displayedTicketUpdateKeys.add(key);
+          const widget = normalizeWidgetCandidate(event?.payload?.widget) || normalizeWidgetCandidate(event?.payload);
+          tryAddVoiceMessage('agent', String(event?.text || 'Ticket service update'), 'a2a.ticketing', widget, key);
+        }
+      } catch (_) {
+      }
+    }
+
+    function startTicketUpdatePolling() {
+      clearTicketUpdatePolling();
+      displayedTicketUpdateKeys.clear();
+      ticketUpdatePollTimer = setInterval(() => {
+        pollTicketUpdates();
+      }, 2000);
+      pollTicketUpdates();
     }
 
     function parseSseEvents(payload) {
@@ -1838,6 +1901,7 @@
 
         const previousSessionId = sessionId;
         sessionId = `session-${Date.now()}`;
+        startTicketUpdatePolling();
         realtimeEventQueue = Promise.resolve();
         setVoiceStatus('WebRTC token failed (400), reinitializing session...');
         addMessage('agent', `WebRTC token 400 for ${previousSessionId}; retrying with fresh session ${sessionId}.`);
@@ -2939,6 +3003,7 @@
       .then(() => initializeRealtimeSessionContext(buildVoiceSessionPatch()))
       .catch(() => {
       });
+    startTicketUpdatePolling();
 
     syncInstructionDebugVisibility();
     openInstructionDebugForWebRtc();

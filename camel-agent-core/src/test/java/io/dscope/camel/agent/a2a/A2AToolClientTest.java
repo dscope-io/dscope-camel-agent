@@ -46,8 +46,11 @@ class A2AToolClientTest {
 
     @Test
     void sendsRemoteA2aMessageAndBindsCorrelation() throws Exception {
+        CorrelationRegistry.global().bind("conv-a2a", "agui.sessionId", "session-1");
+        CorrelationRegistry.global().bind("conv-a2a", "agui.runId", "run-1");
+        CorrelationRegistry.global().bind("conv-a2a", "agui.threadId", "thread-1");
         FakeHttpClient httpClient = new FakeHttpClient(List.of("""
-            {"jsonrpc":"2.0","result":{"task":{"taskId":"remote-task-1","status":{"state":"COMPLETED"},"latestMessage":{"parts":[{"text":"remote answer"}]}}},"id":"1"}
+            {"jsonrpc":"2.0","result":{"task":{"taskId":"remote-task-1","status":{"state":"COMPLETED"},"latestMessage":{"parts":[{"text":"remote answer"}]},"metadata":{"camelAgent":{"linkedConversationId":"child-a2a-1","parentConversationId":"conv-a2a","rootConversationId":"conv-a2a"}}}},"id":"1"}
             """));
         InMemoryPersistenceFacade persistence = new InMemoryPersistenceFacade();
 
@@ -75,8 +78,11 @@ class A2AToolClientTest {
             assertEquals("SendMessage", request.path("method").asText());
             assertEquals("support-public", request.path("params").path("metadata").path("agentId").asText());
             assertEquals("support", request.path("params").path("metadata").path("planName").asText());
+            assertEquals("session-1", request.path("params").path("metadata").path("aguiSessionId").asText());
+            assertEquals("thread-1", request.path("params").path("metadata").path("camelAgent").path("aguiThreadId").asText());
             assertEquals("remote answer", result.content());
             assertEquals("remote-task-1", CorrelationRegistry.global().resolve("conv-a2a", "a2a.remoteTaskId", ""));
+            assertEquals("child-a2a-1", CorrelationRegistry.global().resolve("conv-a2a", "a2a.linkedConversationId", ""));
             assertTrue(persistence.loadConversation("conv-a2a", 10).stream().anyMatch(event -> "conversation.a2a.outbound.started".equals(event.type())));
             assertTrue(persistence.loadConversation("conv-a2a", 10).stream().anyMatch(event -> "conversation.a2a.outbound.completed".equals(event.type())));
         }

@@ -19,14 +19,19 @@ openai:
     key: ${OPENAI_API_KEY}
 
 agent:
+  agents-config: classpath:agents/agents.yaml
   runtime:
-    routes-include-pattern: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/sip-adapter-platform.camel.yaml
+    routes-include-pattern: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ticket-service.camel.yaml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/admin-platform.camel.yaml,classpath:routes/sip-adapter-platform.camel.yaml
     agent-routes-enabled: true
+    a2a:
+      enabled: true
+      public-base-url: http://localhost:{{agui.rpc.port:8080}}
+      exposed-agents-config: classpath:agents/a2a-exposed-agents.yaml
     ai:
       mode: spring-ai
     realtime:
       processor-bean-name: supportRealtimeEventProcessorCore
-      agent-endpoint-uri: agent:support?blueprint={{agent.blueprint}}
+      agent-endpoint-uri: agent:support?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}
       agent-profile-purpose-max-chars: 0
       # Server-side TTL for browser WebRTC init context (conversationId -> session template)
       browser-session-ttl-ms: 600000
@@ -48,12 +53,13 @@ agent:
         max-backoff-ms: 2000
     agui:
       pre-run:
-        agent-endpoint-uri: agent:support?blueprint={{agent.blueprint}}
+        agent-endpoint-uri: agent:support?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}
         fallback-enabled: true
         fallback:
           kb-tool-name: kb.search
-          ticket-tool-name: support.ticket.open
-          ticket-keywords: ticket,open,create,submit,escalate
+          ticket-tool-name: support.ticket.manage
+          ticket-uri: direct:support-ticket-manage
+          ticket-keywords: ticket,open,create,update,close,status,submit,escalate
           error-markers: api key is missing,openai api key,set -dopenai.api.key
     spring-ai:
       provider: openai

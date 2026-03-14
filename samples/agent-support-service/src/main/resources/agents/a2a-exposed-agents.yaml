@@ -1,0 +1,12 @@
+agents:
+  - agentId: support-ticket-service
+    name: Support Ticket Service
+    description: A2A ticket lifecycle service used by the support and billing assistants
+    version: 1.0.0
+    defaultAgent: true
+    planName: ticketing
+    planVersion: v1
+    skills:
+      - ticketing
+      - support
+      - escalation

@@ -2,8 +2,6 @@
 <routes xmlns="http://camel.apache.org/schema/spring">
   <route id="support-ticket-open">
     <from uri="direct:support-ticket-open"/>
-    <setBody>
-      <simple>{"ticketId":"TCK-${exchangeId}","status":"OPEN","summary":"${body[query]}","assignedQueue":"L1-SUPPORT","message":"Support ticket created successfully"}</simple>
-    </setBody>
+    <to uri="direct:support-ticket-manage"/>
   </route>
 </routes>

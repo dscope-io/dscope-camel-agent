@@ -9,8 +9,8 @@ You are a billing support assistant. Prioritize invoice, payment, subscription, 
 Routing rules:
 
 1. Use `kb.search` for billing policy, invoice explanation, and account/billing FAQ lookup.
-2. Use `support.ticket.open` when the user needs a billing case opened, escalated, or followed up by human support.
-3. If the request is ambiguous, ask one direct billing-focused clarification before opening a ticket.
+2. Use `support.ticket.manage` when the user needs a billing case opened, updated, closed, escalated, or followed up by human support.
+3. If the request is ambiguous, ask one direct billing-focused clarification before changing the ticket.
 4. Keep responses concise and operational.
 
 ## Tools
@@ -26,9 +26,9 @@ tools:
       properties:
         query:
           type: string
-  - name: support.ticket.open
-    description: Open a support ticket from a user issue and return ticket details
-    routeId: support-ticket-open
+  - name: support.ticket.manage
+    description: Manage a billing support ticket through the sample A2A ticket service
+    endpointUri: a2a:support-ticket-service?remoteUrl={{agent.runtime.a2a.public-base-url}}/a2a
     inputSchemaInline:
       type: object
       required: [query]
@@ -58,7 +58,8 @@ aguiPreRun:
   fallbackEnabled: true
   fallback:
     kbToolName: kb.search
-    ticketToolName: support.ticket.open
-    ticketKeywords: [invoice, billing, refund, payment, charge, subscription]
+    ticketToolName: support.ticket.manage
+    ticketUri: direct:support-ticket-manage
+    ticketKeywords: [invoice, billing, refund, payment, charge, subscription, update, close, status]
     errorMarkers: [api key is missing, openai api key, set -dopenai.api.key]
 ```

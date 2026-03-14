@@ -11,8 +11,12 @@ agent:
   audit:
     granularity: debug
   runtime:
-    routes-include-pattern: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/admin-platform.camel.yaml
+    routes-include-pattern: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ticket-service.camel.yaml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/admin-platform.camel.yaml
     agent-routes-enabled: true
+    a2a:
+      enabled: true
+      public-base-url: http://127.0.0.1:{{agent.runtime.test-port:18081}}
+      exposed-agents-config: classpath:agents/a2a-exposed-agents.yaml
     ai:
       mode: spring-ai
     agui:
@@ -22,7 +26,7 @@ agent:
         agent-endpoint-uri: agent:support?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}
         fallback-enabled: false
         fallback:
-          ticket-keywords: ticket,open,create,support,login
+          ticket-keywords: ticket,open,create,update,close,status,support,login
           error-markers: api key is missing,openai api key,set -dopenai.api.key
     realtime:
       bind-relay: false

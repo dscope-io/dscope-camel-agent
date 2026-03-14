@@ -143,10 +143,25 @@ public final class A2AToolClient {
             : objectMapper.createObjectNode();
         metadata.set("camelAgent", camelAgent);
 
+        CorrelationRegistry registry = CorrelationRegistry.global();
+        String linkedConversationId = registry.resolve(context.conversationId(), CorrelationKeys.A2A_LINKED_CONVERSATION_ID, "");
+        String parentConversationId = fallback(context.conversationId());
+        String rootConversationId = firstNonBlank(
+            registry.resolve(context.conversationId(), CorrelationKeys.A2A_ROOT_CONVERSATION_ID, ""),
+            parentConversationId
+        );
+        String aguiSessionId = registry.resolve(context.conversationId(), CorrelationKeys.AGUI_SESSION_ID, "");
+        String aguiRunId = registry.resolve(context.conversationId(), CorrelationKeys.AGUI_RUN_ID, "");
+        String aguiThreadId = registry.resolve(context.conversationId(), CorrelationKeys.AGUI_THREAD_ID, "");
+
         camelAgent.put("localConversationId", fallback(context.conversationId()));
-        camelAgent.put("parentConversationId", fallback(context.conversationId()));
-        camelAgent.put("rootConversationId", fallback(context.conversationId()));
+        camelAgent.put("linkedConversationId", fallback(linkedConversationId));
+        camelAgent.put("parentConversationId", parentConversationId);
+        camelAgent.put("rootConversationId", rootConversationId);
         camelAgent.put("traceId", fallback(context.traceId()));
+        camelAgent.put("aguiSessionId", fallback(aguiSessionId));
+        camelAgent.put("aguiRunId", fallback(aguiRunId));
+        camelAgent.put("aguiThreadId", fallback(aguiThreadId));
         if (!toolContext.planName().isBlank()) {
             camelAgent.put("planName", toolContext.planName());
             metadata.put("planName", toolContext.planName());
@@ -165,10 +180,16 @@ public final class A2AToolClient {
         }
         metadata.put("agentId", remoteAgentId == null ? "" : remoteAgentId);
         camelAgent.put("agentId", remoteAgentId == null ? "" : remoteAgentId);
+        metadata.put("linkedConversationId", fallback(linkedConversationId));
+        metadata.put("parentConversationId", parentConversationId);
+        metadata.put("rootConversationId", rootConversationId);
+        metadata.put("aguiSessionId", fallback(aguiSessionId));
+        metadata.put("aguiRunId", fallback(aguiRunId));
+        metadata.put("aguiThreadId", fallback(aguiThreadId));
 
         if (!params.hasNonNull("conversationId")) {
             String existingRemoteConversationId =
-                CorrelationRegistry.global().resolve(context.conversationId(), CorrelationKeys.A2A_REMOTE_CONVERSATION_ID, "");
+                registry.resolve(context.conversationId(), CorrelationKeys.A2A_REMOTE_CONVERSATION_ID, "");
             params.put("conversationId", firstNonBlank(existingRemoteConversationId, context.conversationId()));
         }
         if (!params.hasNonNull("idempotencyKey")) {
@@ -235,6 +256,28 @@ public final class A2AToolClient {
         String remoteTaskId = remoteTaskId(result);
         if (!remoteTaskId.isBlank()) {
             registry.bind(conversationId, CorrelationKeys.A2A_REMOTE_TASK_ID, remoteTaskId);
+        }
+        String linkedConversationId = firstNonBlank(
+            text(result.path("task").path("metadata").path("camelAgent"), "linkedConversationId"),
+            text(result.path("task").path("metadata").path("camelAgent"), "localConversationId"),
+            text(result.path("task").path("metadata"), "linkedConversationId")
+        );
+        if (!linkedConversationId.isBlank()) {
+            registry.bind(conversationId, CorrelationKeys.A2A_LINKED_CONVERSATION_ID, linkedConversationId);
+        }
+        String parentConversationId = firstNonBlank(
+            text(result.path("task").path("metadata").path("camelAgent"), "parentConversationId"),
+            text(result.path("task").path("metadata"), "parentConversationId")
+        );
+        if (!parentConversationId.isBlank()) {
+            registry.bind(conversationId, CorrelationKeys.A2A_PARENT_CONVERSATION_ID, parentConversationId);
+        }
+        String rootConversationId = firstNonBlank(
+            text(result.path("task").path("metadata").path("camelAgent"), "rootConversationId"),
+            text(result.path("task").path("metadata"), "rootConversationId")
+        );
+        if (!rootConversationId.isBlank()) {
+            registry.bind(conversationId, CorrelationKeys.A2A_ROOT_CONVERSATION_ID, rootConversationId);
         }
     }
 

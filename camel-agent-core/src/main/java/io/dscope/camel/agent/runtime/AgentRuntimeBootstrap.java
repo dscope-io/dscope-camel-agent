@@ -80,6 +80,7 @@ public final class AgentRuntimeBootstrap {
 
         ObjectMapper objectMapper = existingObjectMapper(main);
         main.bind("objectMapper", objectMapper);
+        main.bind("ticketLifecycleProcessor", new TicketLifecycleProcessor(objectMapper));
 
         PersistenceFacade persistenceFacade = existingPersistenceFacade(main);
         if (persistenceFacade == null) {
@@ -557,6 +558,7 @@ public final class AgentRuntimeBootstrap {
 
         AgentA2AProtocolSupport.bindIfEnabled(
             main,
+            properties,
             A2ARuntimeProperties.from(properties),
             persistenceFacade,
             planSelectionResolver,

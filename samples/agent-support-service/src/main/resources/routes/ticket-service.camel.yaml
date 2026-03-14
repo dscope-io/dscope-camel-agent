@@ -1,0 +1,9 @@
+- route:
+    id: support-ticket-manage-route
+    from:
+      id: fromSupportTicketManage
+      uri: direct:support-ticket-manage
+      steps:
+        - process:
+            id: processSupportTicketManage
+            ref: ticketLifecycleProcessor

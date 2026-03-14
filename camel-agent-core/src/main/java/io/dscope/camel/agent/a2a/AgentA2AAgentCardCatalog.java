@@ -7,15 +7,12 @@ import io.dscope.camel.a2a.catalog.AgentCardSignatureVerifier;
 import io.dscope.camel.a2a.catalog.AgentCardSigner;
 import io.dscope.camel.a2a.catalog.AllowAllAgentCardPolicyChecker;
 import io.dscope.camel.a2a.catalog.AllowAllAgentCardSignatureVerifier;
+import io.dscope.camel.a2a.catalog.DefaultAgentCardCatalog;
 import io.dscope.camel.a2a.catalog.NoopAgentCardSigner;
-import io.dscope.camel.a2a.config.A2AProtocolMethods;
-import io.dscope.camel.a2a.model.AgentCapabilities;
 import io.dscope.camel.a2a.model.AgentCard;
-import io.dscope.camel.a2a.model.AgentSecurityScheme;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeSet;
 
 public final class AgentA2AAgentCardCatalog implements AgentCardCatalog {
 
@@ -44,65 +41,43 @@ public final class AgentA2AAgentCardCatalog implements AgentCardCatalog {
 
     @Override
     public AgentCard getDiscoveryCard() {
-        AgentCard card = baseCard(false);
-        policyChecker.validate(card);
-        return card;
+        return enrich(baseCatalog().getDiscoveryCard(), false);
     }
 
     @Override
     public AgentCard getExtendedCard() {
-        AgentCard card = baseCard(true);
-        policyChecker.validate(card);
-        return card;
+        return enrich(baseCatalog().getExtendedCard(), true);
     }
 
     @Override
     public String getCardSignature(AgentCard card) {
-        try {
-            String canonical = objectMapper.writeValueAsString(card);
-            String signature = signer.sign(canonical);
-            if (signature != null && !verifier.verify(canonical, signature)) {
-                throw new IllegalStateException("Agent card signature verification failed");
-            }
-            return signature;
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to sign A2A agent card", e);
-        }
+        return baseCatalog().getCardSignature(card);
     }
 
-    private AgentCard baseCard(boolean extended) {
+    private DefaultAgentCardCatalog baseCatalog() {
         A2AExposedAgentSpec defaultAgent = exposedAgentCatalog.defaultAgent();
+        return new DefaultAgentCardCatalog(
+            defaultAgent.getAgentId(),
+            defaultAgent.getName(),
+            defaultAgent.getDescription(),
+            endpointUrl,
+            signer,
+            verifier,
+            policyChecker
+        );
+    }
 
-        AgentCapabilities capabilities = new AgentCapabilities();
-        capabilities.setStreaming(true);
-        capabilities.setPushNotifications(true);
-        capabilities.setStatefulTasks(true);
-        capabilities.setSupportedMethods(List.copyOf(new TreeSet<>(A2AProtocolMethods.CORE_METHODS)));
-
-        AgentSecurityScheme bearer = new AgentSecurityScheme();
-        bearer.setType("http");
-        bearer.setScheme("bearer");
-        bearer.setDescription("Bearer token authentication");
-        bearer.setScopes(List.of("a2a.read", "a2a.write"));
-
+    private AgentCard enrich(AgentCard card, boolean extended) {
+        A2AExposedAgentSpec defaultAgent = exposedAgentCatalog.defaultAgent();
         Map<String, Object> metadata = new LinkedHashMap<>();
+        if (card.getMetadata() != null && !card.getMetadata().isEmpty()) {
+            metadata.putAll(card.getMetadata());
+        }
         metadata.put("discovery", true);
         metadata.put("extended", extended);
         metadata.put("defaultAgentId", defaultAgent.getAgentId());
         metadata.put("agents", exposedAgentCatalog.agents().stream().map(this::cardMetadata).toList());
-
-        AgentCard card = new AgentCard();
-        card.setAgentId(defaultAgent.getAgentId());
-        card.setName(defaultAgent.getName());
-        card.setDescription(defaultAgent.getDescription());
-        card.setEndpointUrl(endpointUrl);
         card.setVersion(defaultVersion(defaultAgent));
-        card.setCapabilities(capabilities);
-        card.setSecuritySchemes(Map.of("bearerAuth", bearer));
-        card.setDefaultInputModes(List.of("application/json", "text/plain"));
-        card.setDefaultOutputModes(List.of("application/json", "text/event-stream"));
         card.setMetadata(metadata);
         return card;
     }

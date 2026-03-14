@@ -14,3 +14,8 @@ plans:
         blueprint: classpath:agents/billing/v1/agent.md
       - version: v2
         blueprint: classpath:agents/billing/v2/agent.md
+  - name: ticketing
+    versions:
+      - version: v1
+        default: true
+        blueprint: classpath:agents/ticketing/v1/agent.md

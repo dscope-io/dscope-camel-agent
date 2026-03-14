@@ -284,6 +284,18 @@
             ref: auditConversationAgentMessageProcessor
 
 - route:
+    id: sample-audit-conversation-session-data-api
+    from:
+      id: fromSampleAuditConversationSessionData
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/audit/conversation/session-data?httpMethodRestrict=GET
+      steps:
+        - process:
+            id: processSampleAuditConversationSessionData
+            ref: auditConversationSessionDataProcessor
+
+- route:
     id: sample-audit-agent-catalog-api
     from:
       id: fromSampleAuditAgentCatalog

@@ -44,7 +44,7 @@ public final class DscopePersistenceFactory {
         }
 
         PersistenceBackend backend = configuration.backend();
-        if (backend == PersistenceBackend.JDBC || backend == PersistenceBackend.REDIS_JDBC) {
+        if (isJdbcBacked(backend)) {
             String ddlResource = resolveSchemaDdlResource(effective, configuration.jdbcUrl());
             if (ddlResource != null && !ddlResource.isBlank()) {
                 return new ScriptedJdbcFlowStateStore(
@@ -57,6 +57,13 @@ public final class DscopePersistenceFactory {
         }
 
         return FlowStateStoreFactory.create(configuration);
+    }
+
+    private static boolean isJdbcBacked(PersistenceBackend backend) {
+        if (backend == null) {
+            return false;
+        }
+        return backend == PersistenceBackend.JDBC || "REDIS_JDBC".equals(backend.name());
     }
 
     static String resolveSchemaDdlResource(Properties effective, String jdbcUrl) {
