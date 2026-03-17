@@ -1,7 +1,6 @@
 package io.dscope.camel.agent.samples;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.lang.reflect.Field;
 import java.util.Properties;
 import org.apache.camel.main.Main;
 
@@ -131,7 +130,7 @@ final class SampleAdminMcpBindings {
 
     private static void ensureAuditProcessors(Main main, String applicationYamlPath, ObjectMapper objectMapper) throws Exception {
         Object persistenceFacade = required(main, "persistenceFacade");
-        Object planSelectionResolver = lookupFromRegistry(main, "agentPlanSelectionResolver");
+        Object planSelectionResolver = main.lookup("agentPlanSelectionResolver", Object.class);
         if (planSelectionResolver == null) {
             planSelectionResolver = newInstance(
                 "io.dscope.camel.agent.runtime.AgentPlanSelectionResolver",
@@ -141,7 +140,7 @@ final class SampleAdminMcpBindings {
             main.bind("agentPlanSelectionResolver", planSelectionResolver);
         }
 
-        Object conversationArchiveService = lookupFromRegistry(main, "conversationArchiveService");
+        Object conversationArchiveService = main.lookup("conversationArchiveService", Object.class);
         if (conversationArchiveService == null) {
             conversationArchiveService = newInstance(
                 "io.dscope.camel.agent.runtime.ConversationArchiveService",
@@ -151,7 +150,7 @@ final class SampleAdminMcpBindings {
             main.bind("conversationArchiveService", conversationArchiveService);
         }
 
-        Object runtimeControlState = lookupFromRegistry(main, "runtimeControlState");
+        Object runtimeControlState = main.lookup("runtimeControlState", Object.class);
         if (runtimeControlState == null) {
             runtimeControlState = newInstance(
                 "io.dscope.camel.agent.runtime.RuntimeControlState",
@@ -240,7 +239,7 @@ final class SampleAdminMcpBindings {
     }
 
     private static void bindIfMissing(Main main, String name, Object value) {
-        if (lookupFromRegistry(main, name) == null && main.lookup(name, Object.class) == null) {
+        if (main.lookup(name, Object.class) == null) {
             main.bind(name, value);
         }
     }
@@ -279,36 +278,16 @@ final class SampleAdminMcpBindings {
     }
 
     private static Object lookup(Main main, String name) {
-        Object value = lookupFromRegistry(main, name);
-        if (value == null) {
-            value = main.lookup(name, Object.class);
-        }
+        Object value = main.lookup(name, Object.class);
         return value != null ? value : new ObjectMapper();
     }
 
     private static Object required(Main main, String name) {
-        Object value = lookupFromRegistry(main, name);
-        if (value == null) {
-            value = main.lookup(name, Object.class);
-        }
+        Object value = main.lookup(name, Object.class);
         if (value == null) {
             throw new IllegalStateException("Required bean missing after runtime bootstrap: " + name);
         }
         return value;
-    }
-
-    private static Object lookupFromRegistry(Main main, String name) {
-        try {
-            Field registryField = Main.class.getDeclaredField("registry");
-            registryField.setAccessible(true);
-            Object registry = registryField.get(main);
-            if (registry == null) {
-                return null;
-            }
-            return registry.getClass().getMethod("lookupByName", String.class).invoke(registry, name);
-        } catch (Exception ignored) {
-            return null;
-        }
     }
 
     private static Object newInstance(String className) throws Exception {
