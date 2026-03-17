@@ -15,3 +15,7 @@ samples/agent-support-service/smoke-server-8087.log
 samples/agent-support-service/smoke-relay-managed.out
 samples/agent-support-service/smoke-latest.out
 .gitignore
+**/*.class
+mvnw
+mvnw.cmd
+.mvn/
