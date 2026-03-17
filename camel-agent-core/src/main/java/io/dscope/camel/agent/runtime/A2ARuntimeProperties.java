@@ -31,7 +31,8 @@ public record A2ARuntimeProperties(
                 "agent.runtime.a2a.port",
                 "agent.runtime.a2a.bind-port",
                 "agent.runtime.a2a.bindPort",
-                "agent.audit.api.port"
+                "agent.audit.api.port",
+                "agui.rpc.port"
             ),
             8080
         );
