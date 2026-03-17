@@ -21,9 +21,13 @@ public final class A2AExposedAgentCatalog {
                 throw new IllegalArgumentException("A2A exposed-agents entries must not be null");
             }
             String agentId = required(agent.getAgentId(), "agentId");
-            required(agent.getName(), "name");
-            required(agent.getPlanName(), "planName");
-            required(agent.getPlanVersion(), "planVersion");
+            String name = required(agent.getName(), "name");
+            String planName = required(agent.getPlanName(), "planName");
+            String planVersion = required(agent.getPlanVersion(), "planVersion");
+            agent.setAgentId(agentId);
+            agent.setName(name);
+            agent.setPlanName(planName);
+            agent.setPlanVersion(planVersion);
             if (mapped.putIfAbsent(agentId, agent) != null) {
                 throw new IllegalArgumentException("Duplicate A2A exposed agentId: " + agentId);
             }

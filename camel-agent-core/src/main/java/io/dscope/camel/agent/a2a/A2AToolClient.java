@@ -89,10 +89,10 @@ public final class A2AToolClient {
             }
 
             HttpResponse<String> response = httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
-            JsonNode root = objectMapper.readTree(response.body());
             if (response.statusCode() >= 400) {
                 throw new IllegalStateException("Remote A2A call failed with HTTP " + response.statusCode() + ": " + response.body());
             }
+            JsonNode root = objectMapper.readTree(response.body());
             if (root.hasNonNull("error")) {
                 throw new IllegalStateException("Remote A2A call failed: " + root.path("error").toString());
             }

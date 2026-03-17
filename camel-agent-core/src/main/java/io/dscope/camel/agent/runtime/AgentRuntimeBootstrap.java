@@ -80,7 +80,9 @@ public final class AgentRuntimeBootstrap {
 
         ObjectMapper objectMapper = existingObjectMapper(main);
         main.bind("objectMapper", objectMapper);
-        main.bind("ticketLifecycleProcessor", new TicketLifecycleProcessor(objectMapper));
+        if (main.lookup("ticketLifecycleProcessor", Object.class) == null) {
+            main.bind("ticketLifecycleProcessor", new TicketLifecycleProcessor(objectMapper));
+        }
 
         PersistenceFacade persistenceFacade = existingPersistenceFacade(main);
         if (persistenceFacade == null) {

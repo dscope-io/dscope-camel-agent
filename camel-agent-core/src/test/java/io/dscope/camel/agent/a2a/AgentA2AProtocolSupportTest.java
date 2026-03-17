@@ -17,6 +17,7 @@ import io.dscope.camel.a2a.service.A2ATaskService;
 import io.dscope.camel.a2a.service.InMemoryA2ATaskService;
 import io.dscope.camel.a2a.service.InMemoryPushNotificationConfigService;
 import io.dscope.camel.a2a.service.InMemoryTaskEventService;
+import io.dscope.camel.a2a.service.TaskEventService;
 import io.dscope.camel.a2a.service.WebhookPushNotificationNotifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -91,7 +92,7 @@ class AgentA2AProtocolSupportTest {
             objectMapper
         );
 
-        assertSame(taskEventService, main.lookup(A2AComponentApplicationSupport.BEAN_TASK_EVENT_SERVICE, InMemoryTaskEventService.class));
+        assertSame(taskEventService, main.lookup(A2AComponentApplicationSupport.BEAN_TASK_EVENT_SERVICE, TaskEventService.class));
         assertSame(taskService, main.lookup(A2AComponentApplicationSupport.BEAN_TASK_SERVICE, A2ATaskService.class));
         assertSame(pushConfigService, main.lookup(A2AComponentApplicationSupport.BEAN_PUSH_CONFIG_SERVICE, A2APushNotificationConfigService.class));
 
