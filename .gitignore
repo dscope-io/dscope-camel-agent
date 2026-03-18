@@ -6,6 +6,9 @@ camel-agent-agui/target/camel-agent-agui-0.1.0-SNAPSHOT.jar
 .vscode/
 camel-agent-agui/
 relay-server.log
+mvnw
+mvnw.cmd
+samples/agent-support-service/target/
 samples/agent-support-service/capture-script-output.log
 samples/agent-support-service/classes-run.log
 .gitignore
