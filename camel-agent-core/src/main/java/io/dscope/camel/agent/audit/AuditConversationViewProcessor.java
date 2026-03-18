@@ -80,6 +80,7 @@ public class AuditConversationViewProcessor implements Processor {
         List<Map<String, Object>> perspective = new ArrayList<>();
         String effectiveBlueprint = resolveBlueprint(conversationId);
         AuditMetadataSupport.AgentStepMetadata currentAgentState = AuditMetadataSupport.deriveAgentStepMetadata(events, effectiveBlueprint);
+        AuditMetadataSupport.A2ACorrelationMetadata currentA2aState = AuditMetadataSupport.deriveA2ACorrelation(events);
         AuditMetadataSupport.AgentStepMetadata stepAgentState = AuditMetadataSupport.AgentStepMetadata.fromBlueprint(
             effectiveBlueprint,
             AuditMetadataSupport.loadBlueprintMetadata(effectiveBlueprint)
@@ -122,6 +123,7 @@ public class AuditConversationViewProcessor implements Processor {
             "messages", perspective
         ));
         response.put("agent", currentAgentState.asMap());
+        response.put("a2a", currentA2aState.asMap());
 
         exchange.getMessage().setHeader(Exchange.CONTENT_TYPE, "application/json");
         exchange.getMessage().setBody(objectMapper.writeValueAsString(response));

@@ -3,7 +3,9 @@
 Runnable Camel Main sample for the `agent:` runtime with:
 
 - Spring AI gateway mode (`agent.runtime.ai.mode=spring-ai`)
-- local routes for `kb.search` and `support.ticket.open`
+- multi-agent plan catalog (`support`, `billing`, `ticketing`)
+- local routes for `kb.search` and ticket lifecycle state updates
+- inbound and outbound A2A support for ticket management
 - audit trail persistence via JDBC-backed DScope persistence
 - AGUI component infrastructure from `io.dscope.camel:camel-ag-ui-component`
 - simple Copilot-style web UI (`/agui/ui`) that calls `POST /agui/agent` (AGUI POST+SSE stream response)
@@ -12,7 +14,11 @@ Runnable Camel Main sample for the `agent:` runtime with:
 
 - Java 21
 - Maven
-- OpenAI key (for live Spring AI runs)
+- OpenAI key for live Spring AI runs
+
+For local simulation without an API key, use the sample demo gateway:
+
+- `io.dscope.camel.agent.samples.DemoA2ATicketGateway`
 
 ## Configure Secrets
 
@@ -51,9 +57,19 @@ Or use the helper script (auto-loads `.agent-secrets.properties`):
 samples/agent-support-service/run-sample.sh
 ```
 
+For local A2A demo mode without an API key:
+
+```bash
+./mvnw -q -f samples/agent-support-service/pom.xml \
+  -Dagent.runtime.spring-ai.gateway-class=io.dscope.camel.agent.samples.DemoA2ATicketGateway \
+  -Dagent.runtime.routes-include-pattern=classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ticket-service.camel.yaml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/admin-platform.camel.yaml \
+  exec:java
+```
+
 Then open:
 
 - `http://localhost:8080/agui/ui` for the frontend
+- `http://localhost:8080/audit/ui` for audit exploration
 - Use the single voice toggle button in the UI to start/stop mic streaming to realtime.
 
 ## Manual Verification Checklist (Web + Realtime)
@@ -77,7 +93,7 @@ lsof -nP -iTCP:8080 -sTCP:LISTEN | cat
 4. Web chat check:
 
 - Send: `My login is failing, please open a support ticket`.
-- Expect assistant response and ticket JSON/widget behavior.
+- Expect the support assistant to call the A2A ticketing service and render ticket JSON/widget behavior.
 
 5. Realtime voice check (browser):
 
@@ -99,7 +115,7 @@ curl -s -X POST http://localhost:8080/realtime/session/voice-check-1/event \
 7. Expected fallback behavior without valid OpenAI credentials:
 
 - AGUI pre-run falls back to deterministic local routing.
-- Ticket-like prompts route to `support.ticket.open`; non-ticket prompts route to `kb.search`.
+- With `DemoA2ATicketGateway`, support prompts still route through the multi-agent A2A ticket flow.
 
 Or call the same AGUI endpoint used by the frontend directly (POST+SSE stream response):
 
@@ -115,13 +131,6 @@ curl -N -X POST http://localhost:8080/agui/agent \
 
 When assistant text contains ticket JSON, the frontend renders a `ticket-card` widget template.
 
-If OpenAI credentials are missing, AGUI requests automatically fall back to deterministic local routing via the AGUI pre-run processor:
-
-- ticket-like prompts -> `direct:support-ticket-open`
-- other prompts -> `direct:kb-search`
-
-This keeps `/agui/ui` demo flows working offline.
-
 ## AGUI Frontend Flow
 
 Current UI transport model in this sample:
@@ -132,6 +141,13 @@ Current UI transport model in this sample:
 2. Backend returns AGUI events for the selected transport.
 3. Frontend parses AGUI events (especially `TEXT_MESSAGE_CONTENT`) and renders assistant text.
 4. If assistant text contains ticket JSON, frontend renders a `ticket-card` widget.
+
+In the current sample, `support.ticket.manage` is an outbound `a2a:` tool:
+
+- support/billing agents call `a2a:support-ticket-service`
+- exposed A2A agent `support-ticket-service` maps to local plan `ticketing:v1`
+- ticketing agent calls local route tool `support.ticket.manage.route`
+- ticket lifecycle route updates ticket state and returns JSON
 
 Voice/transcript UX in `/agui/ui`:
 
@@ -161,7 +177,8 @@ curl https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"
 ## Routes Used by Tools
 
 - `kb.search` -> `direct:kb-search` (`routes/kb-search.camel.yaml`)
-- `support.ticket.open` -> `direct:support-ticket-open` (`routes/kb-search-json.camel.xml`)
+- `support.ticket.manage.route` -> `direct:support-ticket-manage` (`routes/ticket-service.camel.yaml`)
+- `support.ticket.manage` -> `a2a:support-ticket-service?remoteUrl={{agent.runtime.a2a.public-base-url}}/a2a`
 - `support.mcp` -> `mcp:http://localhost:3001/mcp` (optional MCP seed; runtime discovers concrete MCP tools via `tools/list`)
 
 ## MCP Quick Start (Local)
@@ -227,6 +244,59 @@ Example event payload shape:
 - `GET /agui/stream/{runId}` -> optional event stream endpoint for split transport mode
 - `GET /agui/ui` -> simple Copilot-like frontend with ticket widget rendering
 
+## A2A Endpoints
+
+- `POST /a2a/rpc`
+- `GET /a2a/sse/{taskId}`
+- `GET /.well-known/agent-card.json`
+
+### Direct A2A Smoke
+
+Open ticket:
+
+```bash
+curl -sS -X POST http://localhost:8080/a2a/rpc \
+   -H 'Content-Type: application/json' \
+   -d '{
+      "jsonrpc":"2.0",
+      "id":"1",
+      "method":"SendMessage",
+      "params":{
+         "conversationId":"demo-a2a-1",
+         "message":{
+            "messageId":"m1",
+            "role":"user",
+            "parts":[{"partId":"p1","type":"text","mimeType":"text/plain","text":"Please open a support ticket for my login issue"}]
+         },
+         "metadata":{"agentId":"support-ticket-service"}
+      }
+   }'
+```
+
+Close the same ticket by reusing returned `linkedConversationId`:
+
+```bash
+curl -sS -X POST http://localhost:8080/a2a/rpc \
+   -H 'Content-Type: application/json' \
+   -d '{
+      "jsonrpc":"2.0",
+      "id":"2",
+      "method":"SendMessage",
+      "params":{
+         "conversationId":"demo-a2a-1",
+         "message":{
+            "messageId":"m2",
+            "role":"user",
+            "parts":[{"partId":"p2","type":"text","mimeType":"text/plain","text":"Please close the ticket now"}]
+         },
+         "metadata":{
+            "agentId":"support-ticket-service",
+            "linkedConversationId":"<linkedConversationId>"
+         }
+      }
+   }'
+```
+
 ### AGUI Pre-Run Fallback Quick Check
 
 This sample blueprint now includes `aguiPreRun` metadata. You can verify deterministic fallback routing (without valid OpenAI credentials) by calling `POST /agui/agent` with a ticket-oriented prompt:
@@ -244,7 +314,7 @@ curl -N -X POST http://localhost:8080/agui/agent \
 Expected result:
 
 - AGUI pre-run processor invokes the normal agent endpoint first.
-- If response indicates key/auth failure (or is empty), fallback selects ticket route based on blueprint `aguiPreRun.fallback.ticketKeywords` and tool metadata (`support.ticket.open` -> `direct:support-ticket-open`).
+- If response indicates key/auth failure (or is empty), fallback selects ticket route based on blueprint `aguiPreRun.fallback.ticketKeywords` and tool metadata (`support.ticket.manage` -> `direct:support-ticket-manage`).
 - SSE output contains assistant text with ticket payload that the sample UI renders as a `ticket-card` widget.
 
 ## Realtime Relay Endpoint (Foundation)
@@ -288,13 +358,13 @@ Example route patch (YAML):
 
 ```yaml
 - route:
-    id: support-ticket-open
+    id: support-ticket-manage-route
     from:
-      uri: direct:support-ticket-open
+      uri: direct:support-ticket-manage
       steps:
         - setHeader:
             name: realtimeSessionUpdate
-            constant: '{"metadata":{"lastTool":"support.ticket.open"},"audio":{"output":{"voice":"alloy"}}}'
+            constant: '{"metadata":{"lastTool":"support.ticket.manage.route"},"audio":{"output":{"voice":"alloy"}}}'
         - setBody:
             simple: '{"ticketId":"TCK-${exchangeId}","status":"OPEN","summary":"${body[query]}"}'
 ```
@@ -364,7 +434,7 @@ Covered scenarios:
 
 1. Two-turn routing + memory (deterministic gateway):
    - prompt 1 asks knowledge base -> tool `kb.search`
-   - prompt 2 asks ticket -> tool `support.ticket.open`
+   - prompt 2 asks ticket -> tool `support.ticket.manage`
    - prompt 2 evaluation includes prompt 1 KB result
 2. Negative case:
    - ticket as first prompt does not inject KB context

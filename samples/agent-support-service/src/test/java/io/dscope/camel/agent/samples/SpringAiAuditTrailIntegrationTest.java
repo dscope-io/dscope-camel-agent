@@ -81,7 +81,7 @@ class SpringAiAuditTrailIntegrationTest {
             "Now please file a support ticket using that knowledge base result.");
 
         Assertions.assertEquals("kb.search", toolName(first.events()));
-        Assertions.assertEquals("support.ticket.open", toolName(second.events()));
+        Assertions.assertEquals("support.ticket.manage", toolName(second.events()));
         Assertions.assertNotNull(gateway.secondTurnContext);
         Assertions.assertTrue(gateway.secondTurnContext.contains("Knowledge base result for"),
             "Second turn LLM evaluation should include first-turn KB tool result in context");
@@ -134,7 +134,7 @@ class SpringAiAuditTrailIntegrationTest {
             .anyMatch(e -> "kb.search".equals(e.payload().path("name").asText())));
         Assertions.assertTrue(auditTrail.stream()
             .filter(e -> "tool.start".equals(e.type()))
-            .anyMatch(e -> "support.ticket.open".equals(e.payload().path("name").asText())));
+            .anyMatch(e -> "support.ticket.manage".equals(e.payload().path("name").asText())));
         Assertions.assertTrue(auditTrail.stream()
             .filter(e -> "tool.start".equals(e.type()))
             .anyMatch(e -> e.payload().path("arguments").path("query").asText("").contains("Knowledge base result for")));
@@ -178,7 +178,7 @@ class SpringAiAuditTrailIntegrationTest {
         List<AgentEvent> auditTrail = persistenceFacade.loadConversation(conversationId, 50);
         Assertions.assertTrue(auditTrail.stream()
             .filter(e -> "tool.start".equals(e.type()))
-            .anyMatch(e -> "support.ticket.open".equals(e.payload().path("name").asText())));
+            .anyMatch(e -> "support.ticket.manage".equals(e.payload().path("name").asText())));
         Assertions.assertFalse(auditTrail.stream()
             .filter(e -> "tool.start".equals(e.type()))
             .anyMatch(e -> e.payload().path("arguments").path("query").asText("").contains("Knowledge base result for")));
@@ -194,10 +194,11 @@ class SpringAiAuditTrailIntegrationTest {
             ObjectNode data = mapper.createObjectNode().put("answer", "Knowledge base result for " + query);
             return new ToolResult(data.path("answer").asText(), data, List.of());
         }
-        if ("support.ticket.open".equals(toolName)) {
+        if ("support.ticket.manage".equals(toolName)) {
             ObjectNode data = mapper.createObjectNode()
                 .put("ticketId", "TCK-" + UUID.randomUUID())
                 .put("status", "OPEN")
+                .put("action", "OPEN")
                 .put("summary", query)
                 .put("assignedQueue", "L1-SUPPORT")
                 .put("message", "Support ticket created successfully");
@@ -271,7 +272,7 @@ class SpringAiAuditTrailIntegrationTest {
                 String query = sawKnowledgeBaseInSecondTurn
                     ? "Escalate with prior context: " + kbResult
                     : userText;
-                return List.of(new AiToolCall("support.ticket.open", objectMapper.createObjectNode().put("query", query)));
+                return List.of(new AiToolCall("support.ticket.manage", objectMapper.createObjectNode().put("query", query)));
             }
             return List.of();
         }

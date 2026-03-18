@@ -335,8 +335,22 @@ public class DscopePersistenceFacade implements PersistenceFacade {
         String aguiSessionId = registry.resolve(conversationId, CorrelationKeys.AGUI_SESSION_ID, null);
         String aguiRunId = registry.resolve(conversationId, CorrelationKeys.AGUI_RUN_ID, null);
         String aguiThreadId = registry.resolve(conversationId, CorrelationKeys.AGUI_THREAD_ID, null);
+        String a2aAgentId = registry.resolve(conversationId, CorrelationKeys.A2A_AGENT_ID, null);
+        String a2aRemoteConversationId = registry.resolve(conversationId, CorrelationKeys.A2A_REMOTE_CONVERSATION_ID, null);
+        String a2aRemoteTaskId = registry.resolve(conversationId, CorrelationKeys.A2A_REMOTE_TASK_ID, null);
+        String a2aLinkedConversationId = registry.resolve(conversationId, CorrelationKeys.A2A_LINKED_CONVERSATION_ID, null);
+        String a2aParentConversationId = registry.resolve(conversationId, CorrelationKeys.A2A_PARENT_CONVERSATION_ID, null);
+        String a2aRootConversationId = registry.resolve(conversationId, CorrelationKeys.A2A_ROOT_CONVERSATION_ID, null);
 
-        if (isBlank(aguiSessionId) && isBlank(aguiRunId) && isBlank(aguiThreadId)) {
+        if (isBlank(aguiSessionId)
+            && isBlank(aguiRunId)
+            && isBlank(aguiThreadId)
+            && isBlank(a2aAgentId)
+            && isBlank(a2aRemoteConversationId)
+            && isBlank(a2aRemoteTaskId)
+            && isBlank(a2aLinkedConversationId)
+            && isBlank(a2aParentConversationId)
+            && isBlank(a2aRootConversationId)) {
             return null;
         }
 
@@ -349,6 +363,24 @@ public class DscopePersistenceFacade implements PersistenceFacade {
         }
         if (!isBlank(aguiThreadId)) {
             correlation.put("aguiThreadId", aguiThreadId);
+        }
+        if (!isBlank(a2aAgentId)) {
+            correlation.put("a2aAgentId", a2aAgentId);
+        }
+        if (!isBlank(a2aRemoteConversationId)) {
+            correlation.put("a2aRemoteConversationId", a2aRemoteConversationId);
+        }
+        if (!isBlank(a2aRemoteTaskId)) {
+            correlation.put("a2aRemoteTaskId", a2aRemoteTaskId);
+        }
+        if (!isBlank(a2aLinkedConversationId)) {
+            correlation.put("a2aLinkedConversationId", a2aLinkedConversationId);
+        }
+        if (!isBlank(a2aParentConversationId)) {
+            correlation.put("a2aParentConversationId", a2aParentConversationId);
+        }
+        if (!isBlank(a2aRootConversationId)) {
+            correlation.put("a2aRootConversationId", a2aRootConversationId);
         }
         return correlation;
     }

@@ -1,6 +1,7 @@
 package io.dscope.camel.agent.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.dscope.camel.agent.a2a.AgentA2AProtocolSupport;
 import io.dscope.camel.agent.agui.AgentAgUiPreRunTextProcessor;
 import io.dscope.camel.agent.audit.AuditAgentBlueprintProcessor;
 import io.dscope.camel.agent.audit.AuditAgentCatalogProcessor;
@@ -79,6 +80,15 @@ public final class AgentRuntimeBootstrap {
 
         ObjectMapper objectMapper = existingObjectMapper(main);
         main.bind("objectMapper", objectMapper);
+        TicketLifecycleProcessor ticketLifecycleProcessor = null;
+        if (main.getCamelContext() != null && main.getCamelContext().getRegistry() != null) {
+            ticketLifecycleProcessor = main.getCamelContext()
+                .getRegistry()
+                .lookupByNameAndType("ticketLifecycleProcessor", TicketLifecycleProcessor.class);
+        }
+        if (ticketLifecycleProcessor == null) {
+            main.bind("ticketLifecycleProcessor", new TicketLifecycleProcessor(objectMapper));
+        }
 
         PersistenceFacade persistenceFacade = existingPersistenceFacade(main);
         if (persistenceFacade == null) {
@@ -165,7 +175,7 @@ public final class AgentRuntimeBootstrap {
         );
 
         bindAiModelClientIfConfigured(main, properties, objectMapper);
-        bindOptionalAgUiAndRealtime(main, properties);
+        bindOptionalAgUiRealtimeAndA2a(main, properties, persistenceFacade, planSelectionResolver, objectMapper);
 
         boolean agentRoutesEnabled = Boolean.parseBoolean(properties.getProperty("agent.runtime.agent-routes-enabled", "true"));
         if (agentRoutesEnabled) {
@@ -173,6 +183,13 @@ public final class AgentRuntimeBootstrap {
             LOGGER.info("Agent runtime route builder enabled");
         } else {
             LOGGER.info("Agent runtime route builder disabled by configuration");
+        }
+        A2ARuntimeProperties a2aRuntimeProperties = A2ARuntimeProperties.from(properties);
+        if (a2aRuntimeProperties.enabled()) {
+            main.configure().addRoutesBuilder(new AgentA2ARuntimeRouteBuilder(a2aRuntimeProperties));
+            LOGGER.info("Agent runtime A2A route builder enabled");
+        } else {
+            LOGGER.info("Agent runtime A2A route builder disabled by configuration");
         }
         LOGGER.info("Agent runtime bootstrap completed");
     }
@@ -444,7 +461,11 @@ public final class AgentRuntimeBootstrap {
         }
     }
 
-    private static void bindOptionalAgUiAndRealtime(Main main, Properties properties) {
+    private static void bindOptionalAgUiRealtimeAndA2a(Main main,
+                                                       Properties properties,
+                                                       PersistenceFacade persistenceFacade,
+                                                       AgentPlanSelectionResolver planSelectionResolver,
+                                                       ObjectMapper objectMapper) {
         if (booleanPropertyWithAliases(properties, true,
             "agent.runtime.agui.bind-default-beans",
             "agent.runtime.agui.bindDefaultBeans"
@@ -542,6 +563,15 @@ public final class AgentRuntimeBootstrap {
             );
             bindSipProcessorsIfMissing(main, sipInitBeanName, sipTranscriptBeanName, sipCallEndBeanName);
         }
+
+        AgentA2AProtocolSupport.bindIfEnabled(
+            main,
+            properties,
+            A2ARuntimeProperties.from(properties),
+            persistenceFacade,
+            planSelectionResolver,
+            objectMapper
+        );
     }
 
     private static void bindAgUiDefaultsIfAvailable(Main main) {

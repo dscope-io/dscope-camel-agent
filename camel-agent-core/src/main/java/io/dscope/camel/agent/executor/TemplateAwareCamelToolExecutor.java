@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.dscope.camel.agent.api.ToolExecutor;
+import io.dscope.camel.agent.a2a.A2AToolContext;
+import io.dscope.camel.agent.api.PersistenceFacade;
 import io.dscope.camel.agent.config.AgentHeaders;
 import io.dscope.camel.agent.model.ExecutionContext;
 import io.dscope.camel.agent.model.JsonRouteTemplateSpec;
@@ -38,10 +40,19 @@ public class TemplateAwareCamelToolExecutor implements ToolExecutor {
                                           ProducerTemplate producerTemplate,
                                           ObjectMapper objectMapper,
                                           List<JsonRouteTemplateSpec> templates) {
+        this(camelContext, producerTemplate, objectMapper, templates, null, A2AToolContext.EMPTY);
+    }
+
+    public TemplateAwareCamelToolExecutor(CamelContext camelContext,
+                                          ProducerTemplate producerTemplate,
+                                          ObjectMapper objectMapper,
+                                          List<JsonRouteTemplateSpec> templates,
+                                          PersistenceFacade persistenceFacade,
+                                          A2AToolContext a2aToolContext) {
         this.camelContext = camelContext;
         this.producerTemplate = producerTemplate;
         this.objectMapper = objectMapper;
-        this.delegate = new CamelToolExecutor(producerTemplate, objectMapper);
+        this.delegate = new CamelToolExecutor(camelContext, producerTemplate, objectMapper, persistenceFacade, a2aToolContext);
         this.templatesByToolName = new HashMap<>();
         if (templates != null) {
             for (JsonRouteTemplateSpec template : templates) {

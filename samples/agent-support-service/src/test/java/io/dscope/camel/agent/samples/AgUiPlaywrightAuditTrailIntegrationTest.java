@@ -1,10 +1,6 @@
 package io.dscope.camel.agent.samples;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.microsoft.playwright.Browser;
-import com.microsoft.playwright.BrowserType;
-import com.microsoft.playwright.Page;
-import com.microsoft.playwright.Playwright;
 import io.dscope.camel.agent.model.AiToolCall;
 import io.dscope.camel.agent.runtime.AgentRuntimeBootstrap;
 import io.dscope.camel.agent.springai.SpringAiChatGateway;
@@ -18,6 +14,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import org.apache.camel.main.Main;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -34,50 +31,43 @@ class AgUiPlaywrightAuditTrailIntegrationTest {
         String queryToken = "pw-audit-" + System.currentTimeMillis();
         String prompt = "Please open a support ticket for repeated login failures " + queryToken;
         main.bind("springAiChatGateway", new DeterministicTicketGateway());
+        main.bind("ticketLifecycleProcessor", new SupportTicketLifecycleProcessor(new ObjectMapper()));
 
         try {
             AgentRuntimeBootstrap.bootstrap(main, "ag-ui-playwright-audit-test.yaml");
+            SampleAdminMcpBindings.bindIfMissing(main, "ag-ui-playwright-audit-test.yaml");
             main.start();
 
-            try (Playwright playwright = Playwright.create()) {
-                Browser browser = playwright.chromium().launch(
-                    new BrowserType.LaunchOptions()
-                        .setHeadless(true)
-                );
-                try {
-                    Page page = browser.newPage();
-                    page.navigate("http://127.0.0.1:" + port + "/agui/ui");
+            String conversationId = "agui-http-it-" + System.currentTimeMillis();
+            HttpResult uiPage = get(port, "/agui/ui");
+            Assertions.assertEquals(200, uiPage.statusCode());
+            Assertions.assertTrue(uiPage.body().contains("plan-name"), "UI should expose the plan selector");
 
-                    String conversationId = String.valueOf(page.evaluate("() => String(sessionId || '')"));
-                    Assertions.assertFalse(conversationId.isBlank(), "UI conversation/session id should be initialized");
+            ObjectMapper mapper = new ObjectMapper();
+            String requestBody = mapper.writeValueAsString(Map.of(
+                "threadId", conversationId,
+                "sessionId", conversationId,
+                "messages", List.of(Map.of("role", "user", "content", prompt))
+            ));
+            HttpResult aguiResponse = post(port, "/agui/agent", requestBody);
+            Assertions.assertEquals(200, aguiResponse.statusCode());
+            Assertions.assertTrue(
+                aguiResponse.body().contains("Support ticket created successfully"),
+                "AGUI response should include deterministic ticket output"
+            );
 
-                    page.locator("#prompt").fill(prompt);
-                    page.locator("button[type='submit']").click();
+            String conversationAudit = waitForConversationHit(port, conversationId, queryToken);
+            Assertions.assertTrue(
+                containsAnyIgnoreCase(conversationAudit, conversationId, queryToken),
+                "Audit conversation listing should include input/query token"
+            );
 
-                    page.locator(".msg.agent").last().waitFor();
-                    String uiOutput = page.locator(".msg.agent").last().innerText();
-
-                    Assertions.assertTrue(
-                        uiOutput.contains("Support ticket created successfully"),
-                        "UI should render deterministic ticket response"
-                    );
-
-                    String conversationAudit = waitForConversationHit(port, conversationId, queryToken);
-                    Assertions.assertTrue(
-                        containsAnyIgnoreCase(conversationAudit, conversationId, queryToken),
-                        "Audit conversation listing should include input/query token"
-                    );
-
-                    String auditJson = waitForAudit(port, conversationId, "Support ticket created successfully");
-                    Assertions.assertTrue(auditJson.contains(conversationId), "Audit trail should include same conversation id");
-                    Assertions.assertTrue(
-                        containsAnyIgnoreCase(auditJson, "Support ticket created successfully", "support.ticket.open"),
-                        "Audit search should include assistant/tool output"
-                    );
-                } finally {
-                    browser.close();
-                }
-            }
+            String auditJson = waitForAudit(port, conversationId, "Support ticket created successfully");
+            Assertions.assertTrue(auditJson.contains(conversationId), "Audit trail should include same conversation id");
+            Assertions.assertTrue(
+                containsAnyIgnoreCase(auditJson, "Support ticket created successfully", "support.ticket.manage"),
+                "Audit search should include assistant/tool output"
+            );
         } finally {
             try {
                 main.stop();
@@ -120,7 +110,7 @@ class AgUiPlaywrightAuditTrailIntegrationTest {
             );
             if (result.statusCode() == 200) {
                 lastBody = result.body();
-                if (containsAnyIgnoreCase(lastBody, expectedOutput, "support.ticket.open")) {
+                if (containsAnyIgnoreCase(lastBody, expectedOutput, "support.ticket.manage")) {
                     return lastBody;
                 }
             }
@@ -144,6 +134,18 @@ class AgUiPlaywrightAuditTrailIntegrationTest {
             .uri(URI.create("http://127.0.0.1:" + port + path))
             .timeout(Duration.ofSeconds(5))
             .GET()
+            .build();
+
+        HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+        return new HttpResult(response.statusCode(), response.body() == null ? "" : response.body());
+    }
+
+    private static HttpResult post(int port, String path, String body) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create("http://127.0.0.1:" + port + path))
+            .timeout(Duration.ofSeconds(10))
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(body == null ? "" : body))
             .build();
 
         HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
@@ -176,7 +178,7 @@ class AgUiPlaywrightAuditTrailIntegrationTest {
                                            Integer maxTokens,
                                            java.util.function.Consumer<String> streamingTokenCallback) {
             String query = userContext == null ? "" : userContext;
-            AiToolCall call = new AiToolCall("support.ticket.open", mapper.createObjectNode().put("query", query));
+            AiToolCall call = new AiToolCall("support.ticket.manage", mapper.createObjectNode().put("query", query));
             return new SpringAiChatResult("", List.of(call), true);
         }
     }

@@ -52,7 +52,7 @@ class OpenAiRealtimeResponsesGatewayTest {
         Assertions.assertTrue(result.message().contains("hello"));
         Assertions.assertFalse(streamed.isEmpty());
         Assertions.assertTrue(relay.closed);
-        Assertions.assertEquals("wss://api.openai.com/v1/realtime", relay.lastEndpointUri);
+        Assertions.assertEquals("wss://api.openai.com/v1/responses", relay.lastEndpointUri);
         Assertions.assertEquals("gpt-realtime", relay.lastModel);
     }
 
@@ -116,7 +116,7 @@ class OpenAiRealtimeResponsesGatewayTest {
             try {
                 JsonNode node = MAPPER.readTree(eventJson);
                 return "response.create".equals(node.path("type").asText())
-                    && "medium".equals(node.path("response").path("reasoning_effort").asText());
+                    && "medium".equals(node.path("reasoning").path("effort").asText());
             } catch (Exception ignored) {
                 return false;
             }

@@ -28,8 +28,10 @@ class McpAdminApiIntegrationTest {
         System.setProperty("agent.runtime.test-port", Integer.toString(port));
 
         Main main = new Main();
+        main.bind("ticketLifecycleProcessor", new SupportTicketLifecycleProcessor(MAPPER));
         try {
             AgentRuntimeBootstrap.bootstrap(main, "ag-ui-playwright-audit-test.yaml");
+            SampleAdminMcpBindings.bindIfMissing(main, "ag-ui-playwright-audit-test.yaml");
             main.start();
 
             JsonNode initialize = mcpCall(port, "initialize", Map.of(
@@ -54,6 +56,7 @@ class McpAdminApiIntegrationTest {
             Assertions.assertTrue(catalogStructured.path("plans").isArray());
             Assertions.assertTrue(containsPlan(catalogStructured.path("plans"), "support"));
             Assertions.assertTrue(containsPlan(catalogStructured.path("plans"), "billing"));
+            Assertions.assertTrue(containsPlan(catalogStructured.path("plans"), "ticketing"));
             Assertions.assertTrue(isDefaultPlan(catalogStructured.path("plans"), "support"));
             Assertions.assertTrue(isDefaultVersion(catalogStructured.path("plans"), "support", "v1"));
 
