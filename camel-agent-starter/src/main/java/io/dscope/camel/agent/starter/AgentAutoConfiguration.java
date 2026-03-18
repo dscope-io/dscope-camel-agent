@@ -52,7 +52,7 @@ public class AgentAutoConfiguration {
     public ChatMemoryRepository chatMemoryRepository(AgentStarterProperties properties, ObjectMapper objectMapper) {
         Properties config = new Properties();
         config.setProperty("camel.persistence.enabled", "true");
-        config.setProperty("camel.persistence.backend", properties.getPersistenceMode());
+        config.setProperty("camel.persistence.backend", normalizePersistenceBackend(properties.getPersistenceMode()));
         config.setProperty("agent.audit.granularity", properties.getAuditGranularity());
         return DscopeChatMemoryRepositoryFactory.create(config, objectMapper);
     }
@@ -85,7 +85,7 @@ public class AgentAutoConfiguration {
     public PersistenceFacade persistenceFacade(AgentStarterProperties properties, ObjectMapper objectMapper) {
         Properties config = new Properties();
         config.setProperty("camel.persistence.enabled", "true");
-        config.setProperty("camel.persistence.backend", properties.getPersistenceMode());
+        config.setProperty("camel.persistence.backend", normalizePersistenceBackend(properties.getPersistenceMode()));
         config.setProperty("agent.audit.granularity", properties.getAuditGranularity());
         copyIfPresent(config, "agent.audit.backend", properties.getAuditPersistenceBackend());
         copyIfPresent(config, "agent.audit.jdbc.url", properties.getAuditJdbcUrl());
@@ -105,6 +105,16 @@ public class AgentAutoConfiguration {
         if (value != null && !value.isBlank()) {
             config.setProperty(key, value);
         }
+    }
+
+    private String normalizePersistenceBackend(String backend) {
+        if (backend == null || backend.isBlank()) {
+            return "jdbc";
+        }
+        if ("redis_jdbc".equalsIgnoreCase(backend) || "redis-jdbc".equalsIgnoreCase(backend)) {
+            return "jdbc";
+        }
+        return backend;
     }
 
     @Bean

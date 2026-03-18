@@ -80,7 +80,13 @@ public final class AgentRuntimeBootstrap {
 
         ObjectMapper objectMapper = existingObjectMapper(main);
         main.bind("objectMapper", objectMapper);
-        if (main.lookup("ticketLifecycleProcessor", Object.class) == null) {
+        TicketLifecycleProcessor ticketLifecycleProcessor = null;
+        if (main.getCamelContext() != null && main.getCamelContext().getRegistry() != null) {
+            ticketLifecycleProcessor = main.getCamelContext()
+                .getRegistry()
+                .lookupByNameAndType("ticketLifecycleProcessor", TicketLifecycleProcessor.class);
+        }
+        if (ticketLifecycleProcessor == null) {
             main.bind("ticketLifecycleProcessor", new TicketLifecycleProcessor(objectMapper));
         }
 
