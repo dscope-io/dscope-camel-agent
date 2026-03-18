@@ -1,7 +1,6 @@
 package io.dscope.camel.agent.samples;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.lang.reflect.Field;
 import java.util.Properties;
 import org.apache.camel.main.Main;
 
@@ -279,36 +278,16 @@ final class SampleAdminMcpBindings {
     }
 
     private static Object lookup(Main main, String name) {
-        Object value = lookupFromRegistry(main, name);
-        if (value == null) {
-            value = main.lookup(name, Object.class);
-        }
+        Object value = main.lookup(name, Object.class);
         return value != null ? value : new ObjectMapper();
     }
 
     private static Object required(Main main, String name) {
-        Object value = lookupFromRegistry(main, name);
-        if (value == null) {
-            value = main.lookup(name, Object.class);
-        }
+        Object value = main.lookup(name, Object.class);
         if (value == null) {
             throw new IllegalStateException("Required bean missing after runtime bootstrap: " + name);
         }
         return value;
-    }
-
-    private static Object lookupFromRegistry(Main main, String name) {
-        try {
-            Field registryField = Main.class.getDeclaredField("registry");
-            registryField.setAccessible(true);
-            Object registry = registryField.get(main);
-            if (registry == null) {
-                return null;
-            }
-            return registry.getClass().getMethod("lookupByName", String.class).invoke(registry, name);
-        } catch (Exception ignored) {
-            return null;
-        }
     }
 
     private static Object newInstance(String className) throws Exception {
