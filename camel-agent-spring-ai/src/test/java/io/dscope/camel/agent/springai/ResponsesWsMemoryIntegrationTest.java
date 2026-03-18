@@ -114,7 +114,7 @@ class ResponsesWsMemoryIntegrationTest {
 
         Assertions.assertEquals("Knowledge base result for " + firstPrompt, first.message());
         Assertions.assertEquals("Support ticket created successfully", second.message());
-        Assertions.assertTrue(secondTurnContext.get().contains("tool.result"));
+        Assertions.assertTrue(secondTurnContext.get().contains("[Tool result:"));
         Assertions.assertTrue(secondTurnContext.get().contains("Knowledge base result for " + firstPrompt));
 
         List<AgentEvent> conversation = persistence.loadConversation("conv-responses-ws-memory", 100);

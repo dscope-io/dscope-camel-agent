@@ -15,8 +15,18 @@ public final class DscopeChatMemoryRepositoryFactory {
         Properties effective = new Properties();
         effective.putAll(properties);
         effective.putIfAbsent("camel.persistence.enabled", "true");
-        effective.putIfAbsent("camel.persistence.backend", "redis_jdbc");
+        effective.put("camel.persistence.backend", normalizeBackend(effective.getProperty("camel.persistence.backend", "redis_jdbc")));
         PersistenceConfiguration configuration = PersistenceConfiguration.fromProperties(effective);
         return new DscopeChatMemoryRepository(FlowStateStoreFactory.create(configuration), objectMapper);
+    }
+
+    private static String normalizeBackend(String backend) {
+        if (backend == null || backend.isBlank()) {
+            return "jdbc";
+        }
+        if ("redis_jdbc".equalsIgnoreCase(backend) || "redis-jdbc".equalsIgnoreCase(backend)) {
+            return "jdbc";
+        }
+        return backend;
     }
 }

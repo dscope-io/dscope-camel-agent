@@ -23,7 +23,7 @@ public final class DscopePersistenceFactory {
         Properties effective = new Properties();
         effective.putAll(properties);
         effective.putIfAbsent("camel.persistence.enabled", "true");
-        effective.putIfAbsent("camel.persistence.backend", "redis_jdbc");
+        effective.put("camel.persistence.backend", normalizeBackend(effective.getProperty("camel.persistence.backend", "redis_jdbc")));
         effective.putIfAbsent("agent.audit.granularity", "info");
 
         Properties auditEffective = buildAuditPersistenceProperties(effective);
@@ -64,6 +64,16 @@ public final class DscopePersistenceFactory {
             return false;
         }
         return backend == PersistenceBackend.JDBC || "REDIS_JDBC".equals(backend.name());
+    }
+
+    private static String normalizeBackend(String backend) {
+        if (backend == null || backend.isBlank()) {
+            return "jdbc";
+        }
+        if ("redis_jdbc".equalsIgnoreCase(backend) || "redis-jdbc".equalsIgnoreCase(backend)) {
+            return "jdbc";
+        }
+        return backend;
     }
 
     static String resolveSchemaDdlResource(Properties effective, String jdbcUrl) {
