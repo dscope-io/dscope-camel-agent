@@ -5,6 +5,12 @@ camel-agent-agui/target/camel-agent-agui-0.1.0-SNAPSHOT.jar
 **/derby.log
 .vscode/
 camel-agent-agui/
+mvnw
+mvnw.cmd
+samples/agent-support-service/target/
+samples/agent-support-service/smoke-server-8087.log
+samples/agent-support-service/smoke-relay-managed.out
+samples/agent-support-service/smoke-latest.out  
 relay-server.log
 samples/agent-support-service/capture-script-output.log
 samples/agent-support-service/classes-run.log
