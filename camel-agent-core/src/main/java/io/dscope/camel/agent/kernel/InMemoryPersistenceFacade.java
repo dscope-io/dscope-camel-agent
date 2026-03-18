@@ -5,7 +5,7 @@ import io.dscope.camel.agent.model.AgentEvent;
 import io.dscope.camel.agent.model.DynamicRouteState;
 import io.dscope.camel.agent.model.TaskState;
 import java.time.Instant;
-import java.util.ArrayList;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +21,7 @@ public class InMemoryPersistenceFacade implements PersistenceFacade {
 
     @Override
     public void appendEvent(AgentEvent event, String idempotencyKey) {
-        conversations.computeIfAbsent(event.conversationId(), key -> new ArrayList<>()).add(event);
+        conversations.computeIfAbsent(event.conversationId(), key -> new CopyOnWriteArrayList<>()).add(event);
     }
 
     @Override
