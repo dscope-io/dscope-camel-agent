@@ -25,7 +25,7 @@ class AgentAgUiPreRunTextProcessorTest {
             @Override
             public void configure() {
                 from("direct:agent-llm").setBody(constant("OpenAI API key is missing"));
-                from("direct:support-ticket-open").setBody(constant("ticket-fallback-ok"));
+                from("direct:support-ticket-manage").setBody(constant("ticket-fallback-ok"));
                 from("direct:kb-search").setBody(constant("kb-fallback-ok"));
             }
         });
@@ -61,7 +61,7 @@ class AgentAgUiPreRunTextProcessorTest {
         initial.setProperty("agent.blueprint", "classpath:agents/valid-agent-with-agui-prerun.md");
         initial.setProperty("agent.runtime.agui.pre-run.agent-endpoint-uri", "direct:agent-llm-runtime");
         initial.setProperty("agent.runtime.agui.pre-run.fallback.ticket-keywords", "ticket,open,create");
-        initial.setProperty("agent.runtime.agui.pre-run.fallback.ticket-tool-name", "support.ticket.open");
+        initial.setProperty("agent.runtime.agui.pre-run.fallback.ticket-tool-name", "support.ticket.manage");
         context.getPropertiesComponent().setInitialProperties(initial);
 
         context.addRoutes(new RouteBuilder() {
@@ -71,7 +71,7 @@ class AgentAgUiPreRunTextProcessorTest {
                 from("direct:agent-llm-runtime").setBody(constant("runtime-path-should-not-be-used"));
                 from("direct:ticket-custom").setBody(constant("ticket-custom-fallback-ok"));
                 from("direct:kb-custom").setBody(constant("kb-custom-fallback-ok"));
-                from("direct:support-ticket-open").setBody(constant("runtime-ticket-fallback-should-not-be-used"));
+                from("direct:support-ticket-manage").setBody(constant("runtime-ticket-fallback-should-not-be-used"));
             }
         });
 

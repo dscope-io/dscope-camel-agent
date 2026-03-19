@@ -8,7 +8,7 @@
 - Success criteria (measurable):
   - a Spring Boot sample application starts locally with `mvn -q -pl samples/agent-support-spring-app -am spring-boot:run`
   - `POST /api/support` invokes the `agent:` endpoint and returns an agent response with a stable `agent.conversationId`
-  - local support tools (`kb.search`, `support.ticket.open`) execute through Camel routes declared in the sample application
+  - local support tools (`kb.search`, `support.ticket.manage`) execute through Camel routes declared in the sample application
   - the application uses `camel-agent-starter` plus an explicit live `AiModelClient` bean instead of the starter's noop default
   - integration tests prove Spring context wiring, route invocation, and persistence/audit behavior
 
@@ -81,7 +81,7 @@
 - Blueprint `## Tools` section format rule (required): use a fenced YAML block with top-level `tools:`
 - Tool list and purpose:
   - `kb.search`: local support knowledge lookup backed by a Camel YAML route
-  - `support.ticket.open`: deterministic ticket creation stub backed by Camel XML or YAML route
+  - `support.ticket.manage`: deterministic ticket lifecycle stub backed by Camel XML or YAML route
 - Route artifacts to add/update:
   - `samples/agent-support-spring-app/src/main/resources/routes/kb-search.camel.yaml`
   - `samples/agent-support-spring-app/src/main/resources/routes/support-ticket.camel.yaml`
@@ -152,7 +152,7 @@ No-change note (if applicable):
 ### Phase 2 — Tools and Routes
 - Tasks:
   - add `kb.search` route
-  - add `support.ticket.open` route
+  - add `support.ticket.manage` route
   - create Camel route bridging `direct:support-request` to `agent:`
   - ensure route sets or propagates `agent.conversationId`
 - Deliverables:

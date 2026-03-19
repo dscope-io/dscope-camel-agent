@@ -229,7 +229,8 @@ agent:
       mode: spring-ai
     spring-ai:
       provider: openai # openai | gemini | claude
-      model: gpt-4o-mini
+      api-mode: ${AGENT_OPENAI_API_MODE:chat}
+      model: gpt-5.4
       temperature: 0.2
       max-tokens: 800
       openai:
@@ -237,7 +238,9 @@ agent:
         # - chat (default): Spring AI OpenAI Chat Completions
         # - responses-http: reserved (not yet implemented)
         # - responses-ws: delegated to pluggable OpenAiResponsesGateway implementation
-        api-mode: chat
+        responses-ws:
+          endpoint-uri: wss://api.openai.com/v1/responses
+          model: gpt-5.4
 ```
 
 Notes:
@@ -245,6 +248,7 @@ Notes:
 - OpenAI in this gateway uses Spring AI OpenAI Chat client (`chat` mode).
 - `responses-http` is a planned mode and currently returns a terminal guidance message.
 - `responses-ws` is routed through a pluggable `OpenAiResponsesGateway`; if no plugin is wired, the gateway returns a terminal guidance message.
+- The sample runtime also enables A2A by default through `agent.runtime.a2a.enabled=true` and exposes the ticket service through `support.ticket.manage`.
 - Gemini uses Spring AI Vertex Gemini client and requires:
   - `agent.runtime.spring-ai.gemini.vertex.project-id`
   - `agent.runtime.spring-ai.gemini.vertex.location`

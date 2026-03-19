@@ -15,9 +15,9 @@ tools:
       properties:
         query:
           type: string
-  - name: support.ticket.open
-    description: Open ticket
-    routeId: support-ticket-open
+  - name: support.ticket.manage
+    description: Manage ticket
+    routeId: support-ticket-manage
     inputSchemaInline:
       type: object
       properties:

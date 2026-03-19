@@ -103,6 +103,41 @@ class MultiProviderSpringAiChatGatewayTest {
     }
 
     @Test
+    void shouldDefaultResponsesWsModelToUpdatedOpenAiBaseline() {
+        Properties properties = new Properties();
+        properties.setProperty("agent.runtime.spring-ai.openai.api-mode", "responses-ws");
+        properties.setProperty("agent.runtime.spring-ai.openai.api-key", "test-key");
+
+        OpenAiResponsesGateway responsesGateway = (apiMode,
+                                                   systemPrompt,
+                                                   userContext,
+                                                   tools,
+                                                   model,
+                                                   temperature,
+                                                   maxTokens,
+                                                   apiKey,
+                                                   baseUrl,
+                                                   callback) -> {
+            Assertions.assertEquals("gpt-5.4", model);
+            return new SpringAiChatGateway.SpringAiChatResult("ok", List.of(), true);
+        };
+
+        MultiProviderSpringAiChatGateway gateway = new MultiProviderSpringAiChatGateway(properties, responsesGateway);
+        SpringAiChatGateway.SpringAiChatResult result = gateway.generate(
+            "system",
+            "user",
+            List.of(),
+            null,
+            null,
+            null,
+            null
+        );
+
+        Assertions.assertEquals("ok", result.message());
+        Assertions.assertTrue(result.terminal());
+    }
+
+    @Test
     void shouldReturnHelpfulMessageForResponsesHttpMode() {
         Properties properties = new Properties();
         properties.setProperty("agent.runtime.spring-ai.openai.api-mode", "responses-http");

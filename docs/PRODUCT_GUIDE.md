@@ -2,7 +2,7 @@
 
 ![Camel Agent Architecture](../CamelArchitecture.png)
 
-`camel-agent` is a blueprint-driven Apache Camel component for agent orchestration. It lets you define an agent in Markdown, expose tools backed by Camel routes, Kamelets, or MCP services, persist conversation and task state, and run the same agent from Camel Main or inside a Spring application.
+`camel-agent` is a blueprint-driven Apache Camel component for agent orchestration. It lets you define an agent in Markdown, expose tools backed by Camel routes, Kamelets, MCP services, or A2A peers, persist conversation and task state, and run the same agent from Camel Main or inside a Spring application.
 
 This guide covers:
 
@@ -22,7 +22,7 @@ This guide covers:
 | `camel-agent-persistence-dscope` | Persistence facade backed by DScope camel persistence with `redis`, `jdbc`, and `redis_jdbc` modes |
 | `camel-agent-spring-ai` | Spring AI model gateway, multi-provider routing, OpenAI/Gemini/Claude support, chat memory serialization |
 | `camel-agent-starter` | Spring Boot auto-configuration for `AgentKernel`, persistence, blueprint loader, and optional chat memory |
-| `samples/agent-support-service` | Runnable sample showing support flows, AGUI, realtime voice, MCP discovery, and local routes |
+| `samples/agent-support-service` | Runnable sample showing support flows, AGUI, realtime voice, MCP discovery, A2A exposure, and local routes |
 
 ### Supported Runtime Patterns
 
@@ -31,6 +31,7 @@ This guide covers:
 | Camel endpoint invocation | `to("agent:support?... ")` from a route |
 | Blueprint-driven tool routing | Markdown blueprint with `## System` plus YAML blocks for tools and runtime metadata |
 | Plan catalog routing | `agent.agents-config` points to `agents.yaml` with multiple plans and versions |
+| A2A protocol bridge | Runtime publishes agent cards and RPC/SSE endpoints while blueprints can call peer agents through `a2a:` tools |
 | Persistence-backed conversations | `PersistenceFacade` stores conversation events, task state, dynamic routes, and optionally archive streams |
 | Spring AI model execution | `SpringAiModelClient` backed by `MultiProviderSpringAiChatGateway` |
 | AGUI and realtime voice | Optional runtime bootstrap binds processors and relay clients for browser and voice flows |
@@ -42,7 +43,7 @@ At a high level, one request flows like this:
 1. A Camel route, AGUI processor, or realtime processor sends a prompt to the `agent:` endpoint.
 2. The runtime resolves the active blueprint from either `agent.agents-config` or `agent.blueprint`.
 3. `MarkdownBlueprintLoader` parses the Markdown file, extracts the `## System` block, and merges all fenced YAML blocks.
-4. The runtime registers declared tools, expands JSON route templates into callable virtual tools, and optionally discovers MCP tools.
+4. The runtime registers declared tools, expands JSON route templates into callable virtual tools, optionally discovers MCP tools, and can expose or invoke A2A agents.
 5. `DefaultAgentKernel` runs the message loop, validates schemas, invokes the model client, executes tools, and appends audit events.
 6. Persistence stores conversation events, task state, dynamic route metadata, and optionally separate conversation archive events.
 
@@ -54,7 +55,7 @@ For lower-level event flow details, see `docs/architecture.md`.
 
 Use this when you want deterministic business tools behind an LLM-controlled front door.
 
-- The blueprint declares tools such as `kb.search` and `support.ticket.open`.
+- The blueprint declares tools such as `kb.search` and `support.ticket.manage`.
 - Each tool maps to a Camel route via `routeId` or `endpointUri`.
 - The model chooses tools, and the kernel validates input/output payloads before and after route execution.
 
@@ -71,7 +72,18 @@ Use this when you want multiple agent families such as `support` and `billing`, 
 
 This is useful for staged rollouts, tenant-specific plans, or A/B testing across agent versions.
 
-### 3. Offline Or Fallback-Friendly AGUI Demo
+### 3. A2A-Exposed Ticket Or Utility Service
+
+Use this when you want one or more plans to be reachable as public A2A agents while still running inside the same Camel runtime.
+
+- `agent.runtime.a2a.enabled=true` turns on the protocol bridge.
+- `agent.runtime.a2a.exposed-agents-config` maps public `agentId` values to local plans and versions.
+- Blueprints can call peer services through `a2a:<agentId>?remoteUrl=...` tools.
+- The runtime publishes RPC, SSE, and agent-card endpoints and keeps remote task correlation in persistence and audit state.
+
+The support sample uses this pattern to expose `support-ticket-service` as an A2A-facing ticket lifecycle service backed by the local `ticketing:v1` plan.
+
+### 4. Offline Or Fallback-Friendly AGUI Demo
 
 Use this when you want the UI and routes to remain usable even when live model credentials are missing.
 
@@ -81,7 +93,7 @@ Use this when you want the UI and routes to remain usable even when live model c
 
 This is how the sample keeps `/agui/ui` usable without a valid OpenAI key.
 
-### 4. MCP Tool Discovery
+### 5. MCP Tool Discovery
 
 Use this when your agent should discover tools from an MCP server instead of hard-coding all tool definitions.
 
@@ -92,7 +104,7 @@ Use this when your agent should discover tools from an MCP server instead of har
 
 This is appropriate for external support backends, CRM systems, or shared tool platforms.
 
-### 5. Dynamic JSON Route Templates
+### 6. Dynamic JSON Route Templates
 
 Use this when you need parameterized route creation without letting the model author arbitrary Camel DSL.
 
@@ -103,7 +115,7 @@ Use this when you need parameterized route creation without letting the model au
 
 This gives you controlled dynamic routing without granting raw route authoring to the model.
 
-### 6. Realtime Voice And Browser Sessions
+### 7. Realtime Voice And Browser Sessions
 
 Use this when the agent must participate in a voice or browser realtime flow.
 
@@ -212,6 +224,39 @@ These settings are used by the Camel Main runtime bootstrap and sample-style app
 | `agent.audit.api.host` | `0.0.0.0` | Host for the sample audit HTTP endpoint. |
 | `agent.audit.api.port` | `8080` | Port for the sample audit HTTP endpoint. |
 
+#### A2A Runtime
+
+These settings are resolved by `A2ARuntimeProperties` and drive the built-in A2A protocol bridge.
+
+| Property | Default | Meaning |
+| --- | --- | --- |
+| `agent.runtime.a2a.enabled` | `false` | Enables inbound A2A RPC/SSE endpoints and agent-card publication. |
+| `agent.runtime.a2a.host` | `0.0.0.0` | Bind host for A2A HTTP routes. Alias `agent.runtime.a2a.bind-host` is also supported. |
+| `agent.runtime.a2a.port` | `8080` | Bind port for A2A HTTP routes. If unset, runtime falls back to `agent.audit.api.port` and then `agui.rpc.port`. |
+| `agent.runtime.a2a.public-base-url` | `http://localhost:<port>` | Public base URL used to construct RPC, SSE, and agent-card URLs. |
+| `agent.runtime.a2a.rpc-path` | `/a2a/rpc` | HTTP path for JSON-RPC A2A requests. |
+| `agent.runtime.a2a.sse-path` | `/a2a/sse` | Base HTTP path for A2A SSE streams. |
+| `agent.runtime.a2a.agent-card-path` | `/.well-known/agent-card.json` | Agent-card discovery path. |
+| `agent.runtime.a2a.agent-endpoint-uri` | derived from `agent.agents-config` and `agent.blueprint` | Internal `agent:` endpoint invoked by the A2A bridge when no explicit override is supplied. |
+| `agent.runtime.a2a.exposed-agents-config` | unset | YAML file that maps public A2A agent ids to local plans and versions. |
+
+Sample baseline:
+
+```yaml
+agent:
+  runtime:
+    a2a:
+      enabled: true
+      public-base-url: http://localhost:{{agui.rpc.port:8080}}
+      exposed-agents-config: classpath:agents/a2a-exposed-agents.yaml
+```
+
+The sample publishes these endpoints on the AGUI/admin port:
+
+- `POST /a2a/rpc`
+- `GET /a2a/sse/{taskId}`
+- `GET /.well-known/agent-card.json`
+
 #### AI Client Bootstrap
 
 | Property | Default | Meaning |
@@ -230,7 +275,7 @@ These are the provider-facing properties demonstrated by the sample runtime and 
 | Property | Default | Meaning |
 | --- | --- | --- |
 | `agent.runtime.spring-ai.provider` | `openai` | Active provider. Supported values in code are `openai`, `gemini`, `claude` or `anthropic`. |
-| `agent.runtime.spring-ai.model` | provider-specific | Global default model if a provider-specific model is not set. |
+| `agent.runtime.spring-ai.model` | `gpt-5.4` in the sample | Global default model if a provider-specific model is not set. |
 | `agent.runtime.spring-ai.temperature` | `0.2` | Default sampling temperature. |
 | `agent.runtime.spring-ai.max-tokens` | `800` | Default max output tokens. |
 | `agent.runtime.spring-ai.openai.api-mode` | `chat` | OpenAI mode. Supported values in code: `chat`, `responses-http` or `responses-ws`. `responses-http` currently returns terminal guidance instead of executing. |
@@ -239,9 +284,9 @@ These are the provider-facing properties demonstrated by the sample runtime and 
 | `agent.runtime.spring-ai.openai.api-key-system-property` | `openai.api.key` | System property name checked for the key. |
 | `agent.runtime.spring-ai.openai.organization-system-property` | `openai.organization` | Optional OpenAI organization system property name. |
 | `agent.runtime.spring-ai.openai.project-system-property` | `openai.project` | Optional OpenAI project system property name. |
-| `agent.runtime.spring-ai.openai.model` | `gpt-4o-mini` | Provider-specific OpenAI model override. |
-| `agent.runtime.spring-ai.openai.responses-ws.endpoint-uri` | provider default | WebSocket endpoint for the responses gateway path. |
-| `agent.runtime.spring-ai.openai.responses-ws.model` | provider default | Model name for responses WebSocket mode. |
+| `agent.runtime.spring-ai.openai.model` | `gpt-5.4` in the sample | Provider-specific OpenAI model override. |
+| `agent.runtime.spring-ai.openai.responses-ws.endpoint-uri` | `wss://api.openai.com/v1/responses` in the sample | WebSocket endpoint for the responses gateway path. |
+| `agent.runtime.spring-ai.openai.responses-ws.model` | `gpt-5.4` in the sample | Model name for responses WebSocket mode. |
 | `agent.runtime.spring-ai.openai.responses-ws.request-timeout-ms` | `30000` | Request timeout for responses WebSocket mode. |
 | `agent.runtime.spring-ai.openai.responses-ws.poll-interval-ms` | `50` | Poll interval for responses WebSocket mode. |
 | `agent.runtime.spring-ai.openai.responses-ws.max-send-retries` | `3` | Send retry limit for responses WebSocket mode. |
@@ -251,7 +296,7 @@ These are the provider-facing properties demonstrated by the sample runtime and 
 | `agent.runtime.spring-ai.gemini.model` | `gemini-2.5-flash` | Gemini model override. |
 | `agent.runtime.spring-ai.gemini.vertex.project-id` | unset | Required Vertex project id for Gemini. |
 | `agent.runtime.spring-ai.gemini.vertex.location` | `us-central1` | Vertex location for Gemini. |
-| `agent.runtime.spring-ai.claude.base-url` | `https://api.anthropic.com` | Claude base URL. |
+| `agent.runtime.spring-ai.claude.base-url` | `https://api.anthropic.com/v1/messages` in the sample | Claude base URL. |
 | `agent.runtime.spring-ai.claude.model` | `claude-3-5-sonnet-20241022` | Claude model override. |
 | `agent.runtime.spring-ai.claude.api-key-system-property` | `anthropic.api.key` | System property name checked for Anthropic key. |
 | `agent.runtime.spring-ai.claude.anthropic-version` | `2023-06-01` | Anthropic API version header value. |
@@ -648,7 +693,7 @@ public class AgentModelConfiguration {
     AiModelClient aiModelClient(ObjectMapper objectMapper, Environment environment) {
         Properties properties = new Properties();
         copy(environment, properties, "agent.runtime.spring-ai.provider", "openai");
-        copy(environment, properties, "agent.runtime.spring-ai.model", "gpt-4o-mini");
+        copy(environment, properties, "agent.runtime.spring-ai.model", "gpt-5.4");
         copy(environment, properties, "agent.runtime.spring-ai.temperature", "0.2");
         copy(environment, properties, "agent.runtime.spring-ai.max-tokens", "800");
         copy(environment, properties, "agent.runtime.spring-ai.openai.api-mode", "chat");
@@ -656,9 +701,11 @@ public class AgentModelConfiguration {
         copy(environment, properties, "agent.runtime.spring-ai.openai.api-key-system-property", "openai.api.key");
         copy(environment, properties, "agent.runtime.spring-ai.openai.organization-system-property", "openai.organization");
         copy(environment, properties, "agent.runtime.spring-ai.openai.project-system-property", "openai.project");
+        copy(environment, properties, "agent.runtime.spring-ai.openai.responses-ws.endpoint-uri", "wss://api.openai.com/v1/responses");
+        copy(environment, properties, "agent.runtime.spring-ai.openai.responses-ws.model", "gpt-5.4");
         copy(environment, properties, "agent.runtime.spring-ai.gemini.vertex.project-id", null);
         copy(environment, properties, "agent.runtime.spring-ai.gemini.vertex.location", "us-central1");
-        copy(environment, properties, "agent.runtime.spring-ai.claude.base-url", "https://api.anthropic.com");
+        copy(environment, properties, "agent.runtime.spring-ai.claude.base-url", "https://api.anthropic.com/v1/messages");
         copy(environment, properties, "agent.runtime.spring-ai.claude.api-key-system-property", "anthropic.api.key");
         copy(environment, properties, "agent.runtime.spring-ai.claude.anthropic-version", "2023-06-01");
         return new SpringAiModelClient(new MultiProviderSpringAiChatGateway(properties), objectMapper);
@@ -678,6 +725,19 @@ Credential handling:
 - For OpenAI, set `-Dopenai.api.key=...` or `OPENAI_API_KEY=...`.
 - For Claude, set `-Danthropic.api.key=...` or `ANTHROPIC_API_KEY=...`.
 - For Gemini, set `agent.runtime.spring-ai.gemini.vertex.project-id` and ensure Google credentials are available.
+
+If the Spring application also needs to publish A2A endpoints, externalize the A2A bridge settings alongside the starter properties:
+
+```yaml
+agent:
+  runtime:
+    a2a:
+      enabled: true
+      public-base-url: https://support.example.com
+      exposed-agents-config: classpath:agents/a2a-exposed-agents.yaml
+```
+
+`a2a-exposed-agents.yaml` stays separate from `agents.yaml` so you can keep internal plan catalog structure independent from the public A2A surface.
 
 ### Step 5. Call The Agent From Camel Routes
 
@@ -815,8 +875,9 @@ agent:
         fallback-enabled: true
         fallback:
           kb-tool-name: kb.search
-          ticket-tool-name: support.ticket.open
-          ticket-keywords: ticket,open,create,submit,escalate
+          ticket-tool-name: support.ticket.manage
+          ticket-uri: direct:support-ticket-manage
+          ticket-keywords: ticket,open,create,update,close,status,submit,escalate
           error-markers: api key is missing,openai api key,set -dopenai.api.key
 ```
 

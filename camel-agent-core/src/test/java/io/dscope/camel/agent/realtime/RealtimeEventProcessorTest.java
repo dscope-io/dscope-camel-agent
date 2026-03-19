@@ -233,7 +233,7 @@ class RealtimeEventProcessorTest {
                 from("direct:test-agent-issue-only")
                     .setBody(constant("{\"issueDescription\":\"My login is failing, please open support ticket.\"}"));
 
-                from("direct:support-ticket-open")
+                from("direct:support-ticket-manage")
                     .transform(simple("{\"ticketId\":\"TCK-${exchangeId}\",\"status\":\"OPEN\",\"summary\":\"${body[query]}\",\"assignedQueue\":\"L1-SUPPORT\",\"message\":\"Support ticket created successfully\"}"));
             }
         });
@@ -275,7 +275,7 @@ class RealtimeEventProcessorTest {
             public void configure() {
                 from("direct:test-agent-update")
                     .setHeader("realtimeSessionUpdate")
-                    .constant("{\"metadata\":{\"lastTool\":\"support.ticket.open\"},\"audio\":{\"output\":{\"voice\":\"alloy\"}}}")
+                    .constant("{\"metadata\":{\"lastTool\":\"support.ticket.manage\"},\"audio\":{\"output\":{\"voice\":\"alloy\"}}}")
                     .transform(simple("assistant update for ${body}"));
             }
         });
@@ -295,7 +295,7 @@ class RealtimeEventProcessorTest {
 
             JsonNode session = sessionRegistry.getSession("conv-route-update");
             Assertions.assertNotNull(session);
-            Assertions.assertEquals("support.ticket.open", session.path("metadata").path("lastTool").asText());
+            Assertions.assertEquals("support.ticket.manage", session.path("metadata").path("lastTool").asText());
             Assertions.assertEquals("alloy", session.path("audio").path("output").path("voice").asText());
         } finally {
             context.stop();

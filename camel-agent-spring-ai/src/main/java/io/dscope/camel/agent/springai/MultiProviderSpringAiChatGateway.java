@@ -1,5 +1,6 @@
 package io.dscope.camel.agent.springai;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.cloud.vertexai.VertexAI;
 import io.dscope.camel.agent.model.AiToolCall;
@@ -101,7 +102,7 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
         );
         String baseUrl = configuredBaseUrl == null ? "https://api.openai.com" : configuredBaseUrl;
         String selectedModel = firstNonBlank(model, prop(properties, "agent.runtime.spring-ai.openai.model",
-            prop(properties, "agent.runtime.spring-ai.model", "gpt-4o-mini")));
+            prop(properties, "agent.runtime.spring-ai.model", "gpt-5.4")));
         double selectedTemperature = temperature != null ? temperature : doubleProp(properties, "agent.runtime.spring-ai.temperature", 0.2d);
         int selectedMaxTokens = maxTokens != null ? maxTokens : intProp(properties, "agent.runtime.spring-ai.max-tokens", 800);
 
@@ -219,7 +220,7 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
             return terminal("Claude API key is missing. Set -D" + apiKeyProperty + "=<token>.", callback);
         }
 
-        String baseUrl = prop(properties, "agent.runtime.spring-ai.claude.base-url", "https://api.anthropic.com");
+        String baseUrl = prop(properties, "agent.runtime.spring-ai.claude.base-url", "https://api.anthropic.com/v1/messages");
         String selectedModel = firstNonBlank(model, prop(properties, "agent.runtime.spring-ai.claude.model",
             prop(properties, "agent.runtime.spring-ai.model", "claude-3-5-sonnet-20241022")));
         double selectedTemperature = temperature != null ? temperature : doubleProp(properties, "agent.runtime.spring-ai.temperature", 0.2d);
@@ -363,7 +364,7 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
                     toolCall.name(),
                     arguments == null || arguments.isBlank() ? MAPPER.createObjectNode() : MAPPER.readTree(arguments)
                 ));
-            } catch (Exception ignored) {
+            } catch (JsonProcessingException ignored) {
                 toolCalls.add(new AiToolCall(toolCall.name(), MAPPER.createObjectNode()));
             }
         }
@@ -406,19 +407,25 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
         return value == null || value.isBlank() ? null : value.trim();
     }
 
-    private static Double doubleProp(Properties properties, String key, Double defaultValue) {
+    private static double doubleProp(Properties properties, String key, double defaultValue) {
         try {
-            String configured = property(properties, key);
-            return configured == null ? defaultValue : Double.parseDouble(configured);
+            String value = properties.getProperty(key);
+            if (value == null || value.isBlank()) {
+                return defaultValue;
+            }
+            return Double.parseDouble(value.trim());
         } catch (NumberFormatException ignored) {
             return defaultValue;
         }
     }
 
-    private static Integer intProp(Properties properties, String key, Integer defaultValue) {
+    private static int intProp(Properties properties, String key, int defaultValue) {
         try {
-            String configured = property(properties, key);
-            return configured == null ? defaultValue : Integer.parseInt(configured);
+            String value = properties.getProperty(key);
+            if (value == null || value.isBlank()) {
+                return defaultValue;
+            }
+            return Integer.parseInt(value.trim());
         } catch (NumberFormatException ignored) {
             return defaultValue;
         }

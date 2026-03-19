@@ -449,7 +449,7 @@ public class RealtimeEventProcessor implements Processor {
                                                             String transcript) {
         if (isTicketPrompt(transcript)) {
             try {
-                String ticketResponse = template.requestBody("direct:support-ticket-open", Map.of("query", transcript), String.class);
+                String ticketResponse = template.requestBody("direct:support-ticket-manage", Map.of("query", transcript), String.class);
                 if (ticketResponse != null && !ticketResponse.isBlank()) {
                     LOGGER.info("Realtime transcript routed via ticket tool: conversationId={}", conversationId);
                     return new RouteAssistantResult(ticketResponse, extractSessionUpdate(null, ticketResponse), false);
@@ -518,7 +518,7 @@ public class RealtimeEventProcessor implements Processor {
         }
 
         try {
-            String canonicalTicketJson = template.requestBody("direct:support-ticket-open", Map.of("query", ticketSummary), String.class);
+            String canonicalTicketJson = template.requestBody("direct:support-ticket-manage", Map.of("query", ticketSummary), String.class);
             JsonNode canonicalParsed = parseJson(canonicalTicketJson);
             if (canonicalParsed != null && canonicalParsed.isObject() && !text(canonicalParsed, "ticketId").isBlank()) {
                 LOGGER.info("Realtime assistant payload canonicalized to ticket schema: conversationId={}", conversationId);

@@ -57,7 +57,7 @@ class SpringAiAuditTrailIntegrationTest {
         Properties properties = testProperties();
         properties.setProperty("agent.runtime.spring-ai.provider", "openai");
         properties.setProperty("agent.runtime.spring-ai.openai.api-mode", "chat");
-        properties.setProperty("agent.runtime.spring-ai.openai.model", "gpt-4o-mini");
+        properties.setProperty("agent.runtime.spring-ai.openai.model", "gpt-5.4");
         properties.setProperty("agent.runtime.spring-ai.openai.api-key", apiKey);
 
         PersistenceFacade persistenceFacade = DscopePersistenceFactory.create(properties, objectMapper);
@@ -112,8 +112,8 @@ class SpringAiAuditTrailIntegrationTest {
 
         String firstPrompt = "Please search the knowledge base for login troubleshooting guidance";
         String secondPrompt = "Thanks. Please file a support ticket now";
-        AgentResponse first = kernel.handleUserMessage(conversationId, firstPrompt);
-        AgentResponse second = kernel.handleUserMessage(conversationId, secondPrompt);
+        kernel.handleUserMessage(conversationId, firstPrompt);
+        kernel.handleUserMessage(conversationId, secondPrompt);
 
         Assertions.assertTrue(gateway.sawKnowledgeBaseInSecondTurn(), "Second turn should include first-turn KB result in evaluation context");
 
@@ -170,7 +170,7 @@ class SpringAiAuditTrailIntegrationTest {
         );
 
         String prompt = "Please file a support ticket for my login issue";
-        AgentResponse response = kernel.handleUserMessage(conversationId, prompt);
+        kernel.handleUserMessage(conversationId, prompt);
 
         Assertions.assertFalse(gateway.sawKnowledgeBaseInSecondTurn(),
             "Gateway should not detect KB context when no KB turn happened before ticket request");

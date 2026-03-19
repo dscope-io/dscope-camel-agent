@@ -85,6 +85,14 @@ When requirements are ambiguous, use these defaults:
 
 Use these as current-state anchors when drafting plans:
 
+- A2A is now a first-class planning dimension when agents must expose or consume peer agents:
+  - runtime config surface: `agent.runtime.a2a.*`
+  - exposed-agent mapping file: `agent.runtime.a2a.exposed-agents-config`
+  - sample public mapping: `samples/agent-support-service/src/main/resources/agents/a2a-exposed-agents.yaml`
+  - core config source: `camel-agent-core/src/main/java/io/dscope/camel/agent/runtime/A2ARuntimeProperties.java`
+  - plan explicitly whether the agent is only an A2A caller, only an exposed A2A service, or both
+  - if exposed publicly, include RPC/SSE/agent-card endpoint ownership, public URL, and task correlation expectations in the plan
+
 - Runtime MCP control methods are available and should be considered in operational design:
   - `runtime.audit.granularity.get`
   - `runtime.audit.granularity.set`
@@ -204,6 +212,7 @@ Output:
 
 - intent-to-tool mapping
 - fallback behavior when tools fail
+- A2A boundary decisions for each externalized tool or service surface
 
 Blueprint tools format rule (required):
 
@@ -234,6 +243,7 @@ Plan resource artifacts:
 - blueprint file path
 - route files (yaml/xml)
 - kamelets if reusable endpoints are needed
+- A2A exposure file if public agent ids must map to local plans
 
 Output:
 
@@ -270,6 +280,14 @@ If Spring Boot embedding, AGUI, or realtime is needed, define:
 - how routes call the `agent:` endpoint
 - whether the app uses `camel-agent-starter`, direct core wiring, or both
 
+If A2A exposure or consumption is needed, also define:
+
+- whether the agent consumes peer agents through `a2a:` tools, exposes a public A2A identity, or both
+- `agent.runtime.a2a.public-base-url` ownership and environment-specific values
+- exposed-agent mapping file contents and linkage to `agent.agents-config`
+- which HTTP port/path set owns `/a2a/rpc`, `/a2a/sse/{taskId}`, and `/.well-known/agent-card.json`
+- fallback behavior when remote A2A peers are unavailable
+
 If AGUI or realtime is needed, also define:
 
 - AGUI routes/endpoints and expected UI controls
@@ -282,6 +300,7 @@ Output:
 - endpoint list
 - Spring bootstrap design notes tied to actual beans, config keys, and route entrypoints
 - UX behavior notes tied to endpoints
+- A2A endpoint and mapping design notes tied to public agent ids and local plans
 - MCP method list for UI/ops integration:
   - `runtime.audit.granularity.get`
   - `runtime.audit.granularity.set`
@@ -308,6 +327,7 @@ Plan tests at three levels:
 - route invocation
 - persistence/audit verification
 - close/refresh behavior
+- A2A RPC/agent-card verification when `agent.runtime.a2a.enabled=true`
 - runtime MCP control verification (`get/set/get` flows)
 - archived conversation read verification (`audit.conversation.sessionData` non-empty after fresh turn)
 

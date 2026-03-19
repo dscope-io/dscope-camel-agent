@@ -452,11 +452,12 @@ Notable keys:
 - `agent.runtime.spring-ai.openai.api-mode=chat`
 - set `agent.runtime.spring-ai.openai.api-mode=responses-ws` to route LLM calls through OpenAI Responses over WebSocket
 - `agent.runtime.spring-ai.openai.responses-ws.*` configures endpoint/model/timeout/reconnect (`endpoint-uri`, `model`, `request-timeout-ms`, `poll-interval-ms`, `max-send-retries`, `max-reconnects`, `initial-backoff-ms`, `max-backoff-ms`)
-- `agent.runtime.spring-ai.model=gpt-4o-mini`
+- `agent.runtime.spring-ai.model=gpt-5.4`
+- `agent.runtime.a2a.enabled=true` exposes `/a2a/rpc`, `/a2a/sse/{taskId}`, and `/.well-known/agent-card.json`
 - `agent.runtime.ai.mode=realtime` is now recognized for realtime relay foundation bootstrap (you can override `aiModelClient` bean for custom realtime adapter)
 - shared bootstrap now binds AGUI defaults, AGUI pre-run processor, realtime relay client, and realtime event processor (if missing)
 - `agent.runtime.realtime.processor-bean-name=supportRealtimeEventProcessorCore`
-- `agent.runtime.realtime.agent-endpoint-uri=agent:support?blueprint={{agent.blueprint}}`
+- `agent.runtime.realtime.agent-endpoint-uri=agent:support?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}`
 - `agent.runtime.realtime.agent-profile-purpose-max-chars=0` in this sample preserves full seeded purpose text from blueprint `## System` (default core behavior is bounded; `0` disables truncation)
 - relay reconnect policy is configurable via `agent.runtime.realtime.reconnect.*`:
    - `max-send-retries` (default `3`)

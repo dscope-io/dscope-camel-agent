@@ -153,7 +153,7 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             propertyOrNull(exchange, "agent.runtime.agui.pre-run.fallback.ticketToolName"),
             propertyOrNull(exchange, "agent.agui.pre-run.fallback.ticket-tool-name"),
             propertyOrNull(exchange, "agent.agui.pre-run.fallback.ticketToolName"),
-            "support.ticket.open"
+            "support.ticket.manage"
         );
 
         String kbFallbackUri = firstNonBlank(
@@ -172,7 +172,7 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             propertyOrNull(exchange, "agent.agui.pre-run.fallback.ticket-uri"),
             propertyOrNull(exchange, "agent.agui.pre-run.fallback.ticketUri"),
             resolveToolInvokeUri(blueprint, ticketToolName),
-            "direct:support-ticket-open"
+            "direct:support-ticket-manage"
         );
         String agentEndpointUri = firstNonBlank(
             agUiPreRunSpec == null ? null : agUiPreRunSpec.agentEndpointUri(),
@@ -198,7 +198,7 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
                 propertyOrNull(exchange, "agent.agui.pre-run.fallback.ticket-keywords"),
                 propertyOrNull(exchange, "agent.agui.pre-run.fallback.ticketKeywords")
             )),
-            csvValues("ticket,open,create,submit,escalate")
+            csvValues("ticket,open,create,update,close,status,submit,escalate")
         );
         List<String> fallbackErrorMarkers = firstNonEmpty(
             agUiPreRunSpec == null ? List.of() : agUiPreRunSpec.fallbackErrorMarkers(),
@@ -339,7 +339,7 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
     }
 
     @SafeVarargs
-    private final List<String> firstNonEmpty(List<String>... options) {
+    private List<String> firstNonEmpty(List<String>... options) {
         for (List<String> option : options) {
             if (option != null && !option.isEmpty()) {
                 return option;

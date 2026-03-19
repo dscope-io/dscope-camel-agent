@@ -61,6 +61,16 @@ Companion examples:
 - Fallback behavior:
 - MCP admin transport requirements (Streamable HTTP headers, protocol version):
 
+### A2A Exposure and Consumption (Required when peer-agent interoperability is in scope)
+- A2A role: caller / exposed service / both / none
+- Public base URL ownership (`agent.runtime.a2a.public-base-url`):
+- Exposed-agent mapping file path (`agent.runtime.a2a.exposed-agents-config`):
+- Public agent ids and local plan/version mappings:
+- Internal A2A agent endpoint override needed (`agent.runtime.a2a.agent-endpoint-uri`): yes/no
+- Endpoint ownership for `/a2a/rpc`, `/a2a/sse/{taskId}`, `/.well-known/agent-card.json`:
+- Remote peer dependency/fallback behavior:
+- Task/conversation correlation expectations:
+
 ### WebRTC Flow Settings (Required when WebRTC is in scope)
 - Source of truth rule: define WebRTC flow from `samples/agent-support-service/src/main/resources/frontend/webrtc-test.html` only (do not use `index.html` to define WebRTC flow).
 - Reference page path (default: `samples/agent-support-service/src/main/resources/frontend/webrtc-test.html`):
@@ -131,6 +141,7 @@ Quick decision hint:
 - Refresh strategy (all/single conversation):
 - Close conversation behavior:
 - Purge preview and purge criteria:
+- A2A endpoint enablement and ownership:
 - Runtime control methods:
   - `runtime.audit.granularity.get|set`
   - `runtime.conversation.persistence.get|set`
@@ -154,6 +165,7 @@ Quick decision hint:
   - 
 - Verification:
   - 
+  - A2A caller/service routing verified when applicable
 
 ### Phase 3 — Persistence, Audit, Lifecycle
 - Tasks:
@@ -174,6 +186,7 @@ Quick decision hint:
   - 
   - Spring context starts with planned beans and configuration overrides
   - Agent route or controller path successfully invokes `agent:` inside the application
+  - A2A endpoints respond on the intended host/path set when enabled
   - Generate fresh AGUI/realtime turn and verify non-empty `audit.conversation.sessionData`
   - For WebRTC mode, verify configured defaults match HTML controls (`transport=webrtc`, `agui=post`, `duplex=half`, `pause=normal`, `voice=alloy`)
 
@@ -195,6 +208,7 @@ Quick decision hint:
 - 
 - 
 - Spring Boot context test or equivalent bean wiring verification when Spring is in scope
+- A2A agent-card/RPC verification when interoperability is in scope
 - MCP tools/list includes expected runtime/archive methods
 - MCP tools/call returns expected structuredContent for runtime controls
 
@@ -225,6 +239,7 @@ Quick decision hint:
 - 
 - 
 - Verify Spring application logs show the planned model client and agent bootstrap path
+- Verify A2A agent-card metadata and exposed-agent mapping match the intended public surface
 - Verify archive event types in persistence store (`conversation.user.message`, `conversation.assistant.message`, `conversation.realtime.observed` as applicable)
 - Verify MCP response includes expected `structuredContent` payloads for control/read methods
 
@@ -252,6 +267,7 @@ Map each requirement to implementation/testing items.
 |  |  |  |
 |  |  |  |
 | Spring application bootstrap | Spring Application Bootstrap / Phase 4 | Spring context start + agent invocation |
+| A2A exposure/consumption | A2A Exposure and Consumption / Phases 2-4 | agent-card + RPC/SSE verification |
 
 ## Dependency Traceability
 
