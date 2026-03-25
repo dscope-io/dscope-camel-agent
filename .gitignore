@@ -7,6 +7,11 @@ camel-agent-agui/target/camel-agent-agui-0.1.0-SNAPSHOT.jar
 camel-agent-agui/
 mvnw
 mvnw.cmd
+.mvn/
+**/*.log
+**/*.out
+**/*.log.*
+**/*.out.*
 samples/agent-support-service/target/
 samples/agent-support-service/smoke-server-8087.log
 samples/agent-support-service/smoke-relay-managed.out
@@ -21,3 +26,5 @@ samples/agent-support-service/smoke-server-8087.log
 samples/agent-support-service/smoke-relay-managed.out
 samples/agent-support-service/smoke-latest.out
 .gitignore
+.LCKpom.xml~
+camel-agent-twilio/src/main/java/io/dscope/camel/agent/twilio/.LCKTwilioCallStartEnvelopeProcessor.java~

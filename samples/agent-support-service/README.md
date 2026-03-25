@@ -4,7 +4,10 @@ Runnable Camel Main sample for the `agent:` runtime with:
 
 - Spring AI gateway mode (`agent.runtime.ai.mode=spring-ai`)
 - multi-agent plan catalog (`support`, `billing`, `ticketing`)
+- blueprint static resources for chat and realtime context (`support:v2`)
 - local routes for `kb.search` and ticket lifecycle state updates
+- outbound support calling through provider-neutral SIP contracts and Twilio management routes
+- SIP-style ingress routes that map call lifecycle and transcript turns into realtime agent flow
 - inbound and outbound A2A support for ticket management
 - audit trail persistence via JDBC-backed DScope persistence
 - AGUI component infrastructure from `io.dscope.camel:camel-ag-ui-component`
@@ -179,7 +182,45 @@ curl https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"
 - `kb.search` -> `direct:kb-search` (`routes/kb-search.camel.yaml`)
 - `support.ticket.manage.route` -> `direct:support-ticket-manage` (`routes/ticket-service.camel.yaml`)
 - `support.ticket.manage` -> `a2a:support-ticket-service?remoteUrl={{agent.runtime.a2a.public-base-url}}/a2a`
+- `support.call.outbound` -> `direct:support-call-outbound-route` (`routes/openai-sip-support.camel.yaml`)
 - `support.mcp` -> `mcp:http://localhost:3001/mcp` (optional MCP seed; runtime discovers concrete MCP tools via `tools/list`)
+
+## Blueprint Resources In The Sample
+
+`support:v2` demonstrates blueprint-declared static resources:
+
+- `login-handbook` is included in both chat and realtime context
+- `outbound-call-playbook` is included in realtime context for voice and outbound follow-up flows
+
+Sample budgets:
+
+- `agent.runtime.chat.resource-context-max-chars=64000`
+- `agent.runtime.realtime.resource-context-max-chars=12000`
+
+These are applied automatically when the resolved plan uses `agents/support/v2/agent.md`.
+
+## Tokenized Execution Targets In The Sample Blueprint
+
+`agents/support/v2/agent.md` now demonstrates runtime token substitution for execution-facing fields:
+
+- `support.mcp.endpointUri` uses `{{agent.runtime.support.crm-mcp-endpoint-uri}}`
+- `aguiPreRun.agentEndpointUri` uses `{{agent.runtime.support.agui-agent-endpoint-uri}}`
+
+The backing runtime properties are defined in `application.yaml`:
+
+- `agent.runtime.support.crm-mcp-endpoint-uri`
+- `agent.runtime.support.agui-agent-endpoint-uri`
+
+The sample CRM MCP property also demonstrates mixed property and env usage:
+
+```yaml
+agent:
+   runtime:
+      support:
+         crm-mcp-endpoint-uri: mcp:https://${AGENT_SUPPORT_CRM_MCP_HOST:camel-crm-service-702748800338.europe-west1.run.app}/mcp
+```
+
+If one of these execution targets remains unresolved at runtime, the agent now fails fast with an error that identifies the failing blueprint field and, for tools, the tool name.
 
 ## MCP Quick Start (Local)
 
@@ -399,6 +440,7 @@ Sample also exposes minimal SIP-oriented ingress routes that reuse the same real
 - `POST /sip/adapter/v1/session/{conversationId}/start` -> normalizes SIP call payload into realtime `/init` session envelope
 - `POST /sip/adapter/v1/session/{conversationId}/turn` -> normalizes transcript payload into realtime `transcript.final` event and routes into agent flow
 - `POST /sip/adapter/v1/session/{conversationId}/end` -> returns lightweight end-of-call acknowledgment
+- sample config now enables `agent.runtime.sip.bind-processors=true`, so these routes are live in the default sample runtime
 
 Example call start:
 
@@ -421,6 +463,84 @@ One-command smoke (start -> turn -> end):
 ```bash
 bash scripts/sip-adapter-v1-smoke.sh
 ```
+
+### Outbound Support Call Flow
+
+The sample blueprint also exposes `support.call.outbound`, which places a provider call and returns correlation data immediately.
+
+Flow:
+
+1. tool `support.call.outbound` routes to `direct:support-call-outbound-route`
+2. `SupportOutboundCallProcessor` builds `OutboundSipCallRequest`
+3. `TwilioSipProviderClient` places the provider call through `direct:twilio-outbound-call`
+4. response returns provider, request id, conversation id, destination, and normalized call status
+
+Example agent-triggered invocation:
+
+```bash
+curl -s -X POST http://localhost:8080/realtime/session/outbound-demo-1/event \
+   -H 'Content-Type: application/json' \
+   -d '{"type":"transcript.final","text":"Please call the customer back at +15551230001 about repeated login failures"}'
+```
+
+Example request body shape used by the outbound-call tool route:
+
+```json
+{
+   "destination": "+15551230001",
+   "query": "Follow up on repeated login failures",
+   "customerName": "Roman Example",
+   "metadata": {
+      "priority": "high"
+   }
+}
+```
+
+Required runtime properties for live Twilio placement:
+
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_FROM_NUMBER`
+- optional `OPENAI_PROJECT_ID` for provider/call correlation metadata
+
+### Twilio Phone Integration
+
+The sample exposes an HTTP SIP-adapter contract. It does not terminate raw SIP or RTP by itself.
+
+The sample now also includes a thin Twilio-oriented adapter skeleton that maps Twilio call ids into the same backend contract:
+
+- `POST /twilio/adapter/v1/call/{callSid}/start`
+- `POST /twilio/adapter/v1/call/{callSid}/turn`
+- `POST /twilio/adapter/v1/call/{callSid}/end`
+
+Those routes derive `conversationId = sip:twilio:{callSid}` and forward into the same realtime processors used by the SIP adapter.
+
+That means Twilio cannot point a phone call directly at this Java process as a SIP endpoint. You need a small adapter layer that does two jobs:
+
+1. terminate Twilio telephony/media
+2. translate call lifecycle and transcripts into the sample's `/sip/adapter/v1/session/{conversationId}/{start|turn|end}` contract
+
+Recommended production shape:
+
+- Twilio phone number or Elastic SIP trunk receives the PSTN call
+- Twilio forwards audio/signaling to your SIP/media adapter
+- the adapter maps `CallSid` or SIP `Call-ID` to `conversationId` such as `sip:twilio:<callSid>`
+- on call start, the adapter calls `POST /sip/adapter/v1/session/{conversationId}/start`
+- when speech recognition produces a final utterance, the adapter calls `POST /sip/adapter/v1/session/{conversationId}/turn`
+- when the call ends, the adapter calls `POST /sip/adapter/v1/session/{conversationId}/end`
+- the adapter converts returned `assistantMessage` text into speech and plays it back to the caller
+
+For a full Twilio implementation checklist, see:
+
+- `docs/TWILIO_SIP_SAMPLE_SETUP.md`
+- `docs/TWILIO_ADAPTER_FLOW_EXAMPLE.md`
+
+For Twilio REST management scaffolding included in the sample, use these Camel direct routes:
+
+- `direct:twilio-outbound-call`
+- `direct:twilio-send-message`
+
+These routes use the Camel Twilio component and expect Twilio credentials via `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN`.
 
 ## Test Scenarios
 
@@ -458,7 +578,10 @@ Notable keys:
 - shared bootstrap now binds AGUI defaults, AGUI pre-run processor, realtime relay client, and realtime event processor (if missing)
 - `agent.runtime.realtime.processor-bean-name=supportRealtimeEventProcessorCore`
 - `agent.runtime.realtime.agent-endpoint-uri=agent:support?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}`
+- `agent.runtime.sip.bind-processors=true` binds `supportSipSessionInitEnvelopeProcessor`, `supportSipTranscriptFinalProcessor`, and `supportSipCallEndProcessor`
 - `agent.runtime.realtime.agent-profile-purpose-max-chars=0` in this sample preserves full seeded purpose text from blueprint `## System` (default core behavior is bounded; `0` disables truncation)
+- `agent.runtime.realtime.resource-context-max-chars=12000` bounds blueprint resource text injected into browser realtime session instructions
+- `agent.runtime.chat.resource-context-max-chars=64000` bounds blueprint resource text injected into chat/kernel instructions
 - relay reconnect policy is configurable via `agent.runtime.realtime.reconnect.*`:
    - `max-send-retries` (default `3`)
    - `max-reconnects` (default `8`)
@@ -476,6 +599,7 @@ Notable keys:
 Blueprint support added (foundation phase):
 
 - `agents/support/agent.md` supports a top-level `realtime` section.
+- `agents/support/v2/agent.md` supports a top-level `resources` section for static chat/realtime context.
 - If `realtime` is absent (or fields are missing) in blueprint, runtime falls back to `application.yaml` properties under:
    - `agent.runtime.realtime.*` (primary)
    - `agent.realtime.*` (alias)
@@ -487,6 +611,7 @@ Blueprint support added (foundation phase):
    - uses `tools[].endpointUri` first
    - else derives `direct:<tools[].routeId>`
 - AGUI pre-run config precedence is: blueprint `aguiPreRun` -> `application.yaml` (`agent.runtime.agui.pre-run.*`) -> alias (`agent.agui.pre-run.*`) -> defaults.
+- route-driven session invocation is available from core via `AgentSessionService` and `AgentSessionInvokeProcessor` when you need structured request/response handling instead of raw `agent:` text bodies.
 
 ### Responses-WS Quick Switch
 

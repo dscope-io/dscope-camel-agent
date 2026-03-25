@@ -1,0 +1,9 @@
+- route:
+    id: support-openai-sip-webhook-http-test-route
+    from:
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agent.runtime.test-port:18082}}/openai/realtime/sip/webhook?httpMethodRestrict=POST
+      steps:
+        - process:
+            ref: supportOpenAiSipWebhookProcessor

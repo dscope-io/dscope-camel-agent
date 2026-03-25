@@ -22,4 +22,15 @@ class AgentRuntimeBootstrapBindingsTest {
         Assertions.assertNull(realtimeRelay);
         Assertions.assertNull(realtimeProcessor);
     }
+
+    @Test
+    void shouldBindSipProcessorsWhenEnabledInSampleConfig() throws Exception {
+        Main main = new Main();
+
+        AgentRuntimeBootstrap.bootstrap(main, "application.yaml");
+
+        Assertions.assertNotNull(main.lookup("supportSipSessionInitEnvelopeProcessor", Object.class));
+        Assertions.assertNotNull(main.lookup("supportSipTranscriptFinalProcessor", Object.class));
+        Assertions.assertNotNull(main.lookup("supportSipCallEndProcessor", Object.class));
+    }
 }

@@ -1,0 +1,15 @@
+- route:
+    id: twilio-send-message
+    from:
+      uri: direct:twilio-send-message
+      steps:
+        - to:
+            uri: twilio:message/create?lazyStartProducer=true
+
+- route:
+    id: twilio-outbound-call
+    from:
+      uri: direct:twilio-outbound-call
+      steps:
+        - to:
+            uri: twilio:call/create?lazyStartProducer=true

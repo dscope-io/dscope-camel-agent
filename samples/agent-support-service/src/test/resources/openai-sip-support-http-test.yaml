@@ -1,0 +1,16 @@
+agent:
+  runtime:
+    routes-include-pattern: classpath:routes/openai-sip-support-http-test.camel.yaml
+    agent-routes-enabled: false
+    spring-ai:
+      openai:
+        api-key: test-key
+    realtime:
+      bind-relay: false
+      bind-processor: false
+      bind-token-processor: false
+      model: gpt-realtime
+      voice: alloy
+    telephony:
+      openai:
+        instructions: You are a support agent.

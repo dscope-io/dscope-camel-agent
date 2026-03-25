@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.dscope.camel.agent.blueprint.BlueprintInstructionRenderer;
 import io.dscope.camel.agent.blueprint.MarkdownBlueprintLoader;
 import io.dscope.camel.agent.config.AgentHeaders;
 import io.dscope.camel.agent.model.AgentBlueprint;
@@ -42,6 +43,10 @@ public class RealtimeBrowserSessionInitProcessor implements Processor {
     }
 
     public int refreshAgentProfileForAllSessions(AgentBlueprint blueprint, int purposeMaxChars) {
+        return refreshAgentProfileForAllSessions(blueprint, purposeMaxChars, 12_000);
+    }
+
+    public int refreshAgentProfileForAllSessions(AgentBlueprint blueprint, int purposeMaxChars, int resourceMaxChars) {
         if (blueprint == null) {
             return 0;
         }
@@ -55,6 +60,7 @@ public class RealtimeBrowserSessionInitProcessor implements Processor {
                 continue;
             }
             seedBlueprintAgentProfile(session, blueprint, purposeMaxChars, true);
+            refreshSessionInstructions(session, blueprint, resourceMaxChars);
             sessionRegistry.putSession(conversationId, session);
             updated++;
         }
@@ -62,6 +68,10 @@ public class RealtimeBrowserSessionInitProcessor implements Processor {
     }
 
     public int refreshAgentProfileForConversation(String conversationId, AgentBlueprint blueprint, int purposeMaxChars) {
+        return refreshAgentProfileForConversation(conversationId, blueprint, purposeMaxChars, 12_000);
+    }
+
+    public int refreshAgentProfileForConversation(String conversationId, AgentBlueprint blueprint, int purposeMaxChars, int resourceMaxChars) {
         if (conversationId == null || conversationId.isBlank() || blueprint == null) {
             return 0;
         }
@@ -70,11 +80,16 @@ public class RealtimeBrowserSessionInitProcessor implements Processor {
             return 0;
         }
         seedBlueprintAgentProfile(session, blueprint, purposeMaxChars, true);
+        refreshSessionInstructions(session, blueprint, resourceMaxChars);
         sessionRegistry.putSession(conversationId, session);
         return 1;
     }
 
     public int refreshAgentProfileForConversation(String conversationId, ResolvedAgentPlan resolvedPlan, int purposeMaxChars) {
+        return refreshAgentProfileForConversation(conversationId, resolvedPlan, purposeMaxChars, 12_000);
+    }
+
+    public int refreshAgentProfileForConversation(String conversationId, ResolvedAgentPlan resolvedPlan, int purposeMaxChars, int resourceMaxChars) {
         if (conversationId == null || conversationId.isBlank() || resolvedPlan == null) {
             return 0;
         }
@@ -87,6 +102,7 @@ public class RealtimeBrowserSessionInitProcessor implements Processor {
             return 0;
         }
         seedBlueprintAgentProfile(session, blueprint, purposeMaxChars, true);
+        refreshSessionInstructions(session, blueprint, resourceMaxChars);
         seedPlanMetadata(session, resolvedPlan);
         sessionRegistry.putSession(conversationId, session);
         return 1;
@@ -255,10 +271,35 @@ public class RealtimeBrowserSessionInitProcessor implements Processor {
 
         // Set session.instructions from the full blueprint system instruction
         // so the browser can use it in session.update for the Realtime API.
-        String systemInstruction = blueprint.systemInstruction();
+        String systemInstruction = BlueprintInstructionRenderer.renderForRealtime(blueprint,
+            realtimeResourceContextMaxChars(exchange, 12_000));
         if (systemInstruction != null && !systemInstruction.isBlank() && !session.hasNonNull("instructions")) {
             session.put("instructions", systemInstruction.trim());
         }
+    }
+
+    private void refreshSessionInstructions(ObjectNode session, AgentBlueprint blueprint, int defaultValue) {
+        if (session == null || blueprint == null) {
+            return;
+        }
+        String existing = session.path("instructions").asText("");
+        String voiceRules = "";
+        int voiceRulesIndex = existing.indexOf("\n\nVoice rules:\n");
+        if (voiceRulesIndex >= 0) {
+            voiceRules = existing.substring(voiceRulesIndex);
+        }
+        String refreshed = BlueprintInstructionRenderer.renderForRealtime(blueprint, defaultValue);
+        if (refreshed != null && !refreshed.isBlank()) {
+            session.put("instructions", refreshed.trim() + voiceRules);
+        }
+    }
+
+    private int realtimeResourceContextMaxChars(Exchange exchange, int defaultValue) {
+        return intProperty(exchange, defaultValue,
+            "agent.runtime.realtime.resource-context-max-chars",
+            "agent.runtime.realtime.resourceContextMaxChars",
+            "agent.realtime.resource-context-max-chars",
+            "agent.realtime.resourceContextMaxChars");
     }
 
     private void seedPlanMetadata(ObjectNode session, ResolvedAgentPlan resolvedPlan) {

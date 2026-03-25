@@ -9,8 +9,26 @@
 - `camel-agent-core`: `agent:` Camel component, kernel, blueprint parser, tool registry, schema checks.
 - `camel-agent-persistence-dscope`: persistence adapter using `dscope-camel-persistence` (`redis`, `jdbc`, `redis_jdbc`).
 - `camel-agent-spring-ai`: Spring AI multi-provider gateway (`openai`, `anthropic`, `vertex gemini`).
+- `camel-agent-twilio`: Twilio-facing telephony adapter built on provider-neutral SIP/outbound-call contracts from core.
 - `camel-agent-starter`: Spring Boot auto-configuration.
 - `samples/agent-support-service`: runnable Camel Main support sample.
+
+## Feature Highlights
+
+Core platform capabilities:
+
+- Blueprint-driven agents defined in Markdown with tool schemas, realtime metadata, AGUI pre-run configuration, and JSON route templates.
+- Camel-native tool execution through local routes, Kamelets, MCP-discovered tools, and A2A peer agents.
+- Multi-plan catalog routing with versioned blueprints, sticky conversation plan selection, and legacy single-blueprint fallback.
+- Persistence-backed conversations, task state, audit trail projection, and optional Spring AI chat-memory integration.
+- Browser AGUI and realtime voice support with session init, transcript event handling, relay integration, and runtime refresh hooks.
+
+Recent additions:
+
+- Blueprint static resources can load Markdown, PDF, local file, classpath, and HTTP(S) content into chat and realtime instruction context.
+- Route-driven agent session invocation now has a structured contract in core via `AgentSessionService` and `AgentSessionInvokeProcessor`.
+- Realtime voice runtime now also supports SIP-style ingress routes, browser session seeding, and route-driven session context patches.
+- Outbound support calling uses provider-neutral telephony contracts in core with a Twilio adapter module and sample support-call flow.
 
 ## Compatibility Matrix
 
@@ -25,6 +43,8 @@
 
 - Changelog: `docs/CHANGELOG.md`
 - Product guide: `docs/PRODUCT_GUIDE.md`
+- Architecture: `docs/architecture.md`
+- Development guide: `docs/DEVELOPMENT_GUIDE.md`
 
 ## Build
 
@@ -49,7 +69,44 @@ This activates `-Pdscope-local` for local DScope dependency alignment used by ru
 agent:agentId?blueprint=classpath:agents/support/agent.md&persistenceMode=redis_jdbc&strictSchema=true&timeoutMs=30000&streaming=true
 ```
 
-## Multi-Agent Plan Catalog
+## Core Capabilities
+
+- Blueprint system instructions plus fenced YAML sections for tools, realtime settings, AGUI pre-run behavior, and resource declarations.
+- Tool backends spanning direct Camel routes, Kamelets, MCP tool discovery, A2A remote agents, and generated JSON route templates.
+- Multi-plan routing with `agent.agents-config`, per-request `planName` and `planVersion`, and persisted conversation plan selection.
+- Stateful runtime behavior covering conversation history, task state, audit events, archive streams, and optional Spring AI chat memory.
+- UI and integration surfaces including AGUI, browser realtime, HTTP/SSE A2A endpoints, admin/runtime refresh endpoints, and SIP-style voice entrypoints.
+
+## Camel Endpoint Invocation
+
+Any Camel route can invoke the runtime through either the raw `agent:` contract or the structured session façade.
+
+Raw endpoint contract:
+
+- `agent.conversationId` is the durable backend session key.
+- omit `agent.conversationId` to create a new conversation.
+- reuse the same `agent.conversationId` to continue the conversation.
+
+Minimal route form:
+
+```java
+from("direct:agent-call")
+    .setBody(simple("${body[prompt]}"))
+    .setHeader("agent.conversationId", simple("${body[conversationId]}"))
+    .setHeader("agent.planName", simple("${body[planName]}"))
+    .setHeader("agent.planVersion", simple("${body[planVersion]}"))
+    .to("agent:support?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}");
+```
+
+Structured session contract:
+
+- `camel-agent-core` now provides `AgentSessionRequest`, `AgentSessionResponse`, `AgentSessionService`, and `AgentSessionInvokeProcessor`.
+- `conversationId`, `sessionId`, and `threadId` are normalized so ordinary Camel routes can use either UI-style or backend-style identifiers.
+- arbitrary `params` are preserved as exchange properties under `agent.session.params` and returned in the structured response.
+
+For the canonical request/response payloads, see `docs/PRODUCT_GUIDE.md` and `docs/DEVELOPMENT_GUIDE.md`.
+
+## Plan Catalogs And Versioning
 
 Runtime can resolve agents from a catalog instead of a single blueprint:
 
@@ -69,7 +126,7 @@ Catalog behavior:
 
 Request entrypoints can pass `planName` and `planVersion`. When omitted, runtime uses sticky selection for the conversation, then catalog defaults.
 
-## A2A Runtime
+## A2A Integration
 
 Camel Agent now integrates `camel-a2a-component` as a first-class protocol bridge.
 
@@ -107,46 +164,30 @@ Outbound behavior:
 - runtime persists remote task/conversation correlation
 - audit trail records outbound/inbound A2A transitions
 
-Shared infrastructure behavior:
+For shared-service behavior and task/session model details, see `docs/architecture.md` and `docs/DEVELOPMENT_GUIDE.md`.
 
-- agent-side A2A classes stay in `camel-agent-core`
-- generic task/session/event persistence comes from `camel-a2a-component`
-- if `a2aTaskService`, `a2aTaskEventService`, and `a2aPushConfigService` are already bound, Camel Agent reuses them instead of creating a private task space
-- this allows multiple agent flows and non-agent routes to share the same A2A session/task runtime
+## Persistence, Audit, And Conversation State
 
-## Persistence Defaults
+Default persistence mode is `redis_jdbc` (Redis fast path + JDBC source-of-truth behavior inherited from `camel-persistence`).
 
-Default mode is `redis_jdbc` (Redis fast path + JDBC source-of-truth behavior inherited from `camel-persistence`).
+Core persistence responsibilities include:
 
-## Spring AI ChatMemory Persistence
+- conversation event history
+- task snapshots
+- dynamic route metadata
+- persisted plan-selection state
+- audit projection data
+- optional conversation archive streams
 
-Implemented support:
+Audit trail control:
 
-- `DscopeChatMemoryRepository` persists Spring AI chat messages to `dscope-camel-persistence`.
-- `SpringAiMessageSerde` handles serialization/deserialization for `USER`, `SYSTEM`, `ASSISTANT` (including tool calls), and `TOOL` messages.
-- Starter auto-config creates:
-  - `ChatMemoryRepository` backed by DScope persistence
-  - `MessageWindowChatMemory` with configurable window
+- set `agent.audit-granularity` (default: `info`)
+- `none`: persist no audit events
+- `info`: persist process steps only
+- `error`: persist process steps and include error payload data for error events
+- `debug`: persist process steps with full payloads and metadata
 
-Starter properties:
-
-- `agent.chat-memory-enabled` (default: `true`)
-- `agent.chat-memory-window` (default: `100`)
-
-## Audit Trail Granularity
-
-Set `agent.audit-granularity` (default: `info`) to control persistence verbosity:
-
-- `none`: persist no audit events.
-- `info`: persist process steps only.
-- `error`: persist process steps and include error payload data for error events.
-- `debug`: persist process steps with full payloads and metadata.
-
-## Optional Audit JDBC Split
-
-By default, audit trail uses the same persistence store as context/state.
-
-To store audit trail in a separate JDBC backend, configure either:
+By default, audit trail uses the same persistence store as context/state. To store audit trail in a separate JDBC backend, configure either:
 
 ```yaml
 agent:
@@ -169,6 +210,26 @@ agent:
       jdbc:
         url: jdbc:postgresql://localhost:5432/agent_audit
 ```
+
+Conversation archive note:
+
+- archive persistence is transcript-focused and separate from the main audit stream
+- use it for replay and transcript UX scenarios, not as the primary source of task or plan-selection state
+
+## Spring AI Integration
+
+Implemented support:
+
+- `DscopeChatMemoryRepository` persists Spring AI chat messages to `dscope-camel-persistence`.
+- `SpringAiMessageSerde` handles serialization/deserialization for `USER`, `SYSTEM`, `ASSISTANT` (including tool calls), and `TOOL` messages.
+- Starter auto-config creates:
+  - `ChatMemoryRepository` backed by DScope persistence
+  - `MessageWindowChatMemory` with configurable window
+
+Starter properties:
+
+- `agent.chat-memory-enabled` (default: `true`)
+- `agent.chat-memory-window` (default: `100`)
 
 ## Load-Balanced Task Ownership (redis_jdbc)
 
@@ -312,7 +373,7 @@ Run:
 mvn -f samples/agent-support-service/pom.xml -Dtest=SpringAiAuditTrailIntegrationTest test
 ```
 
-## JSON Route Templates (Agent-Generated)
+## JSON Route Templates
 
 `agent.md` now supports a `jsonRouteTemplates` section for safe dynamic route generation.
 
@@ -324,11 +385,9 @@ Runtime behavior:
 - runtime expands placeholders into Camel JSON DSL, validates it, dynamically loads route, and executes it
 - dynamic route metadata is persisted through existing `DynamicRouteState` persistence
 
-See sample blueprint template in:
+See `docs/PRODUCT_GUIDE.md` for field-level template structure and the sample blueprint for a concrete example.
 
-- `samples/agent-support-service/src/main/resources/agents/support/agent.md`
-
-## MCP Tools in Blueprint
+## MCP Discovery And Tooling
 
 Blueprint `tools` entries with `endpointUri` starting with `mcp:` are treated as MCP service definitions.
 
@@ -339,16 +398,62 @@ Runtime behavior:
 - MCP tool execution uses MCP `tools/call` with `{ name, arguments }`
 - MCP discovery payload is written to audit as `mcp.tools.discovered` (full payload available in `debug` granularity)
 
-Example seed tool in `agent.md`:
+See `docs/PRODUCT_GUIDE.md` for the seed-tool shape and sample blueprint examples.
+
+## Runtime Placeholder Tokens In Blueprints
+
+Execution-facing fields in `agent.md` can be tokenized and resolved at runtime.
+
+Supported token forms:
+
+- `{{key}}`
+- `{{key:defaultValue}}`
+- `${NAME}`
+- `${NAME:defaultValue}`
+
+Typical use cases:
+
+- environment-specific endpoint hosts
+- secret tokens passed in endpoint query strings or headers-derived URIs
+- runtime-selected `agent:` endpoint targets for AGUI or route/session entrypoints
+
+Example:
 
 ```yaml
 tools:
   - name: support.mcp
-    description: MCP support backend
-    endpointUri: mcp:http://localhost:3001/mcp
+    endpointUri: mcp:https://{{agent.crm.host}}/mcp?token=${CRM_TOKEN}
 ```
 
-## AGUI Frontend (Sample)
+Critical execution-target fields now fail fast if a placeholder remains unresolved at runtime. See `docs/PRODUCT_GUIDE.md` for the exact field list and behavior.
+
+## Blueprint Static Resources
+
+Blueprints can declare a `resources` section to stage static reference material into agent context.
+
+Supported resource locations:
+
+- `classpath:`
+- `file:`
+- plain file path
+- `http:`
+- `https:`
+
+Supported content handling:
+
+- Markdown and plain text are injected as text.
+- PDF documents are resolved through Camel PDF extraction.
+- resources can target `chat`, `realtime`, or both via `includeIn`.
+
+Runtime behavior:
+
+- resource text is appended to chat instructions during kernel construction.
+- realtime session init seeds resource-backed instruction context for browser and SIP voice sessions.
+- runtime refresh re-resolves blueprint resources and can push updated context to active conversations.
+
+See `docs/PRODUCT_GUIDE.md` for the full `resources[]` schema and `docs/DEVELOPMENT_GUIDE.md` for implementation details.
+
+## AGUI And Browser Realtime
 
 `samples/agent-support-service` uses AGUI component runtime routes and a built-in UI page:
 
@@ -368,20 +473,7 @@ Realtime note:
 - Agent/tool routes can return a patch via exchange header/property (`realtimeSessionUpdate`, aliases: `realtime.session.update`, `sessionUpdate`) or assistant JSON body (`realtimeSessionUpdate`, `realtimeSession`, `sessionUpdate`).
 - Patch is deep-merged into browser session context for the same `conversationId`; next `/realtime/session/{conversationId}/token` uses merged context.
 
-Seeded pre-conversation context fields (sample runtime):
-
-- `session.metadata.camelAgent.agentProfile.name`
-- `session.metadata.camelAgent.agentProfile.version`
-- `session.metadata.camelAgent.agentProfile.purpose`
-- `session.metadata.camelAgent.agentProfile.tools[]`
-- `session.metadata.camelAgent.context.agentPurpose`
-- `session.metadata.camelAgent.context.agentFocusHint`
-
-Purpose length configuration:
-
-- `agent.runtime.realtime.agent-profile-purpose-max-chars` (aliases: `agent.runtime.realtime.agentProfilePurposeMaxChars`, `agent.realtime.agent-profile-purpose-max-chars`, `agent.realtime.agentProfilePurposeMaxChars`)
-- default: `240`
-- set `0` (or negative) to disable truncation and keep full seeded purpose text.
+For seeded session fields, realtime configuration properties, and sample endpoint details, see `samples/agent-support-service/README.md` and `docs/PRODUCT_GUIDE.md`.
 
 Voice UX and transcript updates (sample frontend):
 
@@ -392,6 +484,12 @@ Voice UX and transcript updates (sample frontend):
 - WebRTC transcript log panel includes input/output transcript lines and clear-log action.
 - Voice output transcript de-duplication ensures one final assistant transcript entry per completed output (with spacing preserved).
 - Collapsible `Instruction seed (debug)` panel shows the current pre-conversation instruction context; it auto-opens when transport is switched to WebRTC (and on initial load when already in WebRTC mode).
+
+SIP and telephony note:
+
+- `POST /sip/adapter/v1/session/{conversationId}/start`, `/turn`, and `/end` reuse the same realtime processors and route agent flow.
+- outbound support calling uses provider-neutral `OutboundSipCallRequest` / `OutboundSipCallResult` / `SipProviderClient` contracts in core.
+- the sample uses `support.call.outbound` plus `SupportOutboundCallProcessor` to place a provider call and return correlation data immediately.
 
 ## Phase-2 Runtime Commands
 

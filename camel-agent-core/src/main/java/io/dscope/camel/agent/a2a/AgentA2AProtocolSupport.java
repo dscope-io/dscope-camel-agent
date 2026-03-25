@@ -47,7 +47,6 @@ import io.dscope.camel.a2a.service.InMemoryPushNotificationConfigService;
 import io.dscope.camel.a2a.service.InMemoryTaskEventService;
 import io.dscope.camel.a2a.service.PersistentA2ATaskEventService;
 import io.dscope.camel.a2a.service.PersistentA2ATaskService;
-import io.dscope.camel.a2a.service.TaskEventService;
 import io.dscope.camel.a2a.service.WebhookPushNotificationNotifier;
 import io.dscope.camel.persistence.core.FlowStateStore;
 import io.dscope.camel.persistence.core.FlowStateStoreFactory;
@@ -220,8 +219,8 @@ public final class AgentA2AProtocolSupport {
     }
 
     private static SharedA2AInfrastructure resolveSharedInfrastructure(Main main, Properties properties) {
-        TaskEventService taskEventService =
-            main.lookup(A2AComponentApplicationSupport.BEAN_TASK_EVENT_SERVICE, TaskEventService.class);
+        InMemoryTaskEventService taskEventService =
+            main.lookup(A2AComponentApplicationSupport.BEAN_TASK_EVENT_SERVICE, InMemoryTaskEventService.class);
         A2ATaskService taskService =
             main.lookup(A2AComponentApplicationSupport.BEAN_TASK_SERVICE, A2ATaskService.class);
         A2APushNotificationConfigService pushConfigService =
@@ -263,7 +262,7 @@ public final class AgentA2AProtocolSupport {
         }
     }
 
-    private record SharedA2AInfrastructure(TaskEventService taskEventService,
+    private record SharedA2AInfrastructure(InMemoryTaskEventService taskEventService,
                                            A2ATaskService taskService,
                                            A2APushNotificationConfigService pushConfigService) {
     }
@@ -614,13 +613,13 @@ public final class AgentA2AProtocolSupport {
 
         private final Processor sendMessageProcessor;
         private final AgentA2ATaskAdapter taskAdapter;
-        private final TaskEventService taskEventService;
+        private final InMemoryTaskEventService taskEventService;
         private final ObjectMapper objectMapper;
         private final A2ARuntimeProperties runtimeProperties;
 
         private SendStreamingMessageProcessor(Processor sendMessageProcessor,
-                                              AgentA2ATaskAdapter taskAdapter,
-                                              TaskEventService taskEventService,
+                                             AgentA2ATaskAdapter taskAdapter,
+                                             InMemoryTaskEventService taskEventService,
                                               ObjectMapper objectMapper,
                                               A2ARuntimeProperties runtimeProperties) {
             this.sendMessageProcessor = sendMessageProcessor;

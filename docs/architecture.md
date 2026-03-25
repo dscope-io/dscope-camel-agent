@@ -2,12 +2,23 @@
 
 ## Runtime
 
+The core runtime model remains plan-driven and conversation-centric:
+
+- a request resolves to one concrete blueprint version
+- blueprint metadata becomes tools, realtime defaults, AGUI behavior, and now optional resource context
+- `DefaultAgentKernel` owns the message loop, tool execution, and persisted turn state
+- AGUI, browser realtime, A2A, admin refresh, and newer SIP/session facades all converge on the same conversation and plan-selection model
+
 1. Runtime resolves a concrete plan selection for the exchange:
    - explicit request `planName` / `planVersion`
    - else sticky `conversation.plan.selected`
    - else catalog defaults from `agent.agents-config`
    - legacy fallback: `agent.blueprint`
 2. The resolved plan version blueprint (`agent.md`) is loaded by `MarkdownBlueprintLoader`.
+  - standard blueprint metadata still defines the system prompt, tool declarations, AGUI pre-run behavior, and realtime defaults
+  - blueprint `resources` are resolved at load time through `BlueprintResourceResolver`
+  - chat instruction rendering can append resource text under configured budgets
+  - realtime session init can seed resource-backed context for browser or SIP voice sessions
 3. Tool declarations are converted to `ToolSpec` and registered in `DefaultToolRegistry`.
 4. `DefaultAgentKernel` handles message loop:
    - append `user.message`
@@ -59,6 +70,67 @@ Internal request headers:
 - `agent.resolvedPlanName`
 - `agent.resolvedPlanVersion`
 - `agent.resolvedBlueprint`
+
+## Route-Driven Agent Sessions
+
+This is an additional invocation façade over the existing `agent:` runtime, not a separate execution engine.
+
+Two invocation layers exist for ordinary Camel routes:
+
+1. Raw `agent:` endpoint invocation
+   - `agent.conversationId` is the durable session key
+   - missing `agent.conversationId` means create a new session
+   - reusing `agent.conversationId` means continue an existing session
+2. Structured session invocation
+   - `AgentSessionService` normalizes `conversationId`, `sessionId`, and `threadId`
+   - `AgentSessionInvokeProcessor` accepts map or JSON request bodies and returns a structured JSON response
+   - request `params` are preserved in exchange properties as `agent.session.params`
+
+Structured session request shape:
+
+- `prompt`
+- `conversationId`
+- `sessionId`
+- `threadId`
+- `planName`
+- `planVersion`
+- `params`
+
+Structured session response shape:
+
+- `conversationId`
+- `sessionId`
+- `created`
+- `message`
+- `events[]`
+- `taskState`
+- `resolvedPlanName`
+- `resolvedPlanVersion`
+- `resolvedBlueprint`
+- `params`
+
+This keeps route-to-agent integration explicit and avoids losing `AgentResponse` metadata when a route needs more than just assistant text, while still resolving plans, tools, persistence, and correlations through the same core runtime.
+
+## Blueprint Resource Context
+
+Blueprint static resources are part of the existing blueprint/runtime model, not a separate MCP or attachment subsystem.
+
+Resource lifecycle:
+
+1. blueprint declares `resources[]`
+2. `MarkdownBlueprintLoader` parses them into `BlueprintResourceSpec`
+3. `BlueprintResourceResolver` loads content from `classpath:`, `file:`, plain paths, or `http(s)`
+4. Camel PDF extraction is used for PDF resources
+5. `BlueprintInstructionRenderer` injects bounded text into chat instructions
+6. `RealtimeBrowserSessionInitProcessor` injects bounded text into realtime session seed context
+7. `RuntimeResourceRefreshProcessor` can re-resolve resources and append refresh events to active conversations
+
+Budget controls:
+
+- chat: `agent.runtime.chat.resource-context-max-chars`
+- realtime: `agent.runtime.realtime.resource-context-max-chars`
+
+This design keeps blueprint resources plan-aware and conversation-aware without inventing a second resource persistence model or changing the underlying kernel/tool execution flow.
 
 ## Persistence Mapping
 
@@ -211,6 +283,34 @@ Plan-aware request behavior:
 - `POST /realtime/session/{conversationId}/init` accepts top-level `planName` / `planVersion`
 - `POST /realtime/session/{conversationId}/event` accepts top-level `planName` / `planVersion`
 - AGUI and realtime processors forward these as Camel headers to `agent:`
+
+## SIP, Realtime, and Outbound Call Flow
+
+These voice and telephony paths extend the existing realtime and route-driven architecture. They do not introduce a second conversation model.
+
+Voice-oriented runtime behavior is split into inbound session ingress, route-driven agent turns, and outbound provider integration.
+
+Inbound SIP-style flow:
+
+1. SIP or telephony adapter maps provider call identity to stable `conversationId`
+2. `/sip/adapter/v1/session/{conversationId}/start` normalizes call-start metadata into realtime `/init`
+3. `/sip/adapter/v1/session/{conversationId}/turn` normalizes final transcript payload into realtime `transcript.final`
+4. `RealtimeEventProcessor` routes transcript turns into the same `agent:` plan/tool flow as web chat
+5. route output may emit realtime session patches for future turns
+
+Outbound support-call flow:
+
+1. support blueprint tool `support.call.outbound` targets a local Camel route
+2. `SupportOutboundCallProcessor` builds `OutboundSipCallRequest`
+3. provider-neutral `SipProviderClient` places the call and returns `OutboundSipCallResult`
+4. provider-specific adapter, currently Twilio in `camel-agent-twilio`, handles transport integration
+5. runtime stores call correlation and later webhook/relay processing reuses the same conversation id
+
+Design intent:
+
+- core owns conversation correlation, call contracts, and OpenAI realtime call-state integration
+- adapters own provider-specific call placement and ingress mapping
+- agent flows remain conversation-centric across chat, browser voice, SIP ingress, and outbound follow-up calls
 
 ## Conversation Archive Persistence (Separate from Audit Trail)
 

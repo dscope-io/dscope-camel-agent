@@ -1,0 +1,56 @@
+- route:
+    id: twilio-adapter-v1-call-start
+    from:
+      id: fromTwilioAdapterCallStart
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/twilio/adapter/v1/call/{callSid}/start?httpMethodRestrict=POST
+      steps:
+        - setHeader:
+            name: conversationId
+            simple: sip:twilio:${header.callSid}
+        - process:
+            id: processTwilioAdapterCallStartEnvelope
+            ref: supportTwilioCallStartEnvelopeProcessor
+        - process:
+            id: processTwilioAdapterCallStartInitEnvelope
+            ref: supportSipSessionInitEnvelopeProcessor
+        - process:
+            id: processTwilioAdapterCallStartInit
+            ref: supportRealtimeSessionInitProcessor
+
+- route:
+    id: twilio-adapter-v1-transcript-final
+    from:
+      id: fromTwilioAdapterTranscriptFinal
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/twilio/adapter/v1/call/{callSid}/turn?httpMethodRestrict=POST
+      steps:
+        - setHeader:
+            name: conversationId
+            simple: sip:twilio:${header.callSid}
+        - process:
+            id: processTwilioAdapterTranscriptEnvelope
+            ref: supportTwilioTranscriptEnvelopeProcessor
+        - process:
+            id: processTwilioAdapterTranscriptEventEnvelope
+            ref: supportSipTranscriptFinalProcessor
+        - process:
+            id: processTwilioAdapterTranscriptEvent
+            ref: supportRealtimeEventProcessorCore
+
+- route:
+    id: twilio-adapter-v1-call-end
+    from:
+      id: fromTwilioAdapterCallEnd
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/twilio/adapter/v1/call/{callSid}/end?httpMethodRestrict=POST
+      steps:
+        - setHeader:
+            name: conversationId
+            simple: sip:twilio:${header.callSid}
+        - process:
+            id: processTwilioAdapterCallEnd
+            ref: supportSipCallEndProcessor

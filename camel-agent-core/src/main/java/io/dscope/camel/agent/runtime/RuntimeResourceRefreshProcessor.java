@@ -84,10 +84,12 @@ public class RuntimeResourceRefreshProcessor implements Processor {
             body.put("conversationEventsSynced", persisted);
             body.put("chatMemorySynced", 0);
             body.put("realtimeContextSynced", realtimeSynced);
+            body.put("blueprintResourceCount", responseBlueprint == null || responseBlueprint.resources() == null ? 0 : responseBlueprint.resources().size());
 
             ObjectNode resources = objectMapper.createObjectNode();
             resources.put("routesIncludePattern", refreshed.getProperty("agent.runtime.routes-include-pattern", ""));
             resources.put("kameletLocation", refreshed.getProperty("camel.component.kamelet.location", ""));
+            resources.put("blueprintResourceCount", responseBlueprint == null || responseBlueprint.resources() == null ? 0 : responseBlueprint.resources().size());
             resources.put("agentsConfigChanged", changed(previous, refreshed, "agent.agents-config"));
             resources.put("blueprintChanged", changed(previous, refreshed, "agent.blueprint"));
             resources.put("routesChanged", changed(previous, refreshed, "agent.runtime.routes-include-pattern"));
@@ -292,6 +294,11 @@ public class RuntimeResourceRefreshProcessor implements Processor {
         }
 
         int updated = 0;
+        int resourceMaxChars = intProperty(refreshed, 12_000,
+            "agent.runtime.realtime.resource-context-max-chars",
+            "agent.runtime.realtime.resourceContextMaxChars",
+            "agent.realtime.resource-context-max-chars",
+            "agent.realtime.resourceContextMaxChars");
         for (String conversationId : conversationIds) {
             if (conversationId == null || conversationId.isBlank()) {
                 continue;
@@ -299,7 +306,8 @@ public class RuntimeResourceRefreshProcessor implements Processor {
             updated += initProcessor.refreshAgentProfileForConversation(
                 conversationId,
                 resolvePlan(refreshed, planSelectionResolver, conversationId),
-                purposeMaxChars
+                purposeMaxChars,
+                resourceMaxChars
             );
         }
         return updated;

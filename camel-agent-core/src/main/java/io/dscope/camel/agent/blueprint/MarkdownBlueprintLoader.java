@@ -6,8 +6,10 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.dscope.camel.agent.api.BlueprintLoader;
 import io.dscope.camel.agent.model.AgUiPreRunSpec;
 import io.dscope.camel.agent.model.AgentBlueprint;
+import io.dscope.camel.agent.model.BlueprintResourceSpec;
 import io.dscope.camel.agent.model.JsonRouteTemplateSpec;
 import io.dscope.camel.agent.model.RealtimeSpec;
+import io.dscope.camel.agent.model.ResolvedBlueprintResource;
 import io.dscope.camel.agent.model.ToolPolicy;
 import io.dscope.camel.agent.model.ToolSpec;
 import java.io.IOException;
@@ -29,6 +31,7 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
     private static final Pattern FENCED_YAML_PATTERN = Pattern.compile("```yaml\\s*(.*?)```", Pattern.DOTALL);
 
     private final ObjectMapper yamlMapper = new ObjectMapper(new YAMLFactory());
+    private final BlueprintResourceResolver resourceResolver = new BlueprintResourceResolver();
 
     @Override
     public AgentBlueprint load(String location) {
@@ -42,6 +45,8 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
         List<JsonRouteTemplateSpec> jsonRouteTemplates = parseJsonRouteTemplates(config);
         RealtimeSpec realtime = parseRealtime(config);
         AgUiPreRunSpec agUiPreRun = parseAgUiPreRun(config);
+        List<BlueprintResourceSpec> resourceSpecs = parseResources(config);
+        List<ResolvedBlueprintResource> resources = resourceResolver.resolve(resourceSpecs);
         tools.addAll(toolsFromTemplates(jsonRouteTemplates));
 
         if (tools.isEmpty()) {
@@ -54,8 +59,36 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
             tools,
             jsonRouteTemplates,
             realtime,
-            agUiPreRun
+            agUiPreRun,
+            resources
         );
+    }
+
+    private List<BlueprintResourceSpec> parseResources(JsonNode root) {
+        List<BlueprintResourceSpec> resources = new ArrayList<>();
+        if (root == null || root.isMissingNode()) {
+            return resources;
+        }
+        JsonNode resourcesNode = root.path("resources");
+        if (!resourcesNode.isArray()) {
+            return resources;
+        }
+        for (JsonNode node : resourcesNode) {
+            String name = required(node, "name");
+            String uri = firstRequired(node, name, "uri", "url");
+            resources.add(new BlueprintResourceSpec(
+                name,
+                uri,
+                text(node, "kind"),
+                text(node, "format", "mimeType", "mime-type"),
+                strings(node, "includeIn", "include-in"),
+                text(node, "loadPolicy", "load-policy"),
+                text(node, "refreshPolicy", "refresh-policy"),
+                Boolean.TRUE.equals(bool(node, "optional")),
+                longValue(node, "maxBytes", "max-bytes") == null ? 262_144L : longValue(node, "maxBytes", "max-bytes")
+            ));
+        }
+        return resources;
     }
 
     private AgUiPreRunSpec parseAgUiPreRun(JsonNode root) {
@@ -302,6 +335,14 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
         return value;
     }
 
+    private String firstRequired(JsonNode node, String name, String... fields) {
+        String value = text(node, fields);
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("Missing required field for resource '" + name + "': uri");
+        }
+        return value;
+    }
+
     private String text(JsonNode node, String field) {
         JsonNode value = node.path(field);
         return value.isMissingNode() || value.isNull() ? null : value.asText();
@@ -500,7 +541,7 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
         try {
             if (location.startsWith("classpath:")) {
                 String path = location.substring("classpath:".length());
-                try (InputStream is = Thread.currentThread().getContextClassLoader().getResourceAsStream(path)) {
+                try (InputStream is = openClasspathResource(path)) {
                     if (is == null) {
                         throw new IllegalArgumentException("Blueprint not found on classpath: " + location);
                     }
@@ -517,5 +558,23 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
         } catch (IOException e) {
             throw new IllegalStateException("Failed to read blueprint: " + location, e);
         }
+    }
+
+    private InputStream openClasspathResource(String path) {
+        ClassLoader contextLoader = Thread.currentThread().getContextClassLoader();
+        if (contextLoader != null) {
+            InputStream input = contextLoader.getResourceAsStream(path);
+            if (input != null) {
+                return input;
+            }
+        }
+        ClassLoader loader = MarkdownBlueprintLoader.class.getClassLoader();
+        if (loader != null) {
+            InputStream input = loader.getResourceAsStream(path);
+            if (input != null) {
+                return input;
+            }
+        }
+        return MarkdownBlueprintLoader.class.getResourceAsStream(path.startsWith("/") ? path : "/" + path);
     }
 }

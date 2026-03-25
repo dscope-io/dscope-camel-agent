@@ -1,0 +1,46 @@
+- route:
+    id: twilio-session-call-start-test
+    from:
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agent.runtime.test-port:18081}}/twilio/adapter/v1/call/{callSid}/start?httpMethodRestrict=POST
+      steps:
+        - setHeader:
+            name: conversationId
+            simple: sip:twilio:${header.callSid}
+        - process:
+            ref: supportTwilioCallStartEnvelopeProcessor
+        - process:
+            ref: supportSipSessionInitEnvelopeProcessor
+        - process:
+            ref: supportRealtimeSessionInitProcessor
+
+- route:
+    id: twilio-session-transcript-final-test
+    from:
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agent.runtime.test-port:18081}}/twilio/adapter/v1/call/{callSid}/turn?httpMethodRestrict=POST
+      steps:
+        - setHeader:
+            name: conversationId
+            simple: sip:twilio:${header.callSid}
+        - process:
+            ref: supportTwilioTranscriptEnvelopeProcessor
+        - process:
+            ref: supportSipTranscriptFinalProcessor
+        - process:
+            ref: supportRealtimeEventProcessorCore
+
+- route:
+    id: twilio-session-call-end-test
+    from:
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agent.runtime.test-port:18081}}/twilio/adapter/v1/call/{callSid}/end?httpMethodRestrict=POST
+      steps:
+        - setHeader:
+            name: conversationId
+            simple: sip:twilio:${header.callSid}
+        - process:
+            ref: supportSipCallEndProcessor

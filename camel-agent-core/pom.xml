@@ -38,6 +38,10 @@
       <artifactId>camel-kamelet</artifactId>
     </dependency>
     <dependency>
+      <groupId>org.apache.camel</groupId>
+      <artifactId>camel-pdf</artifactId>
+    </dependency>
+    <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
     </dependency>
@@ -46,9 +50,13 @@
       <artifactId>jackson-dataformat-yaml</artifactId>
     </dependency>
     <dependency>
+      <groupId>com.fasterxml.jackson.datatype</groupId>
+      <artifactId>jackson-datatype-jsr310</artifactId>
+    </dependency>
+    <dependency>
       <groupId>io.dscope.camel</groupId>
       <artifactId>camel-mcp</artifactId>
-      <version>1.4.0</version>
+      <version>${camel.mcp.version}</version>
     </dependency>
     <dependency>
       <groupId>io.dscope.camel</groupId>

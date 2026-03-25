@@ -10,6 +10,7 @@ import io.dscope.camel.agent.config.AgentHeaders;
 import io.dscope.camel.agent.model.ExecutionContext;
 import io.dscope.camel.agent.model.ToolResult;
 import io.dscope.camel.agent.model.ToolSpec;
+import io.dscope.camel.agent.runtime.RuntimePlaceholderResolver;
 import io.dscope.camel.mcp.McpClient;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -111,12 +112,12 @@ public class CamelToolExecutor implements ToolExecutor {
 
     private String target(ToolSpec toolSpec) {
         if (toolSpec.routeId() != null && !toolSpec.routeId().isBlank()) {
-            return "direct:" + toolSpec.routeId();
+            return "direct:" + RuntimePlaceholderResolver.resolveRequiredExecutionTarget(camelContext, toolSpec.routeId(), "tools[].routeId");
         }
         if (toolSpec.endpointUri() != null && !toolSpec.endpointUri().isBlank()) {
-            return toolSpec.endpointUri();
+            return RuntimePlaceholderResolver.resolveRequiredExecutionTarget(camelContext, toolSpec.endpointUri(), "tools[].endpointUri");
         }
-        throw new IllegalArgumentException("Tool must define routeId or endpointUri: " + toolSpec.name());
+        throw new IllegalArgumentException("Tool target is missing routeId/endpointUri: " + toolSpec.name());
     }
 
     private boolean isMcpTarget(String target) {

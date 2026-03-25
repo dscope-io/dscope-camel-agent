@@ -8,6 +8,7 @@ import io.dscope.camel.agent.model.ToolSpec;
 import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 import io.dscope.camel.agent.runtime.ConversationArchiveService;
 import io.dscope.camel.agent.runtime.ResolvedAgentPlan;
+import io.dscope.camel.agent.runtime.RuntimePlaceholderResolver;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -162,7 +163,7 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             propertyOrNull(exchange, "agent.runtime.agui.pre-run.fallback.kbUri"),
             propertyOrNull(exchange, "agent.agui.pre-run.fallback.kb-uri"),
             propertyOrNull(exchange, "agent.agui.pre-run.fallback.kbUri"),
-            resolveToolInvokeUri(blueprint, kbToolName),
+            resolveToolInvokeUri(exchange, blueprint, kbToolName),
             "direct:kb-search"
         );
         String ticketFallbackUri = firstNonBlank(
@@ -171,7 +172,7 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             propertyOrNull(exchange, "agent.runtime.agui.pre-run.fallback.ticketUri"),
             propertyOrNull(exchange, "agent.agui.pre-run.fallback.ticket-uri"),
             propertyOrNull(exchange, "agent.agui.pre-run.fallback.ticketUri"),
-            resolveToolInvokeUri(blueprint, ticketToolName),
+            resolveToolInvokeUri(exchange, blueprint, ticketToolName),
             "direct:support-ticket-manage"
         );
         String agentEndpointUri = firstNonBlank(
@@ -210,7 +211,14 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             )),
             csvValues("api key is missing,openai api key,set -dopenai.api.key")
         );
-        return new RuntimeConfig(agentEndpointUri, kbFallbackUri, ticketFallbackUri, fallbackEnabled, ticketKeywords, fallbackErrorMarkers);
+        return new RuntimeConfig(
+            RuntimePlaceholderResolver.resolveRequiredExecutionTarget(exchange.getContext(), agentEndpointUri, "aguiPreRun.agentEndpointUri"),
+            RuntimePlaceholderResolver.resolveRequiredExecutionTarget(exchange.getContext(), kbFallbackUri, "aguiPreRun.fallback.kbUri"),
+            RuntimePlaceholderResolver.resolveRequiredExecutionTarget(exchange.getContext(), ticketFallbackUri, "aguiPreRun.fallback.ticketUri"),
+            fallbackEnabled,
+            ticketKeywords,
+            fallbackErrorMarkers
+        );
     }
 
     private AgentBlueprint loadBlueprint(ResolvedAgentPlan resolvedPlan) {
@@ -225,7 +233,7 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
         }
     }
 
-    private String resolveToolInvokeUri(AgentBlueprint blueprint, String toolName) {
+    private String resolveToolInvokeUri(Exchange exchange, AgentBlueprint blueprint, String toolName) {
         if (blueprint == null || blueprint.tools() == null || toolName == null || toolName.isBlank()) {
             return "";
         }
@@ -234,10 +242,10 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
                 continue;
             }
             if (tool.endpointUri() != null && !tool.endpointUri().isBlank()) {
-                return tool.endpointUri().trim();
+                return RuntimePlaceholderResolver.resolveRequiredExecutionTarget(exchange.getContext(), tool.endpointUri().trim(), "tools[].endpointUri");
             }
             if (tool.routeId() != null && !tool.routeId().isBlank()) {
-                return "direct:" + tool.routeId().trim();
+                return "direct:" + RuntimePlaceholderResolver.resolveRequiredExecutionTarget(exchange.getContext(), tool.routeId().trim(), "tools[].routeId");
             }
         }
         return "";

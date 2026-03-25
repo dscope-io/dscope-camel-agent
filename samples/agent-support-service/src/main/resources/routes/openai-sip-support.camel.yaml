@@ -1,0 +1,15 @@
+- route:
+    id: support-call-outbound-route
+    from:
+      uri: direct:support-call-outbound
+      steps:
+        - process:
+            ref: supportOutboundCallProcessor
+
+- route:
+    id: support-openai-sip-webhook-route
+    from:
+      uri: undertow:http://0.0.0.0:{{agui.rpc.port:8080}}/openai/realtime/sip/webhook?httpMethodRestrict=POST
+      steps:
+        - process:
+            ref: supportOpenAiSipWebhookProcessor

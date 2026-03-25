@@ -1,6 +1,7 @@
 package io.dscope.camel.agent.component;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.dscope.camel.agent.blueprint.BlueprintInstructionRenderer;
 import io.dscope.camel.agent.api.AgentKernel;
 import io.dscope.camel.agent.api.AiModelClient;
 import io.dscope.camel.agent.api.BlueprintLoader;
@@ -21,6 +22,7 @@ import io.dscope.camel.agent.registry.DefaultToolRegistry;
 import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 import io.dscope.camel.agent.runtime.RealtimeConfigResolver;
 import io.dscope.camel.agent.runtime.ResolvedAgentPlan;
+import io.dscope.camel.agent.runtime.RuntimePlaceholderResolver;
 import io.dscope.camel.agent.validation.SchemaValidator;
 import java.util.List;
 import java.util.Map;
@@ -109,11 +111,14 @@ public class AgentComponent extends DefaultComponent {
 
     private AgentKernel buildKernel(String blueprintLocation, ResolvedAgentPlan resolvedPlan) {
         BlueprintLoader blueprintLoader = new MarkdownBlueprintLoader();
-        AgentBlueprint loadedBlueprint = applyRealtimeFallback(blueprintLoader.load(blueprintLocation));
+        AgentBlueprint loadedBlueprint = RuntimePlaceholderResolver.resolveExecutionValues(
+            getCamelContext(),
+            applyRealtimeFallback(blueprintLoader.load(blueprintLocation))
+        );
 
         ObjectMapper mapper = objectMapper();
         ProducerTemplate producerTemplate = getCamelContext().createProducerTemplate();
-        AgentBlueprint blueprint = McpToolDiscoveryResolver.resolve(loadedBlueprint, producerTemplate, mapper);
+        AgentBlueprint blueprint = applyChatInstructionBudget(McpToolDiscoveryResolver.resolve(loadedBlueprint, producerTemplate, mapper));
 
         ToolRegistry toolRegistry = new DefaultToolRegistry(blueprint.tools());
         AiModelClient aiModelClient = findRegistry(AiModelClient.class).orElseGet(StaticAiModelClient::new);
@@ -165,8 +170,46 @@ public class AgentComponent extends DefaultComponent {
             blueprint.jsonRouteTemplates(),
             blueprint.mcpToolCatalogs(),
             resolvedRealtime,
-            blueprint.aguiPreRun()
+            blueprint.aguiPreRun(),
+            blueprint.resources()
         );
+    }
+
+    private AgentBlueprint applyChatInstructionBudget(AgentBlueprint blueprint) {
+        int maxChars = intRuntimeProperty(64_000,
+            "agent.runtime.chat.resource-context-max-chars",
+            "agent.runtime.chat.resourceContextMaxChars",
+            "agent.chat.resource-context-max-chars",
+            "agent.chat.resourceContextMaxChars");
+        String rendered = BlueprintInstructionRenderer.renderForChat(blueprint, maxChars);
+        if (rendered.equals(blueprint.systemInstruction())) {
+            return blueprint;
+        }
+        return new AgentBlueprint(
+            blueprint.name(),
+            blueprint.version(),
+            rendered,
+            blueprint.tools(),
+            blueprint.jsonRouteTemplates(),
+            blueprint.mcpToolCatalogs(),
+            blueprint.realtime(),
+            blueprint.aguiPreRun(),
+            blueprint.resources()
+        );
+    }
+
+    private int intRuntimeProperty(int defaultValue, String... keys) {
+        for (String key : keys) {
+            String value = runtimeProperty(key);
+            if (value != null && !value.isBlank()) {
+                try {
+                    return Integer.parseInt(value.trim());
+                } catch (NumberFormatException ignored) {
+                    return defaultValue;
+                }
+            }
+        }
+        return defaultValue;
     }
 
     private String runtimeProperty(String key) {

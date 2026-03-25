@@ -1,0 +1,8 @@
+agent:
+  runtime:
+    routes-include-pattern: classpath:routes/twilio-adapter-http-test.camel.yaml
+    agent-routes-enabled: false
+    realtime:
+      bind-relay: false
+      bind-processor: false
+      bind-token-processor: false

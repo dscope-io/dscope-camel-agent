@@ -14,10 +14,11 @@
   <properties>
     <maven.compiler.release>21</maven.compiler.release>
     <camel.version>4.15.0</camel.version>
+    <camel.mcp.version>1.4.1</camel.mcp.version>
     <jackson.version>2.20.0</jackson.version>
     <junit.jupiter.version>5.10.2</junit.jupiter.version>
     <persistence.version>1.1.0</persistence.version>
-    <a2a.version>1.0.0</a2a.version>
+    <a2a.version>1.0.1</a2a.version>
     <spring.ai.version>1.0.3</spring.ai.version>
     <spring.boot.version>3.5.11</spring.boot.version>
     <spring.framework.version>6.2.0</spring.framework.version>
@@ -52,6 +53,7 @@
     <module>camel-agent-core</module>
     <module>camel-agent-persistence-dscope</module>
     <module>camel-agent-spring-ai</module>
+    <module>camel-agent-twilio</module>
     <module>camel-agent-starter</module>
     <module>samples/agent-support-service</module>
   </modules>

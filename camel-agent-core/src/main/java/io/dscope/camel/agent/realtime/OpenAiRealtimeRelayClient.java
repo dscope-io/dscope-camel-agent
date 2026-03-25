@@ -49,12 +49,26 @@ public class OpenAiRealtimeRelayClient implements RealtimeRelayClient {
 
     @Override
     public void connect(String conversationId, String endpointUri, String model, String apiKey, RealtimeReconnectPolicy reconnectPolicy) throws Exception {
+        String modelName = (model == null || model.isBlank()) ? "gpt-4o-realtime-preview" : model;
+        connectInternal(conversationId, buildEndpoint(endpointUri, modelName), modelName, apiKey, reconnectPolicy);
+    }
+
+    public void connectToCall(String conversationId, String callId, String apiKey) throws Exception {
+        connectToCall(conversationId, callId, apiKey, DEFAULT_RECONNECT_POLICY);
+    }
+
+    public void connectToCall(String conversationId, String callId, String apiKey, RealtimeReconnectPolicy reconnectPolicy) throws Exception {
+        if (callId == null || callId.isBlank()) {
+            throw new IllegalArgumentException("Missing OpenAI call_id for realtime relay");
+        }
+        connectInternal(conversationId, DEFAULT_ENDPOINT + "?call_id=" + callId, "call:" + callId, apiKey, reconnectPolicy);
+    }
+
+    private void connectInternal(String conversationId, String endpoint, String modelName, String apiKey, RealtimeReconnectPolicy reconnectPolicy) throws Exception {
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException("Missing OpenAI API key for realtime relay");
         }
         RealtimeReconnectPolicy policy = reconnectPolicy == null ? DEFAULT_RECONNECT_POLICY : reconnectPolicy.normalized();
-        String modelName = (model == null || model.isBlank()) ? "gpt-4o-realtime-preview" : model;
-        String endpoint = buildEndpoint(endpointUri, modelName);
         RealtimeSession existing = sessions.get(conversationId);
         if (existing != null && existing.open()) {
             LOGGER.debug("Realtime relay already connected: conversationId={}, endpoint={}", conversationId, existing.endpointUri());
@@ -271,6 +285,12 @@ public class OpenAiRealtimeRelayClient implements RealtimeRelayClient {
 
     private String buildEndpoint(String endpointUri, String model) {
         String base = (endpointUri == null || endpointUri.isBlank()) ? DEFAULT_ENDPOINT : endpointUri;
+        if (base.contains("call_id=")) {
+            return base;
+        }
+        if (model == null || model.isBlank()) {
+            return base;
+        }
         if (base.contains("model=")) {
             return base;
         }

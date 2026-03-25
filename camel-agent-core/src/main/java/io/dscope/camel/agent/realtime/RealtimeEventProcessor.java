@@ -27,6 +27,7 @@ import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 import io.dscope.camel.agent.runtime.ConversationArchiveService;
 import io.dscope.camel.agent.runtime.RealtimeConfigResolver;
 import io.dscope.camel.agent.runtime.ResolvedAgentPlan;
+import io.dscope.camel.agent.runtime.RuntimePlaceholderResolver;
 import io.dscope.camel.agent.runtime.RuntimeControlState;
 import io.dscope.camel.agent.util.TextEncodingSupport;
 
@@ -952,6 +953,14 @@ public class RealtimeEventProcessor implements Processor {
             propertyOrNull(exchange, "agent.realtime.language")
         );
 
+        provider = RuntimePlaceholderResolver.resolveString(exchange.getContext(), provider);
+        model = RuntimePlaceholderResolver.resolveString(exchange.getContext(), model);
+        endpointUri = RuntimePlaceholderResolver.resolveRequiredExecutionTarget(exchange.getContext(), endpointUri, "realtime.endpointUri");
+        voice = RuntimePlaceholderResolver.resolveString(exchange.getContext(), voice);
+        inputAudioFormat = RuntimePlaceholderResolver.resolveString(exchange.getContext(), inputAudioFormat);
+        outputAudioFormat = RuntimePlaceholderResolver.resolveString(exchange.getContext(), outputAudioFormat);
+        language = RuntimePlaceholderResolver.resolveString(exchange.getContext(), language);
+
         RealtimeReconnectPolicy reconnectPolicy = new RealtimeReconnectPolicy(
             intOrDefault(resolvedRealtime == null ? null : resolvedRealtime.reconnectMaxSendRetries(), 3),
             intOrDefault(resolvedRealtime == null ? null : resolvedRealtime.reconnectMaxReconnects(), 8),
@@ -1016,7 +1025,11 @@ public class RealtimeEventProcessor implements Processor {
             propertyOrNull(exchange, "agent.realtime.agent-endpoint-uri"),
             propertyOrNull(exchange, "agent.realtime.agentEndpointUri")
         );
-        return configured == null || configured.isBlank() ? defaultAgentEndpointUri : configured;
+        return RuntimePlaceholderResolver.resolveRequiredExecutionTarget(
+            exchange.getContext(),
+            configured == null || configured.isBlank() ? defaultAgentEndpointUri : configured,
+            "agent.runtime.realtime.agent-endpoint-uri"
+        );
     }
 
     private ResolvedAgentPlan resolvePlan(Exchange exchange, String conversationId, JsonNode root) {

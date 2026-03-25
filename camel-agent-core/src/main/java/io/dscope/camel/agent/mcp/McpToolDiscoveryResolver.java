@@ -92,7 +92,8 @@ public final class McpToolDiscoveryResolver {
             blueprint.jsonRouteTemplates(),
             List.copyOf(catalogs),
             blueprint.realtime(),
-            blueprint.aguiPreRun()
+            blueprint.aguiPreRun(),
+            blueprint.resources()
         );
     }
 

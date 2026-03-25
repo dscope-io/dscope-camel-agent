@@ -4,6 +4,8 @@
 
 `camel-agent` is a blueprint-driven Apache Camel component for agent orchestration. It lets you define an agent in Markdown, expose tools backed by Camel routes, Kamelets, MCP services, or A2A peers, persist conversation and task state, and run the same agent from Camel Main or inside a Spring application.
 
+The recent session, resource, SIP, and outbound-call features are additive. They extend the same blueprint, routing, persistence, A2A, AGUI, and Spring AI runtime model that already existed in the core platform.
+
 This guide covers:
 
 - product architecture and module responsibilities
@@ -21,6 +23,7 @@ This guide covers:
 | `camel-agent-core` | `agent:` Camel component, blueprint loader, kernel, tool registry, schema validation, runtime helpers |
 | `camel-agent-persistence-dscope` | Persistence facade backed by DScope camel persistence with `redis`, `jdbc`, and `redis_jdbc` modes |
 | `camel-agent-spring-ai` | Spring AI model gateway, multi-provider routing, OpenAI/Gemini/Claude support, chat memory serialization |
+| `camel-agent-twilio` | Twilio telephony adapter built on provider-neutral outbound SIP and call-correlation contracts |
 | `camel-agent-starter` | Spring Boot auto-configuration for `AgentKernel`, persistence, blueprint loader, and optional chat memory |
 | `samples/agent-support-service` | Runnable sample showing support flows, AGUI, realtime voice, MCP discovery, A2A exposure, and local routes |
 
@@ -35,6 +38,9 @@ This guide covers:
 | Persistence-backed conversations | `PersistenceFacade` stores conversation events, task state, dynamic routes, and optionally archive streams |
 | Spring AI model execution | `SpringAiModelClient` backed by `MultiProviderSpringAiChatGateway` |
 | AGUI and realtime voice | Optional runtime bootstrap binds processors and relay clients for browser and voice flows |
+| Blueprint static resources | Markdown/PDF/local/remote reference material is resolved into chat and realtime agent context |
+| Route-driven session invocation | Ordinary Camel routes can use a structured start-or-continue session contract instead of raw text-only `agent:` exchange bodies |
+| Provider-neutral telephony | Outbound support calls and SIP-style ingress reuse the same conversation and realtime orchestration seams |
 
 ## Runtime Architecture
 
@@ -51,7 +57,7 @@ For lower-level event flow details, see `docs/architecture.md`.
 
 ## Main Scenarios
 
-### 1. Text Support Agent With Local Camel Tools
+### 1. Blueprint-Driven Camel Tool Routing
 
 Use this when you want deterministic business tools behind an LLM-controlled front door.
 
@@ -59,9 +65,9 @@ Use this when you want deterministic business tools behind an LLM-controlled fro
 - Each tool maps to a Camel route via `routeId` or `endpointUri`.
 - The model chooses tools, and the kernel validates input/output payloads before and after route execution.
 
-This is the baseline pattern shown by `samples/agent-support-service`.
+This is the baseline pattern shown by `samples/agent-support-service` and the foundation for all higher-level runtime flows.
 
-### 2. Multi-Plan Catalog With Versioned Agents
+### 2. Plan Catalogs And Versioning
 
 Use this when you want multiple agent families such as `support` and `billing`, with versioned blueprints.
 
@@ -72,7 +78,7 @@ Use this when you want multiple agent families such as `support` and `billing`, 
 
 This is useful for staged rollouts, tenant-specific plans, or A/B testing across agent versions.
 
-### 3. A2A-Exposed Ticket Or Utility Service
+### 3. A2A Integration
 
 Use this when you want one or more plans to be reachable as public A2A agents while still running inside the same Camel runtime.
 
@@ -83,17 +89,18 @@ Use this when you want one or more plans to be reachable as public A2A agents wh
 
 The support sample uses this pattern to expose `support-ticket-service` as an A2A-facing ticket lifecycle service backed by the local `ticketing:v1` plan.
 
-### 4. Offline Or Fallback-Friendly AGUI Demo
+### 4. AGUI And Browser Realtime
 
-Use this when you want the UI and routes to remain usable even when live model credentials are missing.
+Use this when the agent must participate in browser UI, realtime session init, transcript handling, or AGUI fallback flows.
 
 - AGUI pre-run can call the agent first.
 - If the response is empty or looks like an auth/key failure, fallback can route directly to deterministic tools.
 - Fallback can derive target URIs from blueprint tool metadata or use explicit override URIs.
+- Realtime processors can seed browser-side context and patch future session state.
 
-This is how the sample keeps `/agui/ui` usable without a valid OpenAI key.
+This is how the sample keeps `/agui/ui` usable without a valid OpenAI key while still exercising the normal conversation and plan-selection model.
 
-### 5. MCP Tool Discovery
+### 5. MCP Discovery
 
 Use this when your agent should discover tools from an MCP server instead of hard-coding all tool definitions.
 
@@ -104,7 +111,7 @@ Use this when your agent should discover tools from an MCP server instead of har
 
 This is appropriate for external support backends, CRM systems, or shared tool platforms.
 
-### 6. Dynamic JSON Route Templates
+### 6. JSON Route Templates
 
 Use this when you need parameterized route creation without letting the model author arbitrary Camel DSL.
 
@@ -115,16 +122,38 @@ Use this when you need parameterized route creation without letting the model au
 
 This gives you controlled dynamic routing without granting raw route authoring to the model.
 
-### 7. Realtime Voice And Browser Sessions
+### 7. Route-Driven Agent Sessions
 
-Use this when the agent must participate in a voice or browser realtime flow.
+Use this when a normal Camel route, REST endpoint, or integration flow needs to start or continue an agent session and receive structured metadata back.
 
-- Runtime realtime processors accept transcript and control events.
-- Session init can seed browser-side instruction context before the first user turn.
-- Relay, token, and session processors can be auto-bound by runtime bootstrap.
-- Route outputs can patch session context for future token minting.
+- `AgentSessionService` accepts `prompt`, `conversationId`, `sessionId`, `threadId`, `planName`, `planVersion`, and arbitrary `params`.
+- Missing identifiers create a new durable conversation id.
+- Existing identifiers continue the same conversation.
+- `AgentSessionInvokeProcessor` turns JSON or map request bodies into a structured JSON response with resolved plan and task metadata.
 
-This is the foundation used by the sample AGUI and realtime flows.
+This is the preferred façade when a route needs more than the plain assistant message returned by the raw `agent:` producer.
+
+### 8. Blueprint Static Resources
+
+Use this when an agent needs durable reference material injected into chat instructions or realtime session context.
+
+- Blueprints declare `resources[]` alongside tools and other metadata.
+- Runtime resolves classpath, file, plain-path, and `http(s)` resources.
+- Resource text is bounded separately for chat and realtime surfaces.
+- Runtime refresh can re-resolve resources for active conversations.
+
+This extends normal blueprint authoring without introducing a separate attachment model.
+
+### 9. SIP Ingress And Outbound Support Calls
+
+Use this when the agent must participate in telephony flows.
+
+- Inbound adapters normalize provider events into `/sip/adapter/v1/session/{conversationId}/{start|turn|end}`.
+- Realtime processors map final transcript turns into the same `agent:` flow used by web chat.
+- Outbound support calls use `OutboundSipCallRequest`, `OutboundSipCallResult`, and `SipProviderClient` from core.
+- Provider-specific placement logic lives in adapter modules such as `camel-agent-twilio`.
+
+This keeps call control provider-specific while the conversation, audit, and route orchestration model stays uniform.
 
 ## Build And Run
 
@@ -435,7 +464,7 @@ The `agent:` endpoint uses headers for conversation and plan selection.
 
 AGUI and realtime flows additionally bind correlation keys such as session, run, and thread identifiers to the conversation id for audit visibility.
 
-## Blueprint Authoring Guide
+## Blueprint Authoring And Tool Backends
 
 Blueprints are Markdown files. The loader uses a hybrid contract:
 
@@ -486,6 +515,7 @@ The current `AgentBlueprint` model supports these top-level concepts:
 | `jsonRouteTemplates` | Parsed from YAML blocks |
 | `realtime` | Parsed from YAML blocks |
 | `aguiPreRun` | Parsed from YAML blocks |
+| `resources` | Parsed from YAML blocks and resolved into static context payloads |
 
 ### Tool Definitions
 
@@ -594,6 +624,137 @@ Blueprints may define `aguiPreRun` or nested `agui.preRun`.
 | `fallback.ticketUri` | Explicit ticket URI override. |
 | `fallback.ticketKeywords` | Keywords that indicate ticket intent. |
 | `fallback.errorMarkers` | Markers that indicate auth or provider failure. |
+
+### Blueprint Resources Section
+
+Blueprints may define a top-level `resources` YAML section.
+
+| Field | Meaning |
+| --- | --- |
+| `name` | Logical resource name used for diagnostics and rendering labels. |
+| `uri` | Resource location. Supports `classpath:`, `file:`, plain paths, and `http(s)` URLs. |
+| `kind` | Resource kind such as `document`. |
+| `format` | Format hint such as `markdown`, `text`, or `pdf`. |
+| `includeIn` | Target surfaces such as `chat`, `realtime`, or both. |
+| `loadPolicy` | Current startup-oriented loading policy used by runtime resolution. |
+| `optional` | Whether missing resource resolution is tolerated. |
+| `maxBytes` | Maximum raw payload size accepted before truncation or rejection. |
+
+Behavior:
+
+- Markdown/text resources are injected directly as text.
+- PDF resources are resolved through Camel PDF extraction.
+- Chat instruction rendering uses `agent.runtime.chat.resource-context-max-chars`.
+- Realtime session seed rendering uses `agent.runtime.realtime.resource-context-max-chars`.
+- Runtime refresh re-resolves resources and can append plan-aware refresh events to active conversations.
+
+Example:
+
+```yaml
+resources:
+  - name: login-handbook
+    uri: classpath:agents/support/v2/resources/login-handbook.md
+    kind: document
+    format: markdown
+    includeIn: [chat, realtime]
+    loadPolicy: startup
+    optional: false
+```
+
+### Runtime Placeholder Syntax
+
+Execution-facing blueprint fields may use runtime placeholders so environment-specific values and secrets stay out of the literal blueprint text.
+
+Supported forms:
+
+- Camel property placeholders: `{{key}}`
+- Camel property placeholders with defaults: `{{key:defaultValue}}`
+- environment or JVM system placeholders: `${NAME}`
+- environment or JVM system placeholders with defaults: `${NAME:defaultValue}`
+
+Examples:
+
+```yaml
+tools:
+  - name: crm.lookup
+    endpointUri: mcp:https://{{agent.crm.host}}/mcp?token=${CRM_TOKEN}
+
+aguiPreRun:
+  agentEndpointUri: {{agent.runtime.agui.agent-endpoint-uri}}
+
+realtime:
+  endpointUri: ${REALTIME_WS_URL:wss://api.openai.com/v1/realtime}
+```
+
+Resolution behavior:
+
+- resolution happens at runtime, not during static blueprint authoring
+- this keeps concrete execution targets and secret values out of the model-facing instruction surface
+- unresolved placeholders are preserved for ordinary string resolution helpers but execution-target fields now fail fast
+
+Fail-fast execution-target fields:
+
+- `tools[].routeId`
+- `tools[].endpointUri`
+- `aguiPreRun.agentEndpointUri`
+- `aguiPreRun.fallback.kbUri`
+- `aguiPreRun.fallback.ticketUri`
+- `realtime.endpointUri`
+- structured session endpoint overrides such as `agent.session.endpointUri`
+
+If one of those fields still contains `{{...}}` or `${...}` after runtime resolution, execution stops with an `IllegalArgumentException` naming the unresolved field.
+
+### Route-Driven Session Invocation
+
+Raw `agent:` endpoint usage remains valid, but it returns assistant text only.
+
+For structured route integration, core now provides:
+
+- `AgentSessionRequest`
+- `AgentSessionResponse`
+- `AgentSessionService`
+- `AgentSessionInvokeProcessor`
+
+Canonical request payload:
+
+```json
+{
+  "prompt": "Please call the customer back",
+  "conversationId": "optional-existing-conversation",
+  "planName": "support",
+  "planVersion": "v2",
+  "params": {
+    "customerId": "123",
+    "channel": "sip"
+  }
+}
+```
+
+Canonical response payload:
+
+```json
+{
+  "conversationId": "effective-session-id",
+  "sessionId": "effective-session-id",
+  "created": true,
+  "message": "assistant reply",
+  "resolvedPlanName": "support",
+  "resolvedPlanVersion": "v2",
+  "resolvedBlueprint": "classpath:agents/support/v2/agent.md",
+  "events": [],
+  "taskState": null,
+  "params": {
+    "customerId": "123",
+    "channel": "sip"
+  }
+}
+```
+
+Normalization rules:
+
+- `conversationId` is the durable backend key.
+- `sessionId` and `threadId` are accepted as alternate ingress identifiers and normalized to the same conversation when needed.
+- request params are preserved as exchange properties under `agent.session.params` for route-side consumers.
 
 ### Blueprint Authoring Recommendations
 

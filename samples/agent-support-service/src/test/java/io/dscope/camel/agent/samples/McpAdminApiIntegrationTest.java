@@ -1,8 +1,5 @@
 package io.dscope.camel.agent.samples;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.dscope.camel.agent.runtime.AgentRuntimeBootstrap;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.URI;
@@ -11,14 +8,26 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Map;
+import java.util.UUID;
+
 import org.apache.camel.main.Main;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.dscope.camel.agent.api.PersistenceFacade;
+import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
+import io.dscope.camel.agent.runtime.AgentRuntimeBootstrap;
+
 class McpAdminApiIntegrationTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private record HttpResult(int statusCode, String body) {
+    }
 
     @Test
     @Timeout(60)
@@ -94,6 +103,81 @@ class McpAdminApiIntegrationTest {
         }
     }
 
+    @Test
+    @Timeout(60)
+    void shouldRefreshRuntimeResourcesForConversationUsingV2Blueprint() throws Exception {
+        int port = randomPort();
+        String previousPort = System.getProperty("agent.runtime.test-port");
+        System.setProperty("agent.runtime.test-port", Integer.toString(port));
+
+        Main main = new Main();
+        main.bind("ticketLifecycleProcessor", new SupportTicketLifecycleProcessor(MAPPER));
+        try {
+            AgentRuntimeBootstrap.bootstrap(main, "ag-ui-playwright-audit-test.yaml");
+            SampleAdminMcpBindings.bindIfMissing(main, "ag-ui-playwright-audit-test.yaml");
+            main.start();
+
+            String conversationId = "runtime-refresh-it-" + System.currentTimeMillis();
+            seedPlanSelection(main, conversationId, "support", "v2");
+
+            JsonNode appendResult = mcpToolCall(port, "audit.conversation.agentMessage", Map.of(
+                "conversationId", conversationId,
+                "message", "runtime refresh integration test"
+            ));
+            Assertions.assertTrue(appendResult.path("structuredContent").path("accepted").asBoolean(false));
+
+            HttpResult refreshResult = post(port, "/runtime/refresh/" + conversationId, "{}");
+            Assertions.assertEquals(200, refreshResult.statusCode());
+
+            JsonNode refreshBody = MAPPER.readTree(refreshResult.body());
+            Assertions.assertTrue(refreshBody.path("refreshed").asBoolean(false));
+            Assertions.assertEquals("classpath:agents/support/v2/agent.md", refreshBody.path("blueprint").asText());
+            Assertions.assertEquals("support", refreshBody.path("planName").asText());
+            Assertions.assertEquals("v2", refreshBody.path("planVersion").asText());
+            Assertions.assertEquals("0.2.0", refreshBody.path("agentVersion").asText());
+            Assertions.assertEquals("single", refreshBody.path("conversationScope").asText());
+            Assertions.assertEquals(1, refreshBody.path("conversationTargetCount").asInt());
+            Assertions.assertEquals(1, refreshBody.path("conversationEventsSynced").asInt());
+            Assertions.assertEquals(2, refreshBody.path("blueprintResourceCount").asInt());
+            Assertions.assertEquals(2, refreshBody.path("resources").path("blueprintResourceCount").asInt());
+            Assertions.assertFalse(refreshBody.path("requiresRouteRestart").asBoolean(true));
+        } finally {
+            try {
+                main.stop();
+            } catch (Exception ignored) {
+            }
+            if (previousPort == null) {
+                System.clearProperty("agent.runtime.test-port");
+            } else {
+                System.setProperty("agent.runtime.test-port", previousPort);
+            }
+        }
+    }
+
+    private static void seedPlanSelection(Main main,
+                                          String conversationId,
+                                          String planName,
+                                          String planVersion) {
+        AgentPlanSelectionResolver resolver = main.getCamelContext().getRegistry().findSingleByType(AgentPlanSelectionResolver.class);
+        PersistenceFacade persistenceFacade = main.getCamelContext().getRegistry().findSingleByType(PersistenceFacade.class);
+        Assertions.assertNotNull(resolver, "AgentPlanSelectionResolver should be bound");
+        Assertions.assertNotNull(persistenceFacade, "PersistenceFacade should be bound");
+
+        persistenceFacade.appendEvent(
+            resolver.selectionEvent(
+                conversationId,
+                resolver.resolve(
+                    conversationId,
+                    planName,
+                    planVersion,
+                    main.getCamelContext().resolvePropertyPlaceholders("{{agent.agents-config}}"),
+                    main.getCamelContext().resolvePropertyPlaceholders("{{agent.blueprint}}")
+                )
+            ),
+            UUID.randomUUID().toString()
+        );
+    }
+
     private static JsonNode mcpToolCall(int port, String toolName, Map<String, Object> arguments) throws Exception {
         return mcpCall(port, "tools/call", Map.of(
             "name", toolName,
@@ -126,6 +210,18 @@ class McpAdminApiIntegrationTest {
             "MCP envelope should not contain error: " + response.body());
 
         return envelope.path("result");
+    }
+
+    private static HttpResult post(int port, String path, String body) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create("http://127.0.0.1:" + port + path))
+            .timeout(Duration.ofSeconds(10))
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(body == null ? "" : body))
+            .build();
+
+        HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+        return new HttpResult(response.statusCode(), response.body() == null ? "" : response.body());
     }
 
     private static boolean containsTool(JsonNode tools, String expectedName) {

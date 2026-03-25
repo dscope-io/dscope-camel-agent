@@ -1,17 +1,23 @@
 package io.dscope.camel.agent.realtime;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.Properties;
+
 import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
 import org.apache.camel.impl.DefaultCamelContext;
 import org.apache.camel.support.DefaultExchange;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import io.dscope.camel.agent.blueprint.MarkdownBlueprintLoader;
 
 class RealtimeBrowserSessionInitProcessorTest {
 
@@ -49,7 +55,7 @@ class RealtimeBrowserSessionInitProcessorTest {
 
             processor.process(exchange);
 
-            Assertions.assertEquals(200, exchange.getMessage().getHeader(Exchange.HTTP_RESPONSE_CODE));
+            Assertions.assertEquals(200, exchange.getMessage().getHeader(Exchange.HTTP_RESPONSE_CODE, Integer.class));
 
             JsonNode response = MAPPER.readTree(exchange.getMessage().getBody(String.class));
             JsonNode session = response.path("session");
@@ -77,7 +83,7 @@ class RealtimeBrowserSessionInitProcessorTest {
 
             processor.process(exchange);
 
-            Assertions.assertEquals(200, exchange.getMessage().getHeader(Exchange.HTTP_RESPONSE_CODE));
+            Assertions.assertEquals(200, exchange.getMessage().getHeader(Exchange.HTTP_RESPONSE_CODE, Integer.class));
 
             JsonNode response = MAPPER.readTree(exchange.getMessage().getBody(String.class));
             JsonNode profile = response.path("session").path("metadata").path("camelAgent").path("agentProfile");
@@ -121,6 +127,76 @@ class RealtimeBrowserSessionInitProcessorTest {
 
             Assertions.assertTrue(purpose.length() > 240);
             Assertions.assertTrue(purpose.contains("handoff-ready summaries"));
+        } finally {
+            camelContext.stop();
+        }
+    }
+
+    @Test
+    void shouldRefreshSessionInstructionsWhenBlueprintResourcesChange() throws Exception {
+        RealtimeBrowserSessionRegistry registry = new RealtimeBrowserSessionRegistry();
+        RealtimeBrowserSessionInitProcessor processor = new RealtimeBrowserSessionInitProcessor(registry);
+
+        Path resourceFile = Files.createTempFile("resource-refresh", ".md");
+        Files.writeString(resourceFile, "# Resource\n\nOriginal support guidance.");
+        Path blueprintFile = Files.createTempFile("resource-refresh-agent", ".md");
+        Files.writeString(blueprintFile, """
+            # Agent: RefreshAssistant
+
+            Version: 0.1.0
+
+            ## System
+
+            You are a refreshable support assistant.
+
+            ## Tools
+
+            ```yaml
+            tools:
+              - name: kb.search
+                description: Search local support articles
+                routeId: kb-search
+                inputSchemaInline:
+                  type: object
+                  required: [query]
+                  properties:
+                    query:
+                      type: string
+            ```
+
+            ## Resources
+
+            ```yaml
+            resources:
+              - name: refresh-guide
+                uri: file:%s
+                format: markdown
+                includeIn: [realtime]
+            ```
+            """.formatted(resourceFile.toString().replace("\\", "\\\\")));
+
+        CamelContext camelContext = createContext(Map.of("agent.blueprint", "file:" + blueprintFile));
+        try {
+            Exchange init = new DefaultExchange(camelContext);
+            init.getMessage().setHeader("conversationId", "resource-refresh-conv");
+            init.getMessage().setBody("{}");
+            processor.process(init);
+
+            ObjectNode initialSession = registry.getSession("resource-refresh-conv");
+            Assertions.assertTrue(initialSession.path("instructions").asText("").contains("Original support guidance."));
+
+            Files.writeString(resourceFile, "# Resource\n\nUpdated support guidance for refresh.");
+            processor.clearBlueprintCache();
+            MarkdownBlueprintLoader loader = new MarkdownBlueprintLoader();
+            processor.refreshAgentProfileForConversation(
+                "resource-refresh-conv",
+                loader.load("file:" + blueprintFile),
+                240,
+                12_000
+            );
+
+            ObjectNode refreshedSession = registry.getSession("resource-refresh-conv");
+            Assertions.assertTrue(refreshedSession.path("instructions").asText("").contains("Updated support guidance for refresh."));
         } finally {
             camelContext.stop();
         }

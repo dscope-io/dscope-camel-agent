@@ -200,6 +200,32 @@
             ref: runtimeResourceRefreshProcessor
 
 - route:
+    id: sample-agent-session-http
+    from:
+      id: fromSampleAgentSessionHttp
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/sample/agent/session?httpMethodRestrict=POST
+      steps:
+        - to:
+            id: toSampleAgentSessionDirect
+            uri: direct:sample-agent-session
+
+- route:
+    id: sample-agent-session-direct
+    from:
+      id: fromSampleAgentSessionDirect
+      uri: direct:sample-agent-session
+      steps:
+        - setHeader:
+            id: setHeaderSampleAgentSessionEndpointUri
+            name: agent.session.endpointUri
+            constant: "{{agent.runtime.sample-agent-endpoint-uri}}"
+        - process:
+            id: processSampleAgentSessionInvoke
+            ref: sampleAgentSessionInvokeProcessor
+
+- route:
     id: sample-runtime-refresh-conversation
     from:
       id: fromSampleRuntimeRefreshConversation

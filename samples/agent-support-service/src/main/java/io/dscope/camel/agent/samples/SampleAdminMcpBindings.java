@@ -10,6 +10,7 @@ final class SampleAdminMcpBindings {
     }
 
     static void bindIfMissing(Main main, String applicationYamlPath) {
+        bindIfMissing(main, "sampleAgentSessionInvokeProcessor", newAgentSessionInvokeProcessor());
         if (main.lookup("mcpError", Object.class) != null) {
             return;
         }
@@ -282,6 +283,10 @@ final class SampleAdminMcpBindings {
         return value != null ? value : new ObjectMapper();
     }
 
+    private static Object lookupFromRegistry(Main main, String name) {
+        return main.lookup(name, Object.class);
+    }
+
     private static Object required(Main main, String name) {
         Object value = main.lookup(name, Object.class);
         if (value == null) {
@@ -307,6 +312,14 @@ final class SampleAdminMcpBindings {
                 return constructor.newInstance(args);
             }
             throw ignored;
+        }
+    }
+
+    private static Object newAgentSessionInvokeProcessor() {
+        try {
+            return newInstance("io.dscope.camel.agent.session.AgentSessionInvokeProcessor");
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to create sample agent session invoke processor", e);
         }
     }
 }
