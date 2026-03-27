@@ -1,12 +1,15 @@
 package io.dscope.camel.agent.diagnostics;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.dscope.camel.agent.model.AgentEvent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
 import org.apache.camel.Exchange;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.dscope.camel.agent.model.AgentEvent;
 
 public final class TraceSupport {
 

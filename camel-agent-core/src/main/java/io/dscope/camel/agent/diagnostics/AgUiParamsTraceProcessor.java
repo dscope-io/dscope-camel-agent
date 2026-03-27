@@ -1,12 +1,14 @@
 package io.dscope.camel.agent.diagnostics;
 
-import io.dscope.camel.agent.agui.AgentAgUiExchangeProperties;
 import java.util.List;
 import java.util.Map;
+
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.dscope.camel.agent.agui.AgentAgUiExchangeProperties;
 
 public class AgUiParamsTraceProcessor implements Processor {
 

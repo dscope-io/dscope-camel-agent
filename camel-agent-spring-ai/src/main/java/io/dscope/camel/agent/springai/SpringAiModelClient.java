@@ -1,16 +1,19 @@
 package io.dscope.camel.agent.springai;
 
+import java.util.List;
+import java.util.function.Consumer;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import io.dscope.camel.agent.api.AiModelClient;
 import io.dscope.camel.agent.model.AgentEvent;
 import io.dscope.camel.agent.model.ModelOptions;
 import io.dscope.camel.agent.model.ModelResponse;
 import io.dscope.camel.agent.model.ToolSpec;
-import java.util.List;
-import java.util.function.Consumer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class SpringAiModelClient implements AiModelClient {
 
