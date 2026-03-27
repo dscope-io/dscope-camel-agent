@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dscope.camel.mcp.model.McpRequest;
 import io.dscope.camel.mcp.model.McpResponse;
+import io.dscope.camel.mcp.processor.McpHttpValidatorProcessor;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -16,7 +17,10 @@ import org.apache.camel.support.DefaultProducer;
  */
 public class McpProducer extends DefaultProducer {
     public static final String HEADER_METHOD = "CamelMcpMethod";
+    public static final String HEADER_PROTOCOL_VERSION = "CamelMcpProtocolVersion";
     private static final String LOCAL_URI_PREFIX = "camel:";
+    private static final String MCP_ACCEPT = "application/json, text/event-stream";
+    private static final String JSON_CONTENT_TYPE = "application/json";
 
     private final McpEndpoint endpoint;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -50,8 +54,9 @@ public class McpProducer extends DefaultProducer {
         }
 
         String json = mapper.writeValueAsString(req);
+        Map<String, Object> transportHeaders = buildRemoteTransportHeaders();
         ProducerTemplate template = endpoint.getCamelContext().createProducerTemplate();
-        Object rawResponse = template.requestBody(targetUri, json, Object.class);
+        Object rawResponse = template.requestBodyAndHeaders(targetUri, json, transportHeaders, Object.class);
         return toMcpResponse(rawResponse, req.getId());
     }
 
@@ -123,5 +128,33 @@ public class McpProducer extends DefaultProducer {
         Map<String, Object> params = new LinkedHashMap<>();
         rawParams.forEach((key, value) -> params.put(String.valueOf(key), value));
         return params;
+    }
+
+    private Map<String, Object> buildRemoteTransportHeaders() {
+        Map<String, Object> headers = new LinkedHashMap<>();
+        headers.put(Exchange.HTTP_METHOD, "POST");
+        headers.put("Accept", MCP_ACCEPT);
+        headers.put("Content-Type", JSON_CONTENT_TYPE);
+
+        String protocolVersion = resolveProtocolVersion();
+        if (protocolVersion != null && !protocolVersion.isBlank()) {
+            headers.put("MCP-Protocol-Version", protocolVersion);
+        }
+        return headers;
+    }
+
+    private String resolveProtocolVersion() {
+        String propertyValue = endpoint.getCamelContext()
+                .getGlobalOption(McpHttpValidatorProcessor.EXCHANGE_PROTOCOL_VERSION);
+        if (propertyValue != null && !propertyValue.isBlank()) {
+            return propertyValue;
+        }
+
+        String systemValue = System.getProperty(HEADER_PROTOCOL_VERSION);
+        if (systemValue != null && !systemValue.isBlank()) {
+            return systemValue;
+        }
+
+        return null;
     }
 }
