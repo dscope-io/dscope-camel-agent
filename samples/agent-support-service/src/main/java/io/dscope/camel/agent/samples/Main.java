@@ -28,6 +28,7 @@ public final class Main {
         OpenAiRealtimeCallControlClient callControlClient = createCallControlClient();
 
         main.bind("ticketLifecycleProcessor", new SupportTicketLifecycleProcessor(objectMapper));
+        main.bind("agUiPlanVersionSelector", new AgUiPlanVersionSelectorProcessor());
         main.bind("supportCallRegistry", supportCallRegistry);
         main.bind("openAiRealtimeCallSessionRegistry", openAiCallSessionRegistry);
         main.bind("openAiRealtimeCallControlRequestFactory", openAiRequestFactory);

@@ -39,8 +39,8 @@ class McpAdminApiIntegrationTest {
         Main main = new Main();
         main.bind("ticketLifecycleProcessor", new SupportTicketLifecycleProcessor(MAPPER));
         try {
-            AgentRuntimeBootstrap.bootstrap(main, "ag-ui-playwright-audit-test.yaml");
-            SampleAdminMcpBindings.bindIfMissing(main, "ag-ui-playwright-audit-test.yaml");
+            AgentRuntimeBootstrap.bootstrap(main, "plan-catalog-runtime-test.yaml");
+            SampleAdminMcpBindings.bindIfMissing(main, "plan-catalog-runtime-test.yaml");
             main.start();
 
             JsonNode initialize = mcpCall(port, "initialize", Map.of(
@@ -113,8 +113,8 @@ class McpAdminApiIntegrationTest {
         Main main = new Main();
         main.bind("ticketLifecycleProcessor", new SupportTicketLifecycleProcessor(MAPPER));
         try {
-            AgentRuntimeBootstrap.bootstrap(main, "ag-ui-playwright-audit-test.yaml");
-            SampleAdminMcpBindings.bindIfMissing(main, "ag-ui-playwright-audit-test.yaml");
+            AgentRuntimeBootstrap.bootstrap(main, "plan-catalog-runtime-test.yaml");
+            SampleAdminMcpBindings.bindIfMissing(main, "plan-catalog-runtime-test.yaml");
             main.start();
 
             String conversationId = "runtime-refresh-it-" + System.currentTimeMillis();

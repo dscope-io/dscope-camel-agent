@@ -25,10 +25,19 @@ openai:
 
 agent:
   agents-config: classpath:agents/agents.yaml
+  blueprint: ${AGENT_BLUEPRINT:classpath:agents/calendar/v2/agent.md}
+  tools:
+    calendar:
+      endpoint-uri: ${AGENT_TOOLS_CALENDAR_ENDPOINT_URI:https://camel-calendar-availability-dzl2b73d2a-ew.a.run.app/mcp}
+      timezone: ${AGENT_TOOLS_CALENDAR_TIMEZONE:Europe/Bratislava}
+      default-calendar-id: ${AGENT_TOOLS_CALENDAR_DEFAULT_CALENDAR_ID:9bf7c6b4ed0524a46af69ab993e0a4f5a2bf94c469a9fa9001e3f38fa166f1f0@group.calendar.google.com}
+    crm:
+      endpoint-uri: ${AGENT_TOOLS_CRM_ENDPOINT_URI:mcp:https://${AGENT_SUPPORT_CRM_MCP_HOST:camel-crm-service-702748800338.europe-west1.run.app}/mcp}
   runtime:
     routes-include-pattern: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ticket-service.camel.yaml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/admin-platform.camel.yaml,classpath:routes/sip-adapter-platform.camel.yaml,classpath:routes/twilio-adapter-platform.camel.yaml,classpath:routes/twilio-management.camel.yaml,classpath:routes/openai-sip-support.camel.yaml
     agent-routes-enabled: true
-    sample-agent-endpoint-uri: agent:ticketing?blueprint=classpath:agents/ticketing/v1/agent.md
+    sample-agent-endpoint-uri: "{{agent.runtime.calendar-agent-endpoint-uri}}"
+    calendar-agent-endpoint-uri: agent:calendar?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}
     support:
       crm-mcp-endpoint-uri: mcp:https://${AGENT_SUPPORT_CRM_MCP_HOST:camel-crm-service-702748800338.europe-west1.run.app}/mcp
       agui-agent-endpoint-uri: agent:support?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}
@@ -40,7 +49,7 @@ agent:
       mode: spring-ai
     realtime:
       processor-bean-name: supportRealtimeEventProcessorCore
-      agent-endpoint-uri: agent:support?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}
+      agent-endpoint-uri: "{{agent.runtime.calendar-agent-endpoint-uri}}"
       agent-profile-purpose-max-chars: 0
       resource-context-max-chars: 12000
       # Server-side TTL for browser WebRTC init context (conversationId -> session template)
@@ -65,7 +74,7 @@ agent:
       bind-processors: true
     agui:
       pre-run:
-        agent-endpoint-uri: agent:support?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}
+        agent-endpoint-uri: "{{agent.runtime.calendar-agent-endpoint-uri}}"
         fallback-enabled: true
         fallback:
           kb-tool-name: kb.search
@@ -117,7 +126,6 @@ agent:
         model: claude-3-5-sonnet-20241022
         api-key-system-property: anthropic.api.key
         anthropic-version: "2023-06-01"
-  blueprint: classpath:agents/support/agent.md
   sample:
     prompt: My login is failing, please open a support ticket
   audit:

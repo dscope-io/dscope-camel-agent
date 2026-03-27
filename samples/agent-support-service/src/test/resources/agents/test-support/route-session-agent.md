@@ -11,3 +11,18 @@ Rules:
 1. Return a concise plain-text confirmation.
 2. Do not call tools.
 3. Do not add markdown.
+
+## Tools
+
+```yaml
+tools:
+  - name: kb.search
+    description: Local knowledge base search route available for structural blueprint validation
+    routeId: kb-search
+    inputSchemaInline:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+```

@@ -15,8 +15,7 @@ Routing rules:
 
 AGUI note:
 
-- In this sample, AGUI frontend transport is configured by runtime routes and processors.
-- This test blueprint intentionally excludes remote MCP service discovery so the integration test remains deterministic.
+- This test blueprint is fully local and intentionally excludes remote MCP and A2A dependencies so the AGUI audit integration test stays deterministic.
 
 ## Tools
 
@@ -32,8 +31,8 @@ tools:
         query:
           type: string
   - name: support.ticket.manage
-    description: Manage a support ticket over the sample A2A ticket service and return ticket details
-    endpointUri: a2a:support-ticket-service?remoteUrl={{agent.runtime.a2a.public-base-url}}/a2a
+    description: Manage a support ticket using the local deterministic sample route
+    routeId: support-ticket-manage
     inputSchemaInline:
       type: object
       required: [query]
@@ -53,43 +52,6 @@ tools:
       properties:
         query:
           type: string
-```
-
-## JSON Route Templates
-
-```yaml
-jsonRouteTemplates:
-  - id: http.request
-    toolName: route.template.http.request
-    description: Instantiate and execute a safe JSON DSL HTTP route from template parameters
-    invokeUriParam: fromUri
-    parametersSchema:
-      type: object
-      required: [fromUri, method, url]
-      properties:
-        fromUri:
-          type: string
-          description: Route entrypoint (for example direct:dynamic-http)
-        method:
-          type: string
-          enum: [GET, POST, PUT, DELETE]
-        url:
-          type: string
-          description: HTTP target URL for toD
-        executeBody:
-          type: object
-          description: Optional body sent when invoking generated route
-    routeTemplate:
-      route:
-        id: agent.dynamic.http.request
-        from:
-          uri: "{{fromUri}}"
-          steps:
-            - setHeader:
-                name: CamelHttpMethod
-                constant: "{{method}}"
-            - toD:
-                uri: "{{url}}"
 ```
 
 ## AGUI Pre-Run

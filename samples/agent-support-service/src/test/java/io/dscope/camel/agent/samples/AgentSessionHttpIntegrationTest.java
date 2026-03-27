@@ -33,8 +33,8 @@ class AgentSessionHttpIntegrationTest {
         main.bind("ticketLifecycleProcessor", new SupportTicketLifecycleProcessor(MAPPER));
 
         try {
-            AgentRuntimeBootstrap.bootstrap(main, "ag-ui-playwright-audit-test.yaml");
-            SampleAdminMcpBindings.bindIfMissing(main, "ag-ui-playwright-audit-test.yaml");
+            AgentRuntimeBootstrap.bootstrap(main, "ag-ui-playwright-audit-direct-blueprint-test.yaml");
+            SampleAdminMcpBindings.bindIfMissing(main, "ag-ui-playwright-audit-direct-blueprint-test.yaml");
             main.start();
 
             String requestBody = MAPPER.writeValueAsString(Map.of(
@@ -44,7 +44,7 @@ class AgentSessionHttpIntegrationTest {
             ));
 
             HttpResponse<String> response = post(port, "/sample/agent/session", requestBody);
-            Assertions.assertEquals(200, response.statusCode());
+            Assertions.assertEquals(200, response.statusCode(), response.body());
 
             JsonNode json = MAPPER.readTree(response.body());
             Assertions.assertFalse(json.path("conversationId").asText().isBlank());

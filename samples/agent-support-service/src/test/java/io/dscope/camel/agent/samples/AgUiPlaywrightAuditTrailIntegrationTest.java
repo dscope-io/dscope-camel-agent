@@ -34,8 +34,8 @@ class AgUiPlaywrightAuditTrailIntegrationTest {
         main.bind("ticketLifecycleProcessor", new SupportTicketLifecycleProcessor(new ObjectMapper()));
 
         try {
-            AgentRuntimeBootstrap.bootstrap(main, "ag-ui-playwright-audit-test.yaml");
-            SampleAdminMcpBindings.bindIfMissing(main, "ag-ui-playwright-audit-test.yaml");
+            AgentRuntimeBootstrap.bootstrap(main, "ag-ui-playwright-audit-direct-blueprint-test.yaml");
+            SampleAdminMcpBindings.bindIfMissing(main, "ag-ui-playwright-audit-direct-blueprint-test.yaml");
             main.start();
 
             String conversationId = "agui-http-it-" + System.currentTimeMillis();

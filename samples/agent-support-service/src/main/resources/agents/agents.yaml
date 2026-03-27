@@ -7,6 +7,13 @@ plans:
         blueprint: classpath:agents/support/v1/agent.md
       - version: v2
         blueprint: classpath:agents/support/v2/agent.md
+  - name: calendar
+    versions:
+      - version: v1
+        blueprint: classpath:agents/calendar/v1/agent.md
+      - version: v2
+        default: true
+        blueprint: classpath:agents/calendar/v2/agent.md
   - name: billing
     versions:
       - version: v1

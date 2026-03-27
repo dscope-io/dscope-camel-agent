@@ -15,6 +15,11 @@ import io.dscope.camel.agent.audit.mcp.AuditMcpToolsCallProcessor;
 import io.dscope.camel.agent.audit.mcp.AuditMcpToolsListProcessor;
 import io.dscope.camel.agent.api.AiModelClient;
 import io.dscope.camel.agent.api.PersistenceFacade;
+import io.dscope.camel.agent.diagnostics.AgUiParamsTraceProcessor;
+import io.dscope.camel.agent.diagnostics.DelegatingTraceProcessor;
+import io.dscope.camel.agent.diagnostics.PayloadTraceProcessor;
+import io.dscope.camel.agent.diagnostics.ResponseTraceProcessor;
+import io.dscope.camel.agent.diagnostics.TracingConversationArchiveService;
 import io.dscope.camel.agent.kernel.InMemoryPersistenceFacade;
 import io.dscope.camel.agent.kernel.StaticAiModelClient;
 import io.dscope.camel.agent.model.AuditGranularity;
@@ -97,7 +102,15 @@ public final class AgentRuntimeBootstrap {
         persistenceFacade = maybeWrapAsyncEventPersistence(properties, persistenceFacade, "main");
         main.bind("persistenceFacade", persistenceFacade);
 
+        boolean diagnosticsTraceEnabled = booleanPropertyWithAliases(properties, true,
+            "agent.diagnostics.trace.enabled",
+            "agent.diagnostics.traceEnabled"
+        );
+
         ConversationArchiveService conversationArchiveService = createConversationArchiveService(properties, objectMapper);
+        if (diagnosticsTraceEnabled) {
+            conversationArchiveService = new TracingConversationArchiveService(conversationArchiveService, true, objectMapper);
+        }
         main.bind("conversationArchiveService", conversationArchiveService);
         String plansConfig = properties.getProperty("agent.agents-config");
         String blueprintUri = properties.getProperty("agent.blueprint");
@@ -143,12 +156,27 @@ public final class AgentRuntimeBootstrap {
             blueprintUri
         );
 
+        Object auditConversationViewBinding = auditConversationViewProcessor;
+        Object auditConversationSessionDataBinding = auditConversationSessionDataProcessor;
+        if (diagnosticsTraceEnabled) {
+            auditConversationViewBinding = new DelegatingTraceProcessor(
+                "auditConversationViewProcessor",
+                auditConversationViewProcessor,
+                true
+            );
+            auditConversationSessionDataBinding = new DelegatingTraceProcessor(
+                "auditConversationSessionDataProcessor",
+                auditConversationSessionDataProcessor,
+                true
+            );
+        }
+
         main.bind("auditTrailService", new AuditTrailService(persistenceFacade, objectMapper));
         main.bind("auditTrailSearchProcessor", auditTrailSearchProcessor);
         main.bind("auditConversationListProcessor", auditConversationListProcessor);
-        main.bind("auditConversationViewProcessor", auditConversationViewProcessor);
+        main.bind("auditConversationViewProcessor", auditConversationViewBinding);
         main.bind("auditConversationAgentMessageProcessor", auditConversationAgentMessageProcessor);
-        main.bind("auditConversationSessionDataProcessor", auditConversationSessionDataProcessor);
+        main.bind("auditConversationSessionDataProcessor", auditConversationSessionDataBinding);
         main.bind("runtimeAuditGranularityProcessor", runtimeAuditGranularityProcessor);
         main.bind("runtimeConversationPersistenceProcessor", runtimeConversationPersistenceProcessor);
         main.bind("runtimeResourceRefreshProcessor", runtimeResourceRefreshProcessor);
@@ -473,6 +501,8 @@ public final class AgentRuntimeBootstrap {
             bindAgUiDefaultsIfAvailable(main);
         }
 
+        bindDiagnosticsIfMissing(main, properties);
+
         if (booleanPropertyWithAliases(properties, true,
             "agent.runtime.agui.bind-pre-run-processor",
             "agent.runtime.agui.bindPreRunProcessor"
@@ -617,6 +647,31 @@ public final class AgentRuntimeBootstrap {
             // Optional feature: AGUI component classes may not be present in all runtimes.
             LOGGER.debug("Agent runtime AGUI pre-run processor binding skipped: class unavailable or incompatible");
         }
+    }
+
+    private static void bindDiagnosticsIfMissing(Main main, Properties properties) {
+        boolean enabled = booleanPropertyWithAliases(properties, true,
+            "agent.diagnostics.trace.enabled",
+            "agent.diagnostics.traceEnabled"
+        );
+
+        bindIfMissing(main, "aguiIngressRawTraceProcessor", new PayloadTraceProcessor("AGUI ingress raw request", enabled));
+        bindIfMissing(main, "aguiParsedParamsTraceProcessor", new AgUiParamsTraceProcessor(enabled));
+        bindIfMissing(main, "aguiAgentResponseTraceProcessor", new ResponseTraceProcessor("AGUI request processor response", enabled));
+        bindIfMissing(main, "realtimeIngressRawTraceProcessor", new PayloadTraceProcessor("Realtime ingress raw request", enabled));
+        bindIfMissing(main, "realtimeEventResponseTraceProcessor", new ResponseTraceProcessor("Realtime event processor response", enabled));
+    }
+
+    private static void bindIfMissing(Main main, String beanName, Object bean) {
+        if (beanName == null || beanName.isBlank() || bean == null) {
+            return;
+        }
+        if (main.lookup(beanName, Object.class) != null) {
+            LOGGER.debug("Agent runtime bean already present: beanName={}", beanName);
+            return;
+        }
+        main.bind(beanName, bean);
+        LOGGER.info("Agent runtime bean bound: beanName={}, type={}", beanName, bean.getClass().getSimpleName());
     }
 
     private static String agUiPreRunBeanName() {

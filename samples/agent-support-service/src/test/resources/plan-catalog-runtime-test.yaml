@@ -3,11 +3,11 @@ camel:
     enabled: true
     backend: jdbc
     jdbc:
-      url: jdbc:derby:memory:agent-playwright-audit;create=true
+      url: jdbc:derby:memory:agent-plan-catalog-test;create=true
 
 agent:
   agents-config: classpath:agents/agents.yaml
-  blueprint: classpath:agents/test-support/agent-no-mcp.md
+  blueprint: classpath:agents/support/v1/agent.md
   audit:
     granularity: debug
   runtime:

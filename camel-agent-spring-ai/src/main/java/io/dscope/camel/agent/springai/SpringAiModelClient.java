@@ -1,5 +1,6 @@
 package io.dscope.camel.agent.springai;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dscope.camel.agent.api.AiModelClient;
 import io.dscope.camel.agent.model.AgentEvent;
@@ -8,12 +9,20 @@ import io.dscope.camel.agent.model.ModelResponse;
 import io.dscope.camel.agent.model.ToolSpec;
 import java.util.List;
 import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SpringAiModelClient implements AiModelClient {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(SpringAiModelClient.class);
+    private static final int MAX_LOG_LENGTH = 8000;
+
     private final SpringAiChatGateway chatGateway;
+    private final ObjectMapper objectMapper;
+
     public SpringAiModelClient(SpringAiChatGateway chatGateway, ObjectMapper objectMapper) {
         this.chatGateway = chatGateway;
+        this.objectMapper = objectMapper;
     }
 
     private static final java.util.Set<String> EXCLUDED_EVENT_TYPES = java.util.Set.of(
@@ -28,6 +37,14 @@ public class SpringAiModelClient implements AiModelClient {
                                   Consumer<String> streamingTokenCallback) {
         String context = buildContext(history);
 
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("LLM request prepared: systemInstruction={}, context={}, tools={}, options={}",
+                previewText(systemInstruction),
+                previewText(context),
+                previewJson(tools),
+                previewJson(options));
+        }
+
         SpringAiChatGateway.SpringAiChatResult result = chatGateway.generate(
             systemInstruction,
             context,
@@ -37,6 +54,13 @@ public class SpringAiModelClient implements AiModelClient {
             options == null ? null : options.maxTokens(),
             streamingTokenCallback
         );
+
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("LLM response received: message={}, toolCalls={}, terminal={}",
+                previewText(result.message()),
+                previewJson(result.toolCalls()),
+                result.terminal());
+        }
 
         return new ModelResponse(result.message(), result.toolCalls(), result.terminal());
     }
@@ -90,5 +114,26 @@ public class SpringAiModelClient implements AiModelClient {
         }
         String payload = payloadText(event);
         return payload.length() > 100 ? payload.substring(0, 100) + "..." : payload;
+    }
+
+    private String previewJson(Object value) {
+        if (value == null) {
+            return "<null>";
+        }
+        try {
+            return previewText(objectMapper.writeValueAsString(value));
+        } catch (JsonProcessingException | RuntimeException e) {
+            return String.valueOf(value);
+        }
+    }
+
+    private String previewText(String text) {
+        if (text == null) {
+            return "<null>";
+        }
+        if (text.length() <= MAX_LOG_LENGTH) {
+            return text;
+        }
+        return text.substring(0, MAX_LOG_LENGTH) + "...<truncated " + (text.length() - MAX_LOG_LENGTH) + " chars>";
     }
 }

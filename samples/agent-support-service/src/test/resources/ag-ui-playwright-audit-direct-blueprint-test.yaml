@@ -1,0 +1,39 @@
+camel:
+  persistence:
+    enabled: true
+    backend: jdbc
+    jdbc:
+      url: jdbc:derby:memory:agent-playwright-audit-direct;create=true
+
+agent:
+  blueprint: classpath:agents/test-support/agent-no-mcp-direct.md
+  audit:
+    granularity: debug
+  runtime:
+    routes-include-pattern: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ticket-service.camel.yaml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/admin-platform.camel.yaml
+    agent-routes-enabled: true
+    sample-agent-endpoint-uri: agent:route-session-test?blueprint=classpath:agents/test-support/route-session-agent.md
+    ai:
+      mode: spring-ai
+    agui:
+      bind-default-beans: true
+      bind-pre-run-processor: true
+      pre-run:
+        agent-endpoint-uri: agent:support?blueprint={{agent.blueprint}}
+        fallback-enabled: false
+        fallback:
+          ticket-keywords: ticket,open,create,update,close,status,support,login
+          error-markers: api key is missing,openai api key,set -dopenai.api.key
+    realtime:
+      bind-relay: false
+      bind-processor: true
+      processor-bean-name: supportRealtimeEventProcessorCore
+      bind-token-processor: true
+
+agui:
+  rpc:
+    port: "{{agent.runtime.test-port:18081}}"
+  health:
+    port: "{{agent.runtime.test-port:18081}}"
+  ui:
+    static-root: src/main/resources/frontend

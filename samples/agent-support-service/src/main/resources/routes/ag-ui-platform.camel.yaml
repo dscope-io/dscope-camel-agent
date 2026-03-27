@@ -41,6 +41,9 @@
                   id: process2f2d
                   ref: agUiAgentEnvelopeProcessor
               - process:
+                  id: processCalendarVersionSelector
+                  ref: agUiPlanVersionSelector
+              - process:
                   id: process29ec
                   ref: agUiAgentRequestProcessor
               - process:
@@ -71,6 +74,9 @@
               - process:
                   id: process911e
                   ref: agUiAgentEnvelopeProcessor
+              - process:
+                  id: processBackendToolCalendarVersionSelector
+                  ref: agUiPlanVersionSelector
               - process:
                   id: process5ae3
                   ref: agUiAgentRequestProcessor
@@ -111,6 +117,9 @@
               - process:
                   id: processAguiRpcWebsocketEnvelope
                   ref: agUiAgentEnvelopeProcessor
+              - process:
+                  id: processAguiRpcWebsocketVersionSelector
+                  ref: agUiPlanVersionSelector
               - process:
                   id: processAguiRpcWebsocketRequest
                   ref: agUiAgentRequestProcessor
