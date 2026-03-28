@@ -9,6 +9,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -62,14 +63,55 @@ public class AgentPlanCatalogLoader {
             versions.add(new AgentPlanVersionSpec(
                 text(version.get("version")),
                 bool(version.get("default")),
-                text(version.get("blueprint"))
+                text(version.get("blueprint")),
+                aiConfig(version.get("ai"))
             ));
         }
         return new AgentPlanSpec(
             text(raw.get("name")),
             bool(raw.get("default")),
+            aiConfig(raw.get("ai")),
             versions
         );
+    }
+
+    private AgentAiConfig aiConfig(Object raw) {
+        if (!(raw instanceof Map<?, ?> map)) {
+            return AgentAiConfig.empty();
+        }
+        Map<String, Object> values = cast(map);
+        return new AgentAiConfig(
+            text(values.get("provider")),
+            text(values.get("model")),
+            doubleValue(firstNonNull(values.get("temperature"), values.get("temp"))),
+            intValue(firstNonNull(values.get("maxTokens"), values.get("max-tokens"))),
+            flattenProperties(values.get("properties"))
+        );
+    }
+
+    private Map<String, String> flattenProperties(Object raw) {
+        if (!(raw instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        Map<String, String> flattened = new LinkedHashMap<>();
+        flattenInto(flattened, "", cast(map));
+        return flattened;
+    }
+
+    private void flattenInto(Map<String, String> target, String prefix, Map<String, Object> values) {
+        for (Map.Entry<String, Object> entry : values.entrySet()) {
+            String key = text(entry.getKey());
+            if (key == null || key.isBlank()) {
+                continue;
+            }
+            String qualified = prefix.isBlank() ? key : prefix + "." + key;
+            Object value = entry.getValue();
+            if (value instanceof Map<?, ?> nested) {
+                flattenInto(target, qualified, cast(nested));
+            } else if (value != null) {
+                target.put(qualified, String.valueOf(value).trim());
+            }
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -82,7 +124,7 @@ public class AgentPlanCatalogLoader {
             return getClass().getClassLoader().getResourceAsStream(location.substring("classpath:".length()));
         }
         if (location.startsWith("http://") || location.startsWith("https://")) {
-            return new URL(location).openStream();
+            return URI.create(location).toURL().openStream();
         }
         if (location.startsWith("file:")) {
             return Files.newInputStream(Path.of(URI.create(location)));
@@ -96,5 +138,31 @@ public class AgentPlanCatalogLoader {
 
     private boolean bool(Object value) {
         return value != null && Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    private Double doubleValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Double.parseDouble(value.toString().trim());
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private Integer intValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(value.toString().trim());
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private Object firstNonNull(Object primary, Object fallback) {
+        return primary != null ? primary : fallback;
     }
 }

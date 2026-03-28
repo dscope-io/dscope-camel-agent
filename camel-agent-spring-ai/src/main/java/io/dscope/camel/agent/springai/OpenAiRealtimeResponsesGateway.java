@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.dscope.camel.agent.model.AiToolCall;
+import io.dscope.camel.agent.model.ModelUsage;
 import io.dscope.camel.agent.model.ToolSpec;
+import io.dscope.camel.agent.model.TokenUsage;
 import io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient;
 import io.dscope.camel.agent.realtime.RealtimeReconnectPolicy;
 import io.dscope.camel.agent.realtime.RealtimeRelayClient;
@@ -23,6 +25,7 @@ public final class OpenAiRealtimeResponsesGateway implements OpenAiResponsesGate
 
     private final Properties properties;
     private final RealtimeRelayClient realtimeRelayClient;
+    private final ModelCostEstimator modelCostEstimator;
 
     public OpenAiRealtimeResponsesGateway(Properties properties) {
         this(properties, new OpenAiRealtimeRelayClient());
@@ -31,6 +34,7 @@ public final class OpenAiRealtimeResponsesGateway implements OpenAiResponsesGate
     OpenAiRealtimeResponsesGateway(Properties properties, RealtimeRelayClient realtimeRelayClient) {
         this.properties = properties;
         this.realtimeRelayClient = realtimeRelayClient;
+        this.modelCostEstimator = new ModelCostEstimator(properties);
     }
 
     @Override
@@ -99,7 +103,9 @@ public final class OpenAiRealtimeResponsesGateway implements OpenAiResponsesGate
 
             String message = parseState.message.toString();
             boolean terminal = parseState.toolCalls.isEmpty();
-            return new SpringAiChatGateway.SpringAiChatResult(message, parseState.toolCalls, terminal);
+            TokenUsage tokenUsage = parseState.tokenUsage();
+            ModelUsage modelUsage = modelCostEstimator.estimate("openai", selectedModel, apiMode, tokenUsage);
+            return new SpringAiChatGateway.SpringAiChatResult(message, parseState.toolCalls, terminal, tokenUsage, modelUsage);
         } catch (Exception e) {
             String message = "OpenAI responses-ws invocation error: " + exceptionSummary(e);
             if (streamingTokenCallback != null) {
@@ -131,6 +137,7 @@ public final class OpenAiRealtimeResponsesGateway implements OpenAiResponsesGate
                 parseState.error = firstNonBlank(text(event.path("error"), "message"), text(event, "message"), "responses-ws error");
                 continue;
             }
+            maybeMergeUsage(event, parseState);
             if ("response.output_text.delta".equals(type) || "response.text.delta".equals(type)) {
                 String delta = firstNonBlank(text(event, "delta"), text(event, "text"));
                 appendDelta(parseState, delta, callback);
@@ -162,6 +169,7 @@ public final class OpenAiRealtimeResponsesGateway implements OpenAiResponsesGate
         if (!response.isObject()) {
             return;
         }
+        mergeUsage(response.path("usage"), state);
         JsonNode output = response.path("output");
         if (!output.isArray()) {
             return;
@@ -190,6 +198,31 @@ public final class OpenAiRealtimeResponsesGateway implements OpenAiResponsesGate
                     }
                 }
             }
+        }
+    }
+
+    private void maybeMergeUsage(JsonNode event, ParseState state) {
+        if (event == null || event.isNull()) {
+            return;
+        }
+        mergeUsage(event.path("usage"), state);
+        JsonNode response = event.path("response");
+        if (response.isObject()) {
+            mergeUsage(response.path("usage"), state);
+        }
+    }
+
+    private void mergeUsage(JsonNode usageNode, ParseState state) {
+        if (usageNode == null || usageNode.isMissingNode() || usageNode.isNull() || !usageNode.isObject()) {
+            return;
+        }
+        TokenUsage tokenUsage = TokenUsage.of(
+            firstInt(usageNode, "input_tokens", "prompt_tokens"),
+            firstInt(usageNode, "output_tokens", "completion_tokens"),
+            firstInt(usageNode, "total_tokens")
+        );
+        if (tokenUsage.isReported()) {
+            state.tokenUsage = tokenUsage;
         }
     }
 
@@ -278,6 +311,13 @@ public final class OpenAiRealtimeResponsesGateway implements OpenAiResponsesGate
         if (reasoningEffort != null && !reasoningEffort.isBlank()
             && !reasoningEffort.contains("${")) {
             root.set("reasoning", MAPPER.createObjectNode().put("effort", reasoningEffort));
+        }
+        OpenAiPromptCacheSupport.PromptCacheSettings promptCache = OpenAiPromptCacheSupport.resolve(properties, model, systemPrompt, tools);
+        if (promptCache.enabled()) {
+            root.put("prompt_cache_key", promptCache.key());
+            if (promptCache.retention() != null && !promptCache.retention().isBlank()) {
+                root.put("prompt_cache_retention", promptCache.retention());
+            }
         }
         root.put("tool_choice", "auto");
 
@@ -373,6 +413,25 @@ public final class OpenAiRealtimeResponsesGateway implements OpenAiResponsesGate
         return value.isMissingNode() || value.isNull() ? "" : value.asText("");
     }
 
+    private Integer firstInt(JsonNode node, String... fields) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        for (String field : fields) {
+            JsonNode value = node.path(field);
+            if (value.isInt() || value.isLong()) {
+                return value.asInt();
+            }
+            if (value.isTextual()) {
+                try {
+                    return Integer.parseInt(value.asText().trim());
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+        return null;
+    }
+
     private String firstNonBlank(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) {
@@ -408,5 +467,10 @@ public final class OpenAiRealtimeResponsesGateway implements OpenAiResponsesGate
         private final LinkedHashSet<String> usedToolNames = new LinkedHashSet<>();
         private boolean done;
         private String error;
+        private TokenUsage tokenUsage;
+
+        private TokenUsage tokenUsage() {
+            return tokenUsage != null && tokenUsage.isReported() ? tokenUsage : null;
+        }
     }
 }

@@ -3,8 +3,11 @@ package io.dscope.camel.agent.samples;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dscope.camel.agent.runtime.AgentRuntimeBootstrap;
+import io.dscope.camel.agent.model.ModelUsage;
+import io.dscope.camel.agent.model.TokenUsage;
 import io.dscope.camel.agent.springai.SpringAiChatGateway;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -31,6 +34,7 @@ class AgentSessionHttpIntegrationTest {
         String sessionId = "rest-agent-session-" + System.currentTimeMillis();
         main.bind("springAiChatGateway", new DeterministicTicketGateway());
         main.bind("ticketLifecycleProcessor", new SupportTicketLifecycleProcessor(MAPPER));
+        main.bind("agUiPlanVersionSelector", new AgUiPlanVersionSelectorProcessor());
 
         try {
             AgentRuntimeBootstrap.bootstrap(main, "ag-ui-playwright-audit-direct-blueprint-test.yaml");
@@ -54,6 +58,9 @@ class AgentSessionHttpIntegrationTest {
                 containsEventType(json.path("events"), "user.message") && containsEventType(json.path("events"), "agent.message"),
                 "Structured session response should include persisted turn events"
             );
+            Assertions.assertEquals(1, json.path("modelUsage").path("turn").path("callCount").asInt());
+            Assertions.assertEquals(24, json.path("modelUsage").path("turn").path("totals").path("totalTokens").asInt());
+            Assertions.assertEquals("gpt-5.4", json.path("modelUsage").path("turn").path("byModel").get(0).path("model").asText());
         } finally {
             try {
                 main.stop();
@@ -105,7 +112,16 @@ class AgentSessionHttpIntegrationTest {
                                            Double temperature,
                                            Integer maxTokens,
                                            java.util.function.Consumer<String> streamingTokenCallback) {
-            return new SpringAiChatResult("Route session test response", List.of(), false);
+            ModelUsage modelUsage = ModelUsage.of(
+                "openai",
+                model == null || model.isBlank() ? "gpt-5.4" : model,
+                "chat",
+                TokenUsage.of(15, 9, 24),
+                new BigDecimal("0.00015"),
+                new BigDecimal("0.00009"),
+                new BigDecimal("0.00024")
+            );
+            return new SpringAiChatResult("Route session test response", List.of(), false, null, modelUsage);
         }
     }
 }

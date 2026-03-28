@@ -122,6 +122,17 @@ public final class McpToolDiscoveryResolver {
             if (outputSchema.isMissingNode()) {
                 outputSchema = null;
             }
+            if (name.equals(sourceTool.name())) {
+                if (sourceTool.inputSchema() != null && !sourceTool.inputSchema().isNull() && !sourceTool.inputSchema().isMissingNode()) {
+                    inputSchema = sourceTool.inputSchema();
+                }
+                if (sourceTool.outputSchema() != null && !sourceTool.outputSchema().isNull() && !sourceTool.outputSchema().isMissingNode()) {
+                    outputSchema = sourceTool.outputSchema();
+                }
+                if (sourceTool.description() != null && !sourceTool.description().isBlank()) {
+                    description = sourceTool.description();
+                }
+            }
             ToolPolicy policy = sourceTool.policy() != null ? sourceTool.policy() : new ToolPolicy(false, 0, 1000);
             discovered.add(new ToolSpec(
                 name,

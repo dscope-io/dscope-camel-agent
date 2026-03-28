@@ -1,13 +1,35 @@
 plans:
   - name: support
     default: true
+    ai:
+      provider: openai
+      properties:
+        agent:
+          runtime:
+            spring-ai:
+              openai:
+                api-mode: responses-http
     versions:
       - version: v1
         default: true
         blueprint: classpath:agents/valid-agent.md
       - version: v2
         blueprint: classpath:agents/valid-agent-with-realtime.md
+        ai:
+          model: gpt-5.4-mini
+          temperature: 0.35
+          max-tokens: 512
+          properties:
+            agent:
+              runtime:
+                spring-ai:
+                  openai:
+                    prompt-cache:
+                      enabled: true
   - name: billing
+    ai:
+      provider: gemini
+      model: gemini-2.5-flash
     versions:
       - version: v1
         default: true

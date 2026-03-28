@@ -10,6 +10,7 @@ final class SampleAdminMcpBindings {
     }
 
     static void bindIfMissing(Main main, String applicationYamlPath) {
+        bindIfMissing(main, "agUiPlanVersionSelector", new AgUiPlanVersionSelectorProcessor());
         bindIfMissing(main, "sampleAgentSessionInvokeProcessor", newAgentSessionInvokeProcessor());
         if (main.lookup("mcpError", Object.class) != null) {
             return;
@@ -192,6 +193,12 @@ final class SampleAdminMcpBindings {
         bindIfMissing(main, "auditConversationAgentMessageProcessor",
             newInstance(
                 "io.dscope.camel.agent.audit.AuditConversationAgentMessageProcessor",
+                new Class<?>[] { Object.class, ObjectMapper.class },
+                new Object[] { persistenceFacade, objectMapper }
+            ));
+        bindIfMissing(main, "auditConversationUsageProcessor",
+            newInstance(
+                "io.dscope.camel.agent.audit.AuditConversationUsageProcessor",
                 new Class<?>[] { Object.class, ObjectMapper.class },
                 new Object[] { persistenceFacade, objectMapper }
             ));

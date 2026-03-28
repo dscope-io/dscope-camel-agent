@@ -1,6 +1,7 @@
 package io.dscope.camel.agent.audit;
 
 import io.dscope.camel.agent.model.AgentEvent;
+import io.dscope.camel.agent.runtime.AgentAiConfig;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.InputStream;
 import java.net.URI;
@@ -192,6 +193,10 @@ final class AuditMetadataSupport {
         if (!agentStepMetadata.blueprintUri().isBlank()) {
             metadata.put("blueprintUri", agentStepMetadata.blueprintUri());
         }
+        if (!agentStepMetadata.ai().isEmpty()) {
+            metadata.put("ai", agentStepMetadata.ai().asMap());
+        }
+        metadata.put("modelUsageTotals", AuditUsageSupport.summarizeTotals(events));
         return metadata;
     }
 
@@ -239,7 +244,8 @@ final class AuditMetadataSupport {
                 blankToFallback(planVersion, state.planVersion()),
                 blueprintUri,
                 blankToFallback(metadata.agentTitle(), state.agentName()),
-                blankToFallback(metadata.agentVersion(), state.agentVersion())
+                blankToFallback(metadata.agentVersion(), state.agentVersion()),
+                aiConfig(event.payload().path("ai"))
             );
         }
 
@@ -251,7 +257,8 @@ final class AuditMetadataSupport {
                 state.planVersion(),
                 blueprintUri,
                 firstNonBlank(text(event.payload(), "agentName"), metadata.agentTitle(), state.agentName()),
-                firstNonBlank(text(event.payload(), "agentVersion"), metadata.agentVersion(), state.agentVersion())
+                firstNonBlank(text(event.payload(), "agentVersion"), metadata.agentVersion(), state.agentVersion()),
+                state.ai()
             );
         }
 
@@ -319,7 +326,12 @@ final class AuditMetadataSupport {
     record BlueprintMetadata(String agentTitle, String agentVersion, String description, List<String> topics) {
     }
 
-    record AgentStepMetadata(String planName, String planVersion, String blueprintUri, String agentName, String agentVersion) {
+    record AgentStepMetadata(String planName,
+                             String planVersion,
+                             String blueprintUri,
+                             String agentName,
+                             String agentVersion,
+                             AgentAiConfig ai) {
         static AgentStepMetadata fromBlueprint(String blueprintUri, BlueprintMetadata metadata) {
             BlueprintMetadata resolved = metadata == null ? new BlueprintMetadata("Agent", "", "", List.of()) : metadata;
             return new AgentStepMetadata(
@@ -327,7 +339,8 @@ final class AuditMetadataSupport {
                 "",
                 blueprintUri == null ? "" : blueprintUri,
                 resolved.agentTitle(),
-                resolved.agentVersion()
+                resolved.agentVersion(),
+                AgentAiConfig.empty()
             );
         }
 
@@ -348,8 +361,34 @@ final class AuditMetadataSupport {
             if (!agentVersion.isBlank()) {
                 data.put("agentVersion", agentVersion);
             }
+            if (ai != null && !ai.isEmpty()) {
+                data.put("ai", ai.asMap());
+            }
             return data;
         }
+    }
+
+    private static AgentAiConfig aiConfig(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode() || !node.isObject()) {
+            return AgentAiConfig.empty();
+        }
+        Map<String, String> properties = new LinkedHashMap<>();
+        JsonNode propertyNode = node.path("properties");
+        if (propertyNode.isObject()) {
+            propertyNode.properties().forEach(entry -> {
+                JsonNode value = entry.getValue();
+                properties.put(entry.getKey(), value == null || value.isNull() ? "" : value.asText(""));
+            });
+        }
+        Double temperature = node.path("temperature").isNumber() ? node.path("temperature").doubleValue() : null;
+        Integer maxTokens = node.path("maxTokens").isNumber() ? node.path("maxTokens").intValue() : null;
+        return new AgentAiConfig(
+            text(node, "provider"),
+            text(node, "model"),
+            temperature,
+            maxTokens,
+            properties
+        );
     }
 
     record A2ACorrelationMetadata(String agentId,

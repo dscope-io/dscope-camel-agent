@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dscope.camel.agent.api.PersistenceFacade;
 import io.dscope.camel.agent.model.AgentEvent;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -60,7 +61,7 @@ public class AgentPlanSelectionResolver {
         boolean explicitVersion = requestedPlanVersion != null && !requestedPlanVersion.isBlank();
 
         String planName = explicitPlan
-            ? requestedPlanName.trim()
+            ? requestedPlanName == null ? "" : requestedPlanName.trim()
             : sticky.planName() != null && !sticky.planName().isBlank()
                 ? sticky.planName()
                 : catalog.defaultPlan().name();
@@ -68,23 +69,27 @@ public class AgentPlanSelectionResolver {
         AgentPlanSpec plan = catalog.requirePlan(planName);
 
         String version = explicitVersion
-            ? requestedPlanVersion.trim()
+            ? requestedPlanVersion == null ? "" : requestedPlanVersion.trim()
             : !explicitPlan && sticky.matchesPlan(planName) && sticky.planVersion() != null && !sticky.planVersion().isBlank()
                 ? sticky.planVersion()
                 : catalog.defaultVersion(planName).version();
 
         AgentPlanVersionSpec versionSpec = catalog.requireVersion(planName, version);
         boolean persistRequired = sticky.differsFrom(planName, version, versionSpec.blueprint());
-        return new ResolvedAgentPlan(planName, version, versionSpec.blueprint(), explicitPlan, explicitVersion, persistRequired, false);
+        AgentAiConfig ai = plan.ai().merge(versionSpec.ai());
+        return new ResolvedAgentPlan(planName, version, versionSpec.blueprint(), ai, explicitPlan, explicitVersion, persistRequired, false);
     }
 
     public AgentEvent selectionEvent(String conversationId, ResolvedAgentPlan resolvedPlan) {
-        JsonNode payload = objectMapper.valueToTree(Map.of(
-            "planName", resolvedPlan.planName(),
-            "planVersion", resolvedPlan.planVersion(),
-            "blueprint", resolvedPlan.blueprint(),
-            "selectedAt", Instant.now().toString()
-        ));
+        Map<String, Object> payloadData = new LinkedHashMap<>();
+        payloadData.put("planName", resolvedPlan.planName());
+        payloadData.put("planVersion", resolvedPlan.planVersion());
+        payloadData.put("blueprint", resolvedPlan.blueprint());
+        payloadData.put("selectedAt", Instant.now().toString());
+        if (resolvedPlan.ai() != null && !resolvedPlan.ai().isEmpty()) {
+            payloadData.put("ai", resolvedPlan.ai().asMap());
+        }
+        JsonNode payload = objectMapper.valueToTree(payloadData);
         return new AgentEvent(conversationId, null, "conversation.plan.selected", payload, Instant.now());
     }
 

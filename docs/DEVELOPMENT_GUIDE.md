@@ -109,6 +109,27 @@ Selection order:
 3. catalog defaults
 4. legacy fallback blueprint
 
+### Plan-Scoped AI Overrides
+
+`agents.yaml` can define an optional `ai` block at the plan level and at each version entry.
+
+Guidance:
+
+1. Use plan-level `ai` for provider defaults shared by all versions of a plan.
+2. Use version-level `ai` for model, temperature, max token, prompt cache, or provider-specific property differences.
+3. Put provider-specific runtime tuning in `ai.properties` when it should vary by plan/version instead of globally in `application.yaml`.
+4. Expect plan-level `ai` to merge first and version-level `ai` to win on conflicts.
+
+Supported fields:
+
+- `provider`
+- `model`
+- `temperature`
+- `max-tokens`
+- `properties` as a nested map that is flattened into runtime property keys
+
+Resolved AI settings are persisted in `conversation.plan.selected` and surfaced through session and audit APIs so diagnostics can identify the exact provider and override set used by a conversation.
+
 ## Camel Endpoint Invocation
 
 ### Raw `agent:` Contract

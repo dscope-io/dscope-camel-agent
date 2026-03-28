@@ -119,6 +119,25 @@ class AuditConversationViewProcessorTest {
             new AgentEvent("conv-plan", null, "agent.message", MAPPER.getNodeFactory().textNode("Hello from v2"), Instant.now()),
             "evt-2"
         );
+        persistenceFacade.appendEvent(
+            new AgentEvent(
+                "conv-plan",
+                null,
+                "model.usage",
+                MAPPER.readTree("""
+                    {
+                      "provider": "openai",
+                      "model": "gpt-5.4",
+                      "apiMode": "chat",
+                      "promptTokens": 13,
+                      "completionTokens": 5,
+                      "totalTokens": 18
+                    }
+                    """),
+                Instant.now()
+            ),
+            "evt-3"
+        );
 
         var context = new DefaultCamelContext();
         var exchange = new DefaultExchange(context);
@@ -133,7 +152,12 @@ class AuditConversationViewProcessorTest {
         Assertions.assertEquals("v2", message.path("agent").path("planVersion").asText());
         Assertions.assertEquals("SupportAssistant", message.path("agent").path("agentName").asText());
         Assertions.assertEquals("0.3.0", message.path("agent").path("agentVersion").asText());
+        Assertions.assertEquals("openai", message.path("agent").path("ai").path("provider").asText());
+        Assertions.assertEquals("gpt-5.4-mini", message.path("agent").path("ai").path("model").asText());
         Assertions.assertEquals("SupportAssistant", body.path("agent").path("agentName").asText());
         Assertions.assertEquals("0.3.0", body.path("agent").path("agentVersion").asText());
+        Assertions.assertEquals("responses-http", body.path("agent").path("ai").path("properties").path("agent.runtime.spring-ai.openai.api-mode").asText());
+        Assertions.assertEquals("gpt-5.4-mini", body.path("agent").path("ai").path("model").asText());
+        Assertions.assertEquals(18, body.path("modelUsage").path("totals").path("totalTokens").asInt());
     }
 }

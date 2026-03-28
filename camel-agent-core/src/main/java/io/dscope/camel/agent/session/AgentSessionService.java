@@ -2,6 +2,7 @@ package io.dscope.camel.agent.session;
 
 import io.dscope.camel.agent.api.AgentKernel;
 import io.dscope.camel.agent.api.PersistenceFacade;
+import io.dscope.camel.agent.audit.AuditUsageSupport;
 import io.dscope.camel.agent.component.AgentComponent;
 import io.dscope.camel.agent.component.AgentEndpoint;
 import io.dscope.camel.agent.config.AgentHeaders;
@@ -12,6 +13,7 @@ import io.dscope.camel.agent.registry.CorrelationRegistry;
 import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 import io.dscope.camel.agent.runtime.ResolvedAgentPlan;
 import io.dscope.camel.agent.runtime.RuntimePlaceholderResolver;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -70,10 +72,24 @@ public class AgentSessionService {
             resolvedPlan == null || resolvedPlan.legacyMode() ? "" : defaultIfBlank(resolvedPlan.planName(), ""),
             resolvedPlan == null || resolvedPlan.legacyMode() ? "" : defaultIfBlank(resolvedPlan.planVersion(), ""),
             resolvedPlan == null ? "" : defaultIfBlank(resolvedPlan.blueprint(), ""),
-            effectiveRequest.params()
+            resolvedPlan == null ? Map.of() : resolvedPlan.ai().asMap(),
+            effectiveRequest.params(),
+            buildModelUsage(component.persistenceFacade(), response.conversationId(), response.events())
         );
         exchange.setProperty(SESSION_RESPONSE_PROPERTY, sessionResponse);
         return sessionResponse;
+    }
+
+    private Map<String, Object> buildModelUsage(PersistenceFacade persistenceFacade,
+                                                String conversationId,
+                                                List<AgentEvent> turnEvents) {
+        Map<String, Object> usage = new LinkedHashMap<>();
+        usage.put("turn", AuditUsageSupport.summarize(turnEvents));
+        List<AgentEvent> sessionEvents = persistenceFacade == null || isBlank(conversationId)
+            ? List.of()
+            : persistenceFacade.loadConversation(conversationId, 2000);
+        usage.put("session", AuditUsageSupport.summarize(sessionEvents));
+        return usage;
     }
 
     public String resolveAgentEndpointUri(Exchange exchange) {

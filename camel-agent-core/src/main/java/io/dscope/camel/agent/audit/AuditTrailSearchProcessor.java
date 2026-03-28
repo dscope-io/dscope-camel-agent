@@ -82,7 +82,9 @@ public class AuditTrailSearchProcessor implements Processor {
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("conversationId", conversationId);
+        response.put("ai", currentAgentState == null || currentAgentState.ai() == null ? Map.of() : currentAgentState.ai().asMap());
         response.put("conversationMetadata", conversationMetadata);
+        response.put("modelUsage", AuditUsageSupport.summarize(loaded));
         response.put("filters", Map.of(
             "type", type == null ? "" : type,
             "q", query == null ? "" : query,

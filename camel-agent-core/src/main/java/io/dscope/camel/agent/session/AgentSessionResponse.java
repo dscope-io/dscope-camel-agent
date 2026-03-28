@@ -15,11 +15,15 @@ public record AgentSessionResponse(
     String resolvedPlanName,
     String resolvedPlanVersion,
     String resolvedBlueprint,
-    Map<String, Object> params
+    Map<String, Object> resolvedAi,
+    Map<String, Object> params,
+    Map<String, Object> modelUsage
 ) {
 
     public AgentSessionResponse {
         events = events == null ? List.of() : List.copyOf(events);
+        resolvedAi = resolvedAi == null ? Map.of() : Map.copyOf(resolvedAi);
         params = params == null ? Map.of() : Map.copyOf(params);
+        modelUsage = modelUsage == null ? Map.of() : Map.copyOf(modelUsage);
     }
 }

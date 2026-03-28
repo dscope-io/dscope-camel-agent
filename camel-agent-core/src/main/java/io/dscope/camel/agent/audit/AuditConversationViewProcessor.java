@@ -122,6 +122,7 @@ public class AuditConversationViewProcessor implements Processor {
             "messageCount", perspective.size(),
             "messages", perspective
         ));
+        response.put("modelUsage", AuditUsageSupport.summarize(events));
         response.put("agent", currentAgentState.asMap());
         response.put("a2a", currentA2aState.asMap());
 

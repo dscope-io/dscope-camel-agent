@@ -30,6 +30,13 @@ public class AgentRuntimeRouteBuilder extends RouteBuilder {
                 .setHeader("limit", header("limit"))
                 .bean("auditTrailService", "loadTrail(${header.conversationId},${header.limit})")
                 .setHeader("Content-Type", constant("application/json"));
+
+            from("undertow:http://" + properties.auditApiHost() + ":" + properties.auditApiPort() + "/audit/{conversationId}/usage?httpMethodRestrict=GET")
+                .routeId("audit-trail-usage-api")
+                .setHeader("conversationId", header("conversationId"))
+                .setHeader("limit", header("limit"))
+                .bean("auditTrailService", "loadUsage(${header.conversationId},${header.limit})")
+                .setHeader("Content-Type", constant("application/json"));
         }
     }
 }

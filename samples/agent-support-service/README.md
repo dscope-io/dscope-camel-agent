@@ -199,6 +199,58 @@ Sample budgets:
 
 These are applied automatically when the resolved plan uses `agents/support/v2/agent.md`.
 
+## Plan-Level AI Overrides In agents.yaml
+
+The sample `agents/agents.yaml` supports an optional `ai` block at both the plan and version levels.
+
+- plan-level `ai` defines defaults for every version in that plan
+- version-level `ai` overrides or extends the plan defaults for the selected version
+- nested `properties` maps are flattened into runtime property keys and override `application.yaml` only for conversations using that resolved plan/version
+
+Example:
+
+```yaml
+plans:
+   - name: support
+      default: true
+      ai:
+         provider: openai
+         properties:
+            agent:
+               runtime:
+                  spring-ai:
+                     openai:
+                        api-mode: responses-http
+      versions:
+         - version: v2
+            blueprint: classpath:agents/support/v2/agent.md
+            ai:
+               model: gpt-5.4-mini
+               temperature: 0.3
+               max-tokens: 700
+               properties:
+                  agent:
+                     runtime:
+                        spring-ai:
+                           openai:
+                              prompt-cache:
+                                 enabled: true
+```
+
+Supported fields inside `ai`:
+
+- `provider`
+- `model`
+- `temperature`
+- `max-tokens`
+- `properties`
+
+The resolved AI configuration is persisted with plan selection and exposed by:
+
+- session responses under `resolvedAi`
+- audit conversation view/list/search responses under `ai`
+- audit metadata under `conversationMetadata.ai`
+
 ## Tokenized Execution Targets In The Sample Blueprint
 
 `agents/support/v2/agent.md` now demonstrates runtime token substitution for execution-facing fields:

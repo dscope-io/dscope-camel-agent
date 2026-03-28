@@ -8,6 +8,7 @@ import io.dscope.camel.agent.kernel.StaticAiModelClient;
 import io.dscope.camel.agent.model.AgentBlueprint;
 import io.dscope.camel.agent.model.AiToolCall;
 import io.dscope.camel.agent.model.ModelResponse;
+import io.dscope.camel.agent.model.TokenUsage;
 import io.dscope.camel.agent.model.TaskStatus;
 import io.dscope.camel.agent.model.ToolPolicy;
 import io.dscope.camel.agent.model.ToolResult;
@@ -362,5 +363,40 @@ class DefaultAgentKernelTest {
 
         Assertions.assertEquals("mcp:https://crm.example/mcp", toolStart.payload().path("target").asText());
         Assertions.assertTrue(toolStart.payload().path("mcpTarget").asBoolean());
+    }
+
+    @Test
+    void shouldPersistModelUsageEventWhenReported() {
+        ObjectMapper mapper = new ObjectMapper();
+        ToolSpec toolSpec = new ToolSpec("echo", "echo", "echo", null, null, null, new ToolPolicy(false, 0, 1000));
+        AgentBlueprint blueprint = blueprint(toolSpec);
+        ToolExecutor noOpExecutor = (tool, args, ctx) -> new ToolResult("ok", mapper.createObjectNode(), List.of());
+        InMemoryPersistenceFacade persistence = new InMemoryPersistenceFacade();
+
+        DefaultAgentKernel kernel = new DefaultAgentKernel(
+            blueprint,
+            new DefaultToolRegistry(blueprint.tools()),
+            noOpExecutor,
+            (systemPrompt, history, tools, options, callback) -> new ModelResponse(
+                "done",
+                List.of(),
+                true,
+                TokenUsage.of(11, 5, 16)
+            ),
+            persistence,
+            new SchemaValidator(),
+            mapper
+        );
+
+        var response = kernel.handleUserMessage("c-usage", "hello");
+
+        var usageEvent = response.events().stream()
+            .filter(event -> "model.usage".equals(event.type()))
+            .findFirst()
+            .orElseThrow();
+        Assertions.assertEquals(11, usageEvent.payload().path("promptTokens").asInt());
+        Assertions.assertEquals(5, usageEvent.payload().path("completionTokens").asInt());
+        Assertions.assertEquals(16, usageEvent.payload().path("totalTokens").asInt());
+        Assertions.assertTrue(persistence.loadConversation("c-usage", 20).stream().anyMatch(event -> "model.usage".equals(event.type())));
     }
 }

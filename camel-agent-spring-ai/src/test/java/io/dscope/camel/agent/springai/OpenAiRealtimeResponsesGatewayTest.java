@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.math.BigDecimal;
 import io.dscope.camel.agent.model.ToolPolicy;
 import io.dscope.camel.agent.model.ToolSpec;
 import io.dscope.camel.agent.realtime.RealtimeReconnectPolicy;
@@ -112,15 +113,90 @@ class OpenAiRealtimeResponsesGatewayTest {
         Assertions.assertTrue(result.terminal());
         Assertions.assertEquals("wss://relay.example.test/v1/realtime", relay.lastEndpointUri);
         Assertions.assertEquals("gpt-realtime-custom", relay.lastModel);
+        Assertions.assertTrue(relay.sentEvents.stream().anyMatch(OpenAiRealtimeResponsesGatewayTest::hasMediumReasoningEffort));
+    }
+
+    @Test
+    void shouldCaptureTokenUsageFromResponseDoneEvent() {
+        Properties properties = new Properties();
+        properties.setProperty("agent.runtime.spring-ai.openai.responses-ws.request-timeout-ms", "2000");
+        properties.setProperty("agent.runtime.spring-ai.openai.responses-ws.poll-interval-ms", "1");
+        properties.setProperty("agent.runtime.model-cost.openai.gpt-realtime.prompt-usd-per-1m", "1.25");
+        properties.setProperty("agent.runtime.model-cost.openai.gpt-realtime.completion-usd-per-1m", "2.50");
+
+        FakeRelay relay = new FakeRelay();
+        relay.enqueue(responseDone("ok", 21, 8, 29));
+
+        OpenAiRealtimeResponsesGateway gateway = new OpenAiRealtimeResponsesGateway(properties, relay);
+
+        SpringAiChatGateway.SpringAiChatResult result = gateway.generate(
+            "responses-ws",
+            "system",
+            "user",
+            List.of(),
+            "gpt-realtime",
+            0.2,
+            200,
+            "test-key",
+            "https://api.openai.com",
+            null
+        );
+
+        Assertions.assertNotNull(result.tokenUsage());
+        Assertions.assertTrue(java.util.Objects.equals(21, result.tokenUsage().promptTokens()));
+        Assertions.assertTrue(java.util.Objects.equals(8, result.tokenUsage().completionTokens()));
+        Assertions.assertTrue(java.util.Objects.equals(29, result.tokenUsage().totalTokens()));
+        Assertions.assertNotNull(result.modelUsage());
+        Assertions.assertEquals("openai", result.modelUsage().provider());
+        Assertions.assertEquals("gpt-realtime", result.modelUsage().model());
+        Assertions.assertEquals(new BigDecimal("0.00004625"), result.modelUsage().totalCostUsd());
+    }
+
+    @Test
+    void shouldIncludePromptCacheFieldsInResponsesWsRequest() {
+        Properties properties = new Properties();
+        properties.setProperty("agent.runtime.spring-ai.openai.responses-ws.request-timeout-ms", "2000");
+        properties.setProperty("agent.runtime.spring-ai.openai.responses-ws.poll-interval-ms", "1");
+        properties.setProperty("agent.runtime.spring-ai.openai.prompt-cache.enabled", "true");
+        properties.setProperty("agent.runtime.spring-ai.openai.prompt-cache.key", "support-cache-v1");
+        properties.setProperty("agent.runtime.spring-ai.openai.prompt-cache.retention", "in-memory");
+
+        FakeRelay relay = new FakeRelay();
+        relay.enqueue(responseDone("ok"));
+
+        OpenAiRealtimeResponsesGateway gateway = new OpenAiRealtimeResponsesGateway(properties, relay);
+        gateway.generate(
+            "responses-ws",
+            "system",
+            "user context",
+            List.of(),
+            "gpt-realtime",
+            0.2,
+            200,
+            "test-key",
+            "https://api.openai.com",
+            null
+        );
+
         Assertions.assertTrue(relay.sentEvents.stream().anyMatch(eventJson -> {
             try {
                 JsonNode node = MAPPER.readTree(eventJson);
-                return "response.create".equals(node.path("type").asText())
-                    && "medium".equals(node.path("reasoning").path("effort").asText());
-            } catch (Exception ignored) {
+                return "support-cache-v1".equals(node.path("prompt_cache_key").asText())
+                    && "in-memory".equals(node.path("prompt_cache_retention").asText());
+            } catch (java.io.IOException ignored) {
                 return false;
             }
         }));
+    }
+
+    private static boolean hasMediumReasoningEffort(String eventJson) {
+        try {
+            JsonNode node = MAPPER.readTree(eventJson);
+            return "response.create".equals(node.path("type").asText())
+                && "medium".equals(node.path("reasoning").path("effort").asText());
+        } catch (java.io.IOException ignored) {
+            return false;
+        }
     }
 
     private static ObjectNode event(String type, String field, String value) {
@@ -142,9 +218,26 @@ class OpenAiRealtimeResponsesGatewayTest {
     }
 
     private static ObjectNode responseDone(String text) {
+        return responseDone(text, null, null, null);
+    }
+
+    private static ObjectNode responseDone(String text, Integer inputTokens, Integer outputTokens, Integer totalTokens) {
         ObjectNode event = MAPPER.createObjectNode();
         event.put("type", "response.done");
         ObjectNode response = MAPPER.createObjectNode();
+        if (inputTokens != null || outputTokens != null || totalTokens != null) {
+            ObjectNode usage = MAPPER.createObjectNode();
+            if (inputTokens != null) {
+                usage.put("input_tokens", inputTokens);
+            }
+            if (outputTokens != null) {
+                usage.put("output_tokens", outputTokens);
+            }
+            if (totalTokens != null) {
+                usage.put("total_tokens", totalTokens);
+            }
+            response.set("usage", usage);
+        }
         ArrayNode output = MAPPER.createArrayNode();
         ObjectNode message = MAPPER.createObjectNode();
         message.put("type", "message");

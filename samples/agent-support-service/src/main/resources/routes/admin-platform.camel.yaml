@@ -310,6 +310,18 @@
             ref: auditConversationAgentMessageProcessor
 
 - route:
+    id: sample-audit-conversation-usage-api
+    from:
+      id: fromSampleAuditConversationUsage
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/audit/conversation/usage?httpMethodRestrict=GET
+      steps:
+        - process:
+            id: processSampleAuditConversationUsage
+            ref: auditConversationUsageProcessor
+
+- route:
     id: sample-audit-conversation-session-data-api
     from:
       id: fromSampleAuditConversationSessionData

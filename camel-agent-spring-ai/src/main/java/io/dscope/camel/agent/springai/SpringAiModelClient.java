@@ -11,9 +11,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.dscope.camel.agent.api.AiModelClient;
 import io.dscope.camel.agent.model.AgentEvent;
+import io.dscope.camel.agent.model.ModelUsage;
 import io.dscope.camel.agent.model.ModelOptions;
 import io.dscope.camel.agent.model.ModelResponse;
 import io.dscope.camel.agent.model.ToolSpec;
+import io.dscope.camel.agent.model.TokenUsage;
 
 public class SpringAiModelClient implements AiModelClient {
 
@@ -29,7 +31,7 @@ public class SpringAiModelClient implements AiModelClient {
     }
 
     private static final java.util.Set<String> EXCLUDED_EVENT_TYPES = java.util.Set.of(
-        "mcp.tools.discovered", "assistant.delta", "snapshot.written"
+        "mcp.tools.discovered", "assistant.delta", "snapshot.written", "model.usage"
     );
 
     @Override
@@ -48,24 +50,33 @@ public class SpringAiModelClient implements AiModelClient {
                 previewJson(options));
         }
 
-        SpringAiChatGateway.SpringAiChatResult result = chatGateway.generate(
-            systemInstruction,
-            context,
-            tools,
-            options == null ? null : options.model(),
-            options == null ? null : options.temperature(),
-            options == null ? null : options.maxTokens(),
-            streamingTokenCallback
-        );
-
-        if (LOGGER.isDebugEnabled()) {
-            LOGGER.debug("LLM response received: message={}, toolCalls={}, terminal={}",
-                previewText(result.message()),
-                previewJson(result.toolCalls()),
-                result.terminal());
+        SpringAiChatGateway.SpringAiChatResult result;
+        if (chatGateway instanceof ConfigurableSpringAiChatGateway configurable) {
+            result = configurable.generate(systemInstruction, context, tools, options, streamingTokenCallback);
+        } else {
+            result = chatGateway.generate(
+                systemInstruction,
+                context,
+                tools,
+                options == null ? null : options.model(),
+                options == null ? null : options.temperature(),
+                options == null ? null : options.maxTokens(),
+                streamingTokenCallback
+            );
         }
 
-        return new ModelResponse(result.message(), result.toolCalls(), result.terminal());
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("LLM response received: message={}, toolCalls={}, terminal={}, tokenUsage={}, modelUsage={}",
+                previewText(result.message()),
+                previewJson(result.toolCalls()),
+                result.terminal(),
+                previewJson(result.tokenUsage()),
+                previewJson(result.modelUsage()));
+        }
+
+        TokenUsage tokenUsage = result.tokenUsage();
+        ModelUsage modelUsage = result.modelUsage();
+        return new ModelResponse(result.message(), result.toolCalls(), result.terminal(), tokenUsage, modelUsage);
     }
 
     private static final int MAX_PAYLOAD_LENGTH = 400;

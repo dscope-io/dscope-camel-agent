@@ -26,6 +26,23 @@ public class AuditTrailService {
         return objectMapper.writeValueAsString(events.stream().map(this::toJson).toList());
     }
 
+    public String loadUsage(String conversationId, String limitText) throws Exception {
+        if (conversationId == null || conversationId.isBlank()) {
+            return objectMapper.writeValueAsString(Map.of(
+                "conversationId", "",
+                "eventCount", 0,
+                "modelUsage", AuditUsageSupport.summarize(List.of())
+            ));
+        }
+        int limit = parseLimit(limitText);
+        List<AgentEvent> events = persistenceFacade.loadConversation(conversationId, limit);
+        return objectMapper.writeValueAsString(Map.of(
+            "conversationId", conversationId,
+            "eventCount", events.size(),
+            "modelUsage", AuditUsageSupport.summarize(events)
+        ));
+    }
+
     private int parseLimit(String limitText) {
         if (limitText == null || limitText.isBlank()) {
             return 200;

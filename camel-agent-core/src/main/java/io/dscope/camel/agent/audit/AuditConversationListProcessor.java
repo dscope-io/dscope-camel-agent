@@ -68,7 +68,11 @@ public class AuditConversationListProcessor implements Processor {
             if (!matchesTopic(topic, metadata)) {
                 continue;
             }
-            matchedItems.add(new ConversationListItem(conversationId, metadata));
+            matchedItems.add(new ConversationListItem(
+                conversationId,
+                agentStepMetadata == null || agentStepMetadata.ai() == null ? Map.of() : agentStepMetadata.ai().asMap(),
+                metadata
+            ));
         }
 
         matchedItems.sort(comparatorFor(sortBy, ascending));
@@ -78,6 +82,7 @@ public class AuditConversationListProcessor implements Processor {
             .map(item -> {
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("conversationId", item.conversationId());
+                row.put("ai", item.ai());
                 row.put("metadata", item.metadata());
                 return row;
             })
@@ -218,6 +223,6 @@ public class AuditConversationListProcessor implements Processor {
         return planSelectionResolver.resolveBlueprintForConversation(conversationId, plansConfig, blueprintUri);
     }
 
-    private record ConversationListItem(String conversationId, Map<String, Object> metadata) {
+    private record ConversationListItem(String conversationId, Map<String, Object> ai, Map<String, Object> metadata) {
     }
 }

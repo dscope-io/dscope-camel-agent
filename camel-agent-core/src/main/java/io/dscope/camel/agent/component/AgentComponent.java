@@ -16,6 +16,7 @@ import io.dscope.camel.agent.kernel.InMemoryPersistenceFacade;
 import io.dscope.camel.agent.kernel.StaticAiModelClient;
 import io.dscope.camel.agent.mcp.McpToolDiscoveryResolver;
 import io.dscope.camel.agent.model.AgentBlueprint;
+import io.dscope.camel.agent.model.ModelOptions;
 import io.dscope.camel.agent.model.RealtimeSpec;
 import io.dscope.camel.agent.registry.CorrelationRegistry;
 import io.dscope.camel.agent.registry.DefaultToolRegistry;
@@ -132,7 +133,10 @@ public class AgentComponent extends DefaultComponent {
             aiModelClient,
             persistenceFacade,
             new SchemaValidator(),
-            mapper
+            mapper,
+            resolvedPlan == null ? ModelOptions.defaults() : resolvedPlan.ai().toModelOptions(false, ModelOptions.defaults()),
+            "node-" + java.util.UUID.randomUUID(),
+            120
         );
     }
 

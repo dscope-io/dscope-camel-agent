@@ -1,14 +1,11 @@
 package io.dscope.camel.agent.diagnostics;
 
-import java.util.List;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import io.dscope.camel.agent.model.AgentEvent;
 import io.dscope.camel.agent.runtime.ConversationArchiveService;
+import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class TracingConversationArchiveService extends ConversationArchiveService {
 

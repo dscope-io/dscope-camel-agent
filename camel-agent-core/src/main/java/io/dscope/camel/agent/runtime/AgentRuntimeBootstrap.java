@@ -9,6 +9,7 @@ import io.dscope.camel.agent.audit.AuditConversationAgentMessageProcessor;
 import io.dscope.camel.agent.audit.AuditConversationListProcessor;
 import io.dscope.camel.agent.audit.AuditConversationViewProcessor;
 import io.dscope.camel.agent.audit.AuditConversationSessionDataProcessor;
+import io.dscope.camel.agent.audit.AuditConversationUsageProcessor;
 import io.dscope.camel.agent.audit.AuditTrailSearchProcessor;
 import io.dscope.camel.agent.audit.AuditTrailService;
 import io.dscope.camel.agent.audit.mcp.AuditMcpToolsCallProcessor;
@@ -133,6 +134,7 @@ public final class AgentRuntimeBootstrap {
             blueprintUri
         );
         AuditConversationAgentMessageProcessor auditConversationAgentMessageProcessor = new AuditConversationAgentMessageProcessor(persistenceFacade, objectMapper);
+        AuditConversationUsageProcessor auditConversationUsageProcessor = new AuditConversationUsageProcessor(persistenceFacade, objectMapper);
         AuditConversationSessionDataProcessor auditConversationSessionDataProcessor =
             new AuditConversationSessionDataProcessor(conversationArchiveService, objectMapper);
         RuntimeAuditGranularityProcessor runtimeAuditGranularityProcessor =
@@ -176,6 +178,7 @@ public final class AgentRuntimeBootstrap {
         main.bind("auditConversationListProcessor", auditConversationListProcessor);
         main.bind("auditConversationViewProcessor", auditConversationViewBinding);
         main.bind("auditConversationAgentMessageProcessor", auditConversationAgentMessageProcessor);
+        main.bind("auditConversationUsageProcessor", auditConversationUsageProcessor);
         main.bind("auditConversationSessionDataProcessor", auditConversationSessionDataBinding);
         main.bind("runtimeAuditGranularityProcessor", runtimeAuditGranularityProcessor);
         main.bind("runtimeConversationPersistenceProcessor", runtimeConversationPersistenceProcessor);

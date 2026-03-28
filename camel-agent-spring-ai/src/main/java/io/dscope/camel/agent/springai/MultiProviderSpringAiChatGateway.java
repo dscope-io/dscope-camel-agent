@@ -4,7 +4,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.cloud.vertexai.VertexAI;
 import io.dscope.camel.agent.model.AiToolCall;
+import io.dscope.camel.agent.model.ModelUsage;
+import io.dscope.camel.agent.model.ModelOptions;
 import io.dscope.camel.agent.model.ToolSpec;
+import io.dscope.camel.agent.model.TokenUsage;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -15,6 +18,7 @@ import java.util.function.Consumer;
 import org.springframework.ai.anthropic.AnthropicChatModel;
 import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.anthropic.api.AnthropicApi;
+import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -32,20 +36,28 @@ import org.springframework.ai.vertexai.gemini.VertexAiGeminiChatModel;
 import org.springframework.ai.vertexai.gemini.VertexAiGeminiChatOptions;
 import org.springframework.util.LinkedMultiValueMap;
 
-public final class MultiProviderSpringAiChatGateway implements SpringAiChatGateway {
+public final class MultiProviderSpringAiChatGateway implements ConfigurableSpringAiChatGateway {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final Properties properties;
     private final OpenAiResponsesGateway openAiResponsesGateway;
+    private final boolean customResponsesGateway;
 
     public MultiProviderSpringAiChatGateway(Properties properties) {
-        this(properties, new OpenAiRealtimeResponsesGateway(properties));
+        this(properties, new OpenAiResponsesDispatcherGateway(properties), false);
     }
 
     MultiProviderSpringAiChatGateway(Properties properties, OpenAiResponsesGateway openAiResponsesGateway) {
+        this(properties, openAiResponsesGateway, true);
+    }
+
+    private MultiProviderSpringAiChatGateway(Properties properties,
+                                             OpenAiResponsesGateway openAiResponsesGateway,
+                                             boolean customResponsesGateway) {
         this.properties = properties;
         this.openAiResponsesGateway = openAiResponsesGateway;
+        this.customResponsesGateway = customResponsesGateway;
     }
 
     @Override
@@ -56,31 +68,42 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
                                        Double temperature,
                                        Integer maxTokens,
                                        Consumer<String> streamingTokenCallback) {
-        String provider = prop(properties, "agent.runtime.spring-ai.provider", "openai").toLowerCase();
+        return generate(systemPrompt, userContext, tools, new ModelOptions(null, model, temperature, maxTokens, true, Map.of()), streamingTokenCallback);
+    }
+
+    @Override
+    public SpringAiChatResult generate(String systemPrompt,
+                                       String userContext,
+                                       List<ToolSpec> tools,
+                                       ModelOptions options,
+                                       Consumer<String> streamingTokenCallback) {
+        Properties effective = mergedProperties(properties, options == null ? Map.of() : options.properties());
+        String provider = firstNonBlank(options == null ? null : options.provider(), prop(effective, "agent.runtime.spring-ai.provider", "openai")).toLowerCase();
         try {
             return switch (provider) {
-                case "gemini" -> generateGemini(systemPrompt, userContext, tools, model, temperature, maxTokens, streamingTokenCallback);
-                case "claude", "anthropic" -> generateClaude(systemPrompt, userContext, tools, model, temperature, maxTokens, streamingTokenCallback);
-                default -> generateOpenAi(systemPrompt, userContext, tools, model, temperature, maxTokens, streamingTokenCallback);
+                case "gemini" -> generateGemini(effective, systemPrompt, userContext, tools, options == null ? null : options.model(), options == null ? null : options.temperature(), options == null ? null : options.maxTokens(), streamingTokenCallback);
+                case "claude", "anthropic" -> generateClaude(effective, systemPrompt, userContext, tools, options == null ? null : options.model(), options == null ? null : options.temperature(), options == null ? null : options.maxTokens(), streamingTokenCallback);
+                default -> generateOpenAi(effective, systemPrompt, userContext, tools, options == null ? null : options.model(), options == null ? null : options.temperature(), options == null ? null : options.maxTokens(), streamingTokenCallback);
             };
         } catch (Exception e) {
             return terminal(provider.toUpperCase() + " invocation error: " + exceptionSummary(e), streamingTokenCallback);
         }
     }
 
-    private SpringAiChatResult generateOpenAi(String systemPrompt,
+    private SpringAiChatResult generateOpenAi(Properties effective,
+                                              String systemPrompt,
                                               String userContext,
                                               List<ToolSpec> tools,
                                               String model,
                                               Double temperature,
                                               Integer maxTokens,
                                               Consumer<String> callback) throws Exception {
-        String apiMode = prop(properties, "agent.runtime.spring-ai.openai.api-mode",
-            prop(properties, "spring.ai.openai.api-mode", "chat")).toLowerCase();
-        String apiKeyProperty = prop(properties, "agent.runtime.spring-ai.openai.api-key-system-property", "openai.api.key");
+        String apiMode = prop(effective, "agent.runtime.spring-ai.openai.api-mode",
+            prop(effective, "spring.ai.openai.api-mode", "chat")).toLowerCase();
+        String apiKeyProperty = prop(effective, "agent.runtime.spring-ai.openai.api-key-system-property", "openai.api.key");
         String configuredApiKey = firstNonBlank(
-            property(properties, "agent.runtime.spring-ai.openai.api-key"),
-            property(properties, "spring.ai.openai.api-key")
+            property(effective, "agent.runtime.spring-ai.openai.api-key"),
+            property(effective, "spring.ai.openai.api-key")
         );
         String directConfiguredApiKey = configuredApiKey;
         if (directConfiguredApiKey != null
@@ -97,17 +120,20 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
         }
 
         String configuredBaseUrl = firstNonBlank(
-            property(properties, "agent.runtime.spring-ai.openai.base-url"),
-            property(properties, "spring.ai.openai.base-url")
+            property(effective, "agent.runtime.spring-ai.openai.base-url"),
+            property(effective, "spring.ai.openai.base-url")
         );
         String baseUrl = configuredBaseUrl == null ? "https://api.openai.com" : configuredBaseUrl;
-        String selectedModel = firstNonBlank(model, prop(properties, "agent.runtime.spring-ai.openai.model",
-            prop(properties, "agent.runtime.spring-ai.model", "gpt-5.4")));
-        double selectedTemperature = temperature != null ? temperature : doubleProp(properties, "agent.runtime.spring-ai.temperature", 0.2d);
-        int selectedMaxTokens = maxTokens != null ? maxTokens : intProp(properties, "agent.runtime.spring-ai.max-tokens", 800);
+        String selectedModel = firstNonBlank(model, prop(effective, "agent.runtime.spring-ai.openai.model",
+            prop(effective, "agent.runtime.spring-ai.model", "gpt-5.4")));
+        double selectedTemperature = temperature != null ? temperature : doubleProp(effective, "agent.runtime.spring-ai.temperature", 0.2d);
+        int selectedMaxTokens = maxTokens != null ? maxTokens : intProp(effective, "agent.runtime.spring-ai.max-tokens", 800);
 
-        if ("responses-ws".equals(apiMode) || "responses_ws".equals(apiMode) || "responses.ws".equals(apiMode)) {
-            return openAiResponsesGateway.generate(
+        OpenAiResponsesGateway responsesGateway = responsesGatewayFor(effective);
+        if ("responses-ws".equals(apiMode) || "responses_ws".equals(apiMode) || "responses.ws".equals(apiMode)
+            || "responses".equals(apiMode) || "responses-http".equals(apiMode) || "responses_http".equals(apiMode)
+            || "responses.http".equals(apiMode)) {
+            return responsesGateway.generate(
                 apiMode,
                 systemPrompt,
                 userContext,
@@ -121,18 +147,13 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
             );
         }
 
-        if ("responses".equals(apiMode) || "responses-http".equals(apiMode) || "responses_http".equals(apiMode)
-            || "responses.http".equals(apiMode)) {
-            return terminal("OpenAI responses HTTP mode is not implemented in this gateway yet. Use api-mode=chat or api-mode=responses-ws with a configured responses plugin.", callback);
-        }
-
         LinkedMultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
-        String organizationProperty = prop(properties, "agent.runtime.spring-ai.openai.organization-system-property", "openai.organization");
+        String organizationProperty = prop(effective, "agent.runtime.spring-ai.openai.organization-system-property", "openai.organization");
         String organization = System.getProperty(organizationProperty);
         if (organization != null && !organization.isBlank()) {
             headers.add("OpenAI-Organization", organization);
         }
-        String projectProperty = prop(properties, "agent.runtime.spring-ai.openai.project-system-property", "openai.project");
+        String projectProperty = prop(effective, "agent.runtime.spring-ai.openai.project-system-property", "openai.project");
         String project = System.getProperty(projectProperty);
         if (project != null && !project.isBlank()) {
             headers.add("OpenAI-Project", project);
@@ -150,21 +171,60 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
         OpenAiChatOptions options = OpenAiChatOptions.builder()
             .model(selectedModel)
             .temperature(selectedTemperature)
-            .maxTokens(selectedMaxTokens)
             .toolCallbacks(openAiTools.callbacks())
             .internalToolExecutionEnabled(false)
             .toolChoice("auto")
             .build();
 
+        applyOpenAiTokenLimit(effective, options, selectedModel, selectedMaxTokens);
+
         OpenAiChatModel chatModel = OpenAiChatModel.builder()
             .openAiApi(openAiApi)
             .defaultOptions(options)
             .build();
-        SpringAiChatResult result = invokeSpringAiChat(chatModel, options, systemPrompt, userContext, callback);
+        SpringAiChatResult result = invokeSpringAiChat(effective, chatModel, options, systemPrompt, userContext, "openai", selectedModel, apiMode, callback);
         return remapToolCallNames(result, openAiTools.aliases());
     }
 
-    private SpringAiChatResult generateGemini(String systemPrompt,
+    private void applyOpenAiTokenLimit(Properties effective, OpenAiChatOptions options, String model, Integer maxTokens) {
+        if (options == null || maxTokens == null) {
+            return;
+        }
+        switch (selectOpenAiTokenParameter(effective)) {
+            case "max_completion_tokens" -> options.setMaxCompletionTokens(maxTokens);
+            case "max_tokens" -> options.setMaxTokens(maxTokens);
+            default -> {
+                if (requiresMaxCompletionTokens(model)) {
+                    options.setMaxCompletionTokens(maxTokens);
+                } else {
+                    options.setMaxTokens(maxTokens);
+                }
+            }
+        }
+    }
+
+    @SuppressWarnings("unused")
+    private void applyOpenAiTokenLimit(OpenAiChatOptions options, String model, Integer maxTokens) {
+        applyOpenAiTokenLimit(properties, options, model, maxTokens);
+    }
+
+    private String selectOpenAiTokenParameter(Properties effective) {
+        return prop(effective, "agent.runtime.spring-ai.openai.max-token-parameter", "auto").toLowerCase();
+    }
+
+    private boolean requiresMaxCompletionTokens(String model) {
+        if (model == null) {
+            return false;
+        }
+        String normalized = model.toLowerCase();
+        return normalized.startsWith("gpt-5")
+            || normalized.startsWith("o1")
+            || normalized.startsWith("o3")
+            || normalized.startsWith("o4");
+    }
+
+    private SpringAiChatResult generateGemini(Properties effective,
+                                              String systemPrompt,
                                               String userContext,
                                               List<ToolSpec> tools,
                                               String model,
@@ -172,20 +232,20 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
                                               Integer maxTokens,
                                               Consumer<String> callback) {
         String projectId = firstNonBlank(
-            property(properties, "agent.runtime.spring-ai.gemini.vertex.project-id"),
+            property(effective, "agent.runtime.spring-ai.gemini.vertex.project-id"),
             firstNonBlank(System.getProperty("gemini.vertex.project-id"), System.getenv("GOOGLE_CLOUD_PROJECT"))
         );
         if (projectId == null) {
             return terminal("Gemini Vertex project id is missing. Set agent.runtime.spring-ai.gemini.vertex.project-id.", callback);
         }
         String location = firstNonBlank(
-            property(properties, "agent.runtime.spring-ai.gemini.vertex.location"),
+            property(effective, "agent.runtime.spring-ai.gemini.vertex.location"),
             firstNonBlank(System.getProperty("gemini.vertex.location"), "us-central1")
         );
-        String selectedModel = firstNonBlank(model, prop(properties, "agent.runtime.spring-ai.gemini.model",
-            prop(properties, "agent.runtime.spring-ai.model", "gemini-2.5-flash")));
-        double selectedTemperature = temperature != null ? temperature : doubleProp(properties, "agent.runtime.spring-ai.temperature", 0.2d);
-        int selectedMaxTokens = maxTokens != null ? maxTokens : intProp(properties, "agent.runtime.spring-ai.max-tokens", 800);
+        String selectedModel = firstNonBlank(model, prop(effective, "agent.runtime.spring-ai.gemini.model",
+            prop(effective, "agent.runtime.spring-ai.model", "gemini-2.5-flash")));
+        double selectedTemperature = temperature != null ? temperature : doubleProp(effective, "agent.runtime.spring-ai.temperature", 0.2d);
+        int selectedMaxTokens = maxTokens != null ? maxTokens : intProp(effective, "agent.runtime.spring-ai.max-tokens", 800);
 
         try {
             VertexAI vertexAI = new VertexAI(projectId, location);
@@ -201,31 +261,32 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
                 .vertexAI(vertexAI)
                 .defaultOptions(options)
                 .build();
-            return invokeSpringAiChat(chatModel, options, systemPrompt, userContext, callback);
+            return invokeSpringAiChat(effective, chatModel, options, systemPrompt, userContext, "gemini", selectedModel, "chat", callback);
         } catch (Exception e) {
             return terminal("GEMINI invocation error: " + exceptionSummary(e), callback);
         }
     }
 
-    private SpringAiChatResult generateClaude(String systemPrompt,
+    private SpringAiChatResult generateClaude(Properties effective,
+                                              String systemPrompt,
                                               String userContext,
                                               List<ToolSpec> tools,
                                               String model,
                                               Double temperature,
                                               Integer maxTokens,
                                               Consumer<String> callback) {
-        String apiKeyProperty = prop(properties, "agent.runtime.spring-ai.claude.api-key-system-property", "anthropic.api.key");
+        String apiKeyProperty = prop(effective, "agent.runtime.spring-ai.claude.api-key-system-property", "anthropic.api.key");
         String apiKey = firstNonBlank(System.getProperty(apiKeyProperty), System.getenv("ANTHROPIC_API_KEY"));
         if (apiKey == null) {
             return terminal("Claude API key is missing. Set -D" + apiKeyProperty + "=<token>.", callback);
         }
 
-        String baseUrl = prop(properties, "agent.runtime.spring-ai.claude.base-url", "https://api.anthropic.com/v1/messages");
-        String selectedModel = firstNonBlank(model, prop(properties, "agent.runtime.spring-ai.claude.model",
-            prop(properties, "agent.runtime.spring-ai.model", "claude-3-5-sonnet-20241022")));
-        double selectedTemperature = temperature != null ? temperature : doubleProp(properties, "agent.runtime.spring-ai.temperature", 0.2d);
-        int selectedMaxTokens = maxTokens != null ? maxTokens : intProp(properties, "agent.runtime.spring-ai.max-tokens", 800);
-        String anthropicVersion = prop(properties, "agent.runtime.spring-ai.claude.anthropic-version", "2023-06-01");
+        String baseUrl = prop(effective, "agent.runtime.spring-ai.claude.base-url", "https://api.anthropic.com/v1/messages");
+        String selectedModel = firstNonBlank(model, prop(effective, "agent.runtime.spring-ai.claude.model",
+            prop(effective, "agent.runtime.spring-ai.model", "claude-3-5-sonnet-20241022")));
+        double selectedTemperature = temperature != null ? temperature : doubleProp(effective, "agent.runtime.spring-ai.temperature", 0.2d);
+        int selectedMaxTokens = maxTokens != null ? maxTokens : intProp(effective, "agent.runtime.spring-ai.max-tokens", 800);
+        String anthropicVersion = prop(effective, "agent.runtime.spring-ai.claude.anthropic-version", "2023-06-01");
         try {
             AnthropicApi anthropicApi = AnthropicApi.builder()
                 .baseUrl(toAnthropicApiBaseUrl(baseUrl))
@@ -244,17 +305,21 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
                 .anthropicApi(anthropicApi)
                 .defaultOptions(options)
                 .build();
-            return invokeSpringAiChat(chatModel, options, systemPrompt, userContext, callback);
+            return invokeSpringAiChat(effective, chatModel, options, systemPrompt, userContext, "claude", selectedModel, "chat", callback);
         } catch (Exception e) {
             return terminal("CLAUDE invocation error: " + exceptionSummary(e), callback);
         }
     }
 
-    private SpringAiChatResult invokeSpringAiChat(ChatModel chatModel,
-                                                   org.springframework.ai.chat.prompt.ChatOptions chatOptions,
-                                                   String systemPrompt,
-                                                   String userContext,
-                                                   Consumer<String> callback) {
+    private SpringAiChatResult invokeSpringAiChat(Properties effective,
+                                                  ChatModel chatModel,
+                                                  org.springframework.ai.chat.prompt.ChatOptions chatOptions,
+                                                  String systemPrompt,
+                                                  String userContext,
+                                                  String provider,
+                                                  String model,
+                                                  String apiMode,
+                                                  Consumer<String> callback) {
         List<Message> messages = new ArrayList<>();
         if (systemPrompt != null && !systemPrompt.isBlank()) {
             messages.add(new SystemMessage(systemPrompt));
@@ -268,7 +333,31 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
         }
         AssistantMessage assistant = response.getResult().getOutput();
         List<AiToolCall> toolCalls = parseAssistantToolCalls(assistant);
-        return result(assistant.getText(), toolCalls, callback);
+        TokenUsage tokenUsage = extractTokenUsage(response);
+        ModelUsage modelUsage = new ModelCostEstimator(effective).estimate(provider, model, apiMode, tokenUsage);
+        return result(assistant.getText(), toolCalls, tokenUsage, modelUsage, callback);
+    }
+
+    private OpenAiResponsesGateway responsesGatewayFor(Properties effective) {
+        if (customResponsesGateway) {
+            return openAiResponsesGateway;
+        }
+        return new OpenAiResponsesDispatcherGateway(effective);
+    }
+
+    private static Properties mergedProperties(Properties base, Map<String, String> overrides) {
+        Properties merged = new Properties();
+        if (base != null) {
+            merged.putAll(base);
+        }
+        if (overrides != null) {
+            overrides.forEach((key, value) -> {
+                if (key != null && !key.isBlank() && value != null) {
+                    merged.setProperty(key, value);
+                }
+            });
+        }
+        return merged;
     }
 
     private List<ToolCallback> toolCallbacksFor(List<ToolSpec> tools) {
@@ -327,7 +416,7 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
             String originalName = aliases.getOrDefault(toolCall.name(), toolCall.name());
             remapped.add(new AiToolCall(originalName, toolCall.arguments()));
         }
-        return new SpringAiChatResult(result.message(), remapped, result.terminal());
+        return new SpringAiChatResult(result.message(), remapped, result.terminal(), result.tokenUsage(), result.modelUsage());
     }
 
     private static String normalizeOpenAiToolName(String toolName, LinkedHashSet<String> usedNames) {
@@ -371,12 +460,20 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
         return toolCalls;
     }
 
-    private SpringAiChatResult result(String assistantMessage, List<AiToolCall> toolCalls, Consumer<String> callback) {
+    private SpringAiChatResult result(String assistantMessage,
+                                      List<AiToolCall> toolCalls,
+                                      TokenUsage tokenUsage,
+                                      ModelUsage modelUsage,
+                                      Consumer<String> callback) {
         String message = assistantMessage == null ? "" : assistantMessage;
         if (callback != null && !message.isBlank()) {
             callback.accept(message);
         }
-        return new SpringAiChatResult(message, toolCalls, toolCalls.isEmpty());
+        return new SpringAiChatResult(message, toolCalls, toolCalls.isEmpty(), tokenUsage, modelUsage);
+    }
+
+    private SpringAiChatResult result(String assistantMessage, List<AiToolCall> toolCalls, Consumer<String> callback) {
+        return result(assistantMessage, toolCalls, null, null, callback);
     }
 
     private String buildUserPrompt(String userContext) {
@@ -395,6 +492,22 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
             callback.accept(message);
         }
         return new SpringAiChatResult(message, List.of(), true);
+    }
+
+    private TokenUsage extractTokenUsage(ChatResponse response) {
+        if (response == null || response.getMetadata() == null) {
+            return null;
+        }
+        Usage usage = response.getMetadata().getUsage();
+        if (usage == null) {
+            return null;
+        }
+        TokenUsage tokenUsage = TokenUsage.of(
+            usage.getPromptTokens(),
+            usage.getCompletionTokens(),
+            usage.getTotalTokens()
+        );
+        return tokenUsage.isReported() ? tokenUsage : null;
     }
 
     private static String prop(Properties properties, String key, String defaultValue) {

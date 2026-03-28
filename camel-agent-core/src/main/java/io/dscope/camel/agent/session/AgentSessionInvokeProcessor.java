@@ -136,7 +136,9 @@ public class AgentSessionInvokeProcessor implements Processor {
         root.put("resolvedPlanName", text(response.resolvedPlanName()));
         root.put("resolvedPlanVersion", text(response.resolvedPlanVersion()));
         root.put("resolvedBlueprint", text(response.resolvedBlueprint()));
+        root.set("resolvedAi", objectMapper.valueToTree(response.resolvedAi()));
         root.set("params", objectMapper.valueToTree(response.params()));
+        root.set("modelUsage", objectMapper.valueToTree(response.modelUsage()));
         root.set("events", eventsToJson(response.events()));
         root.set("taskState", taskStateToJson(response.taskState()));
         return root;

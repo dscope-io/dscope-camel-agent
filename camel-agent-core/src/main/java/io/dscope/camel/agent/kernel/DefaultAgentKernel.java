@@ -12,10 +12,12 @@ import io.dscope.camel.agent.model.AgentResponse;
 import io.dscope.camel.agent.model.AiToolCall;
 import io.dscope.camel.agent.model.DynamicRouteState;
 import io.dscope.camel.agent.model.ExecutionContext;
+import io.dscope.camel.agent.model.ModelUsage;
 import io.dscope.camel.agent.model.ModelOptions;
 import io.dscope.camel.agent.model.ModelResponse;
 import io.dscope.camel.agent.model.TaskState;
 import io.dscope.camel.agent.model.TaskStatus;
+import io.dscope.camel.agent.model.TokenUsage;
 import io.dscope.camel.agent.model.ToolResult;
 import io.dscope.camel.agent.model.ToolSpec;
 import io.dscope.camel.agent.validation.SchemaValidator;
@@ -39,6 +41,7 @@ public class DefaultAgentKernel implements AgentKernel {
     private final InMemoryPersistenceFacade conversationStore;
     private final SchemaValidator schemaValidator;
     private final ObjectMapper objectMapper;
+    private final ModelOptions defaultModelOptions;
     private final String nodeOwnerId;
     private final int taskClaimLeaseSeconds;
 
@@ -50,7 +53,7 @@ public class DefaultAgentKernel implements AgentKernel {
                               SchemaValidator schemaValidator,
                               ObjectMapper objectMapper) {
         this(blueprint, toolRegistry, toolExecutor, aiModelClient, persistenceFacade, schemaValidator, objectMapper,
-            "node-" + UUID.randomUUID(), 120);
+            ModelOptions.defaults(), "node-" + UUID.randomUUID(), 120);
     }
 
     public DefaultAgentKernel(AgentBlueprint blueprint,
@@ -62,6 +65,20 @@ public class DefaultAgentKernel implements AgentKernel {
                               ObjectMapper objectMapper,
                               String nodeOwnerId,
                               int taskClaimLeaseSeconds) {
+        this(blueprint, toolRegistry, toolExecutor, aiModelClient, persistenceFacade, schemaValidator, objectMapper,
+            ModelOptions.defaults(), nodeOwnerId, taskClaimLeaseSeconds);
+    }
+
+    public DefaultAgentKernel(AgentBlueprint blueprint,
+                              ToolRegistry toolRegistry,
+                              ToolExecutor toolExecutor,
+                              AiModelClient aiModelClient,
+                              PersistenceFacade persistenceFacade,
+                              SchemaValidator schemaValidator,
+                              ObjectMapper objectMapper,
+                              ModelOptions defaultModelOptions,
+                              String nodeOwnerId,
+                              int taskClaimLeaseSeconds) {
         this.blueprint = blueprint;
         this.toolRegistry = toolRegistry;
         this.toolExecutor = toolExecutor;
@@ -70,6 +87,7 @@ public class DefaultAgentKernel implements AgentKernel {
         this.conversationStore = new InMemoryPersistenceFacade();
         this.schemaValidator = schemaValidator;
         this.objectMapper = objectMapper;
+        this.defaultModelOptions = defaultModelOptions == null ? ModelOptions.defaults() : defaultModelOptions;
         this.nodeOwnerId = nodeOwnerId == null || nodeOwnerId.isBlank() ? "node-" + UUID.randomUUID() : nodeOwnerId;
         this.taskClaimLeaseSeconds = Math.max(1, taskClaimLeaseSeconds);
     }
@@ -146,7 +164,7 @@ public class DefaultAgentKernel implements AgentKernel {
             blueprint.systemInstruction(),
             history,
             toolRegistry.listTools(),
-            new ModelOptions(null, 0.2, 1024, true),
+            defaultModelOptions.withStreaming(true),
             token -> {
                 streamed.append(token);
                 AgentEvent delta = event(conversationId, null, "assistant.delta", objectMapper.valueToTree(token));
@@ -154,16 +172,30 @@ public class DefaultAgentKernel implements AgentKernel {
                 emitted.add(delta);
             }
         );
-        LOGGER.debug("Kernel model response received: conversationId={}, toolCalls={}, assistantMessageChars={}, streamedChars={}",
+        LOGGER.debug("Kernel model response received: conversationId={}, toolCalls={}, assistantMessageChars={}, streamedChars={}, tokenUsage={}, modelUsage={}",
             conversationId,
             modelResponse.toolCalls() == null ? 0 : modelResponse.toolCalls().size(),
             modelResponse.assistantMessage() == null ? 0 : modelResponse.assistantMessage().length(),
-            streamed.length());
+            streamed.length(),
+            modelResponse.tokenUsage(),
+            modelResponse.modelUsage());
+
+        TokenUsage tokenUsage = modelResponse.tokenUsage();
+        ModelUsage modelUsage = modelResponse.modelUsage();
+        if ((modelUsage != null && modelUsage.isReported()) || (tokenUsage != null && tokenUsage.isReported())) {
+            Object usagePayload = modelUsage != null && modelUsage.isReported() ? modelUsage : tokenUsage;
+            AgentEvent usageEvent = event(conversationId, null, "model.usage", objectMapper.valueToTree(usagePayload));
+            persist(usageEvent);
+            emitted.add(usageEvent);
+        }
 
         for (AiToolCall toolCall : modelResponse.toolCalls()) {
+            if (toolCall == null || toolCall.name() == null || toolCall.name().isBlank()) {
+                continue;
+            }
             LOGGER.info("Kernel tool execution started: conversationId={}, tool={}",
                 conversationId,
-                toolCall == null ? "" : toolCall.name());
+                toolCall.name());
             ToolSpec toolSpec = toolRegistry.getTool(toolCall.name())
                 .orElseThrow(() -> new IllegalArgumentException("Tool not allowed: " + toolCall.name()));
 

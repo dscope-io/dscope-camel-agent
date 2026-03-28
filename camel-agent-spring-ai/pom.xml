@@ -49,6 +49,11 @@
       <version>${spring.ai.version}</version>
     </dependency>
     <dependency>
+      <groupId>com.openai</groupId>
+      <artifactId>openai-java</artifactId>
+      <version>2.19.1</version>
+    </dependency>
+    <dependency>
       <groupId>io.dscope.camel</groupId>
       <artifactId>camel-persistence-core</artifactId>
       <version>${persistence.version}</version>
