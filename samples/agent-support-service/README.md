@@ -735,8 +735,11 @@ agent:
 
 - Sample still behaves like old code after fixes
    - local Maven snapshots may be stale.
-   - rebuild/install from repo root:
-   - `mvn -f pom.xml -pl camel-agent-core,camel-agent-spring-ai,camel-agent-persistence-dscope,samples/agent-support-service -am -DskipTests clean install`
+   - rebuild/install from repo root or use a reactor slice so the sample runs against current workspace modules.
+   - install current modules locally:
+   - `mvn install -DskipTests`
+   - run the sample test slice against current reactor outputs:
+   - `mvn -pl samples/agent-support-service -am clean test`
 
 ### Troubleshooting Grep Cookbook
 

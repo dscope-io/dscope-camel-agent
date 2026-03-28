@@ -449,6 +449,29 @@ plans:
 | `plans[].versions[].default` | no | Marks the default version for that plan. |
 | `plans[].versions[].blueprint` | yes | Concrete blueprint path for the plan version. |
 
+Plan catalogs may also define an optional `ai` block at the plan level and at each version entry.
+
+Supported `ai` fields:
+
+- `provider`
+- `model`
+- `temperature`
+- `max-tokens`
+- `properties`
+
+Behavior:
+
+- plan-level `ai` acts as the default AI configuration for all versions in the plan
+- version-level `ai` overrides or extends the plan-level defaults
+- nested `properties` maps are flattened into runtime property keys before model execution
+- resolved AI settings are persisted with `conversation.plan.selected`
+
+Resolved AI settings are surfaced by runtime APIs so operators can identify the exact model configuration used for a conversation:
+
+- structured session responses expose `resolvedAi`
+- audit conversation projections expose top-level `ai`
+- audit metadata exposes `conversationMetadata.ai`
+
 ### 5. Request Headers And Exchange Contract
 
 The `agent:` endpoint uses headers for conversation and plan selection.
@@ -690,6 +713,7 @@ Resolution behavior:
 
 - resolution happens at runtime, not during static blueprint authoring
 - this keeps concrete execution targets and secret values out of the model-facing instruction surface
+- runtime bootstrap resolves both `{{...}}` and `${...}` placeholders in loaded application properties, including references to other loaded properties
 - unresolved placeholders are preserved for ordinary string resolution helpers but execution-target fields now fail fast
 
 Fail-fast execution-target fields:
@@ -703,6 +727,11 @@ Fail-fast execution-target fields:
 - structured session endpoint overrides such as `agent.session.endpointUri`
 
 If one of those fields still contains `{{...}}` or `${...}` after runtime resolution, execution stops with an `IllegalArgumentException` naming the unresolved field.
+
+Important distinction:
+
+- bootstrap property resolution is handled before runtime components are wired, so properties such as `agui.rpc.port`, `agent.runtime.a2a.port`, and `agent.runtime.a2a.public-base-url` can safely reference each other with either placeholder syntax
+- execution-target resolution is a later step used for blueprint fields that directly control route ids, endpoint URIs, and similar runtime invocations
 
 ### Route-Driven Session Invocation
 

@@ -55,6 +55,7 @@ Catalog model:
 - multiple versions per plan
 - exactly one default plan
 - exactly one default version per plan
+- optional plan-level and version-level `ai` overrides
 
 Each version points to a concrete markdown blueprint location. The blueprint remains the unit that defines:
 
@@ -62,6 +63,12 @@ Each version points to a concrete markdown blueprint location. The blueprint rem
 - tools
 - AGUI pre-run behavior
 - realtime defaults
+
+Plan-level AI behavior:
+
+- plan-level `ai` provides defaults shared by all versions in a plan
+- version-level `ai` overrides provider, model, token, temperature, and provider-specific property keys for the selected version
+- the resolved AI block is persisted in `conversation.plan.selected` and passed into model execution through `ModelOptions`
 
 Internal request headers:
 
@@ -404,8 +411,11 @@ Conversation-level audit metadata now includes:
 - `planName`
 - `planVersion`
 - `blueprintUri`
+- `ai`
 
 Per-step audit projections also include the same resolved agent block so operators can see which plan/version produced each message or tool step.
+
+Audit list and search responses also expose a top-level `ai` block so dashboards do not need to unwrap nested metadata to identify the provider/model actually used for a conversation.
 
 When async audit is enabled, these projections include both persisted and still-queued events because the read path merges pending async entries before rendering audit responses.
 
@@ -566,6 +576,12 @@ Provider mapping:
 - `openai` -> Spring AI `OpenAiChatModel` (Chat Completions)
 - `claude`/`anthropic` -> Spring AI `AnthropicChatModel`
 - `gemini` -> Spring AI `VertexAiGeminiChatModel`
+
+Per-conversation provider behavior:
+
+- runtime starts from the globally configured Spring AI properties
+- resolved plan/version `ai` overrides are merged per conversation
+- `provider`, `model`, `temperature`, `maxTokens`, and flattened provider-specific `properties` are applied at call time without mutating the global application configuration
 
 Tool calls are exposed to the kernel through Spring AI `AssistantMessage.ToolCall` mapping into internal `AiToolCall`.
 

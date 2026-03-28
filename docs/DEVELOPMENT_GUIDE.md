@@ -383,12 +383,14 @@ Supported syntax:
 
 Resolution order:
 
-1. Camel property placeholders are resolved through `CamelContext.resolvePropertyPlaceholders(...)`
-2. `${...}` placeholders are resolved from environment variables, then JVM system properties, then inline defaults
+1. bootstrap-time application properties are resolved through `RuntimePropertyPlaceholderResolver`, which supports both `{{...}}` and `${...}` placeholders and can resolve references to other loaded properties
+2. execution-target fields are resolved through the runtime placeholder utilities before route or endpoint invocation
+3. `${...}` fallback values come from environment variables, then JVM system properties, then inline defaults
 
 Implementation seam:
 
-- `RuntimePlaceholderResolver` is the central utility for execution-facing substitution
+- `RuntimePropertyPlaceholderResolver` handles bootstrap-time application property resolution
+- `RuntimePlaceholderResolver` handles execution-facing substitution for blueprint and route/session execution targets
 
 Fail-fast execution targets:
 
@@ -486,6 +488,12 @@ Sample-focused compile and tests:
 mvn -pl samples/agent-support-service -am resources:resources resources:testResources compiler:compile compiler:testCompile surefire:test -DskipTests=false
 ```
 
+Sample-focused local install when downstream module artifacts may be stale:
+
+```bash
+mvn install -DskipTests
+```
+
 ### What To Validate By Area
 
 - blueprint or tool changes: schema validation, route execution, and agent turn behavior
@@ -500,6 +508,7 @@ mvn -pl samples/agent-support-service -am resources:resources resources:testReso
 Repo-specific note:
 
 - when full lifecycle plugin phases are noisy or unstable, prefer explicit `resources`, `compile`, `testCompile`, and `surefire:test` goals for the slice you are changing
+- when shared modules such as `camel-agent-core` or `camel-agent-spring-ai` changed, prefer reactor-slice sample validation (`-pl samples/agent-support-service -am`) over direct `-f samples/...` runs so the sample uses the current workspace outputs instead of stale local Maven artifacts
 
 ## Documentation Expectations For Future Changes
 
