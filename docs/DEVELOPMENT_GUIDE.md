@@ -221,6 +221,263 @@ Important developer concerns:
 - async audit mode should not change business behavior, only request-thread timing
 - audit splitting to a dedicated JDBC backend should not break conversation-state persistence
 
+Core audit services and processors:
+
+- `AuditTrailService`: basic service-style loader for raw event arrays and usage summaries
+- `AuditTrailSearchProcessor`: filtered raw event search for one conversation
+- `AuditConversationListProcessor`: searchable/sortable conversation summary list
+- `AuditConversationViewProcessor`: normalized message-oriented conversation projection for console UIs
+- `AuditConversationUsageProcessor`: token and cost summary from `model.usage` events
+- `AuditConversationSessionDataProcessor`: transcript/archive reads backed by `ConversationArchiveService`
+- `AuditConversationAgentMessageProcessor`: manual assistant-message append for operator tooling
+- `AuditAgentCatalogProcessor`: plan/version catalog metadata for console sidebars or picker UIs
+- `AuditAgentBlueprintProcessor`: resolved blueprint content and metadata for the selected conversation
+- `AuditMetadataSupport`: shared projection logic for agent metadata, AI config, A2A correlation, and blueprint-derived labels
+- `AuditUsageSupport`: parser/aggregator for `model.usage` events
+
+Runtime bootstrap bindings:
+
+- `AgentRuntimeBootstrap` binds `auditTrailService`, `auditTrailSearchProcessor`, `auditConversationListProcessor`, `auditConversationViewProcessor`, `auditConversationUsageProcessor`, `auditConversationSessionDataProcessor`, `auditConversationAgentMessageProcessor`, `auditAgentCatalogProcessor`, and `auditAgentBlueprintProcessor`
+- the sample admin routes expose these bindings over both HTTP endpoints and MCP tools
+
+Primary event families for audit trail work:
+
+- `user.message`
+- `assistant.message`
+- `assistant.manual.message`
+- `tool.requested`, `tool.started`, `tool.completed`, `tool.failed`
+- `realtime.*`
+- `model.usage`
+- `conversation.plan.selected`
+- `agent.definition.refreshed`
+- `conversation.a2a.*`
+
+When designing new flows, decide explicitly whether the data belongs in:
+
+- audit trail for diagnostics, execution tracing, model usage, and operator metadata
+- conversation archive for transcript playback and session-scoped user/assistant feeds
+
+#### Processor Contracts
+
+`AuditTrailSearchProcessor` input headers:
+
+- `conversationId` required
+- optional `type`
+- optional `q`
+- optional `from`
+- optional `to`
+- optional `limit`
+
+`AuditTrailSearchProcessor` response fields:
+
+- `conversationId`
+- `ai`
+- `conversationMetadata`
+- `modelUsage`
+- `filters`
+- `count`
+- `events[]`
+
+Each projected event row includes:
+
+- `conversationId`
+- `taskId`
+- `type`
+- `payload`
+- `timestamp`
+- `agent`
+
+`AuditConversationListProcessor` input headers:
+
+- optional `q`
+- optional `topic`
+- optional `sortBy`
+- optional `order`
+- optional `limit`
+
+`AuditConversationListProcessor` response fields:
+
+- `query`
+- `topic`
+- `sortBy`
+- `order`
+- `limit`
+- `count`
+- `blueprintUri`
+- `items[]`
+
+Each `items[]` row includes:
+
+- `conversationId`
+- `ai`
+- `metadata`
+
+`metadata` is the main console summary block and can include:
+
+- `title`
+- `description`
+- `topics[]`
+- `agentTitle`
+- `agentName`
+- `agentVersion`
+- `planName`
+- `planVersion`
+- `blueprintUri`
+- `conversationKind`
+- `firstEventAt`
+- `lastEventAt`
+- `eventCount`
+- `modelUsageTotals`
+- optional A2A fields such as `a2aAgentId`, `a2aRemoteConversationId`, and `a2aRemoteTaskId`
+
+`AuditConversationViewProcessor` input headers:
+
+- `conversationId` required
+- optional `limit`
+
+`AuditConversationViewProcessor` response fields:
+
+- `conversationId`
+- `eventCount`
+- `copilotKitAvailable`
+- `agui`
+- `agentPerspective`
+- `modelUsage`
+- `agent`
+- `a2a`
+
+`agentPerspective.messages[]` is the preferred UI timeline feed. Each row includes:
+
+- `role`
+- `type`
+- `text`
+- `timestamp`
+- `manual`
+- `payload`
+- `agent`
+
+`AuditConversationUsageProcessor` input headers:
+
+- `conversationId` required
+- optional `limit`
+
+`AuditConversationUsageProcessor` response fields:
+
+- `conversationId`
+- `eventCount`
+- `modelUsage`
+
+`modelUsage` comes from `AuditUsageSupport` and includes:
+
+- `callCount`
+- `totals`
+- `byModel[]`
+- `calls[]`
+
+`AuditConversationSessionDataProcessor` input headers:
+
+- `conversationId` required
+- optional `sessionId`
+- optional `type`
+- optional `q`
+- optional `from`
+- optional `to`
+- optional `limit`
+
+`AuditConversationSessionDataProcessor` response fields:
+
+- `conversationId`
+- `sessionId`
+- `archivePersistenceEnabled`
+- `filters`
+- `count`
+- `events[]`
+
+Each archive row includes:
+
+- `conversationId`
+- `taskId`
+- `type`
+- `role`
+- `direction`
+- `source`
+- `sessionId`
+- `runId`
+- `text`
+- `payload`
+- `timestamp`
+
+`AuditConversationAgentMessageProcessor` accepts:
+
+- `conversationId` required
+- `message` or `text` required
+- optional `sessionId`
+- optional `runId`
+- optional `threadId`
+
+and appends `assistant.manual.message` with correlation metadata suitable for AGUI-linked consoles.
+
+#### MCP Audit Surface
+
+`AuditMcpToolsListProcessor` and `AuditMcpToolsCallProcessor` expose the audit console surface through MCP.
+
+Primary tool names:
+
+- `audit.events.search`
+- `audit.conversations.list`
+- `audit.conversation.view`
+- `audit.conversation.sessionData`
+- `audit.conversation.agentMessage`
+- `audit.agent.catalog`
+- `audit.agent.blueprint`
+
+Operational companion tools:
+
+- `runtime.audit.granularity.get`
+- `runtime.audit.granularity.set`
+- `runtime.conversation.persistence.get`
+- `runtime.conversation.persistence.set`
+- `runtime.refresh`
+- `runtime.conversation.close`
+- `runtime.purge.preview`
+
+This MCP surface is the easiest way to build a console that wants one transport contract for reads, writes, and runtime controls.
+
+#### Custom Console Design Guidance
+
+For a custom audit console, prefer this data flow:
+
+1. use `audit.conversations.list` for the searchable left-hand conversation index
+2. use `audit.conversation.view` for the main timeline because it already normalizes visible user/assistant messages
+3. use `audit.events.search` for raw event inspection, export, and advanced filters
+4. use `GET /audit/conversation/usage` for cost/token charts and provider/model breakdowns
+5. use `audit.conversation.sessionData` for transcript replay or session-oriented subviews
+6. use `audit.agent.catalog` and `audit.agent.blueprint` for plan/version context and blueprint inspection
+
+Recommended UI mapping:
+
+- list pane -> `items[]` from conversation list
+- conversation header -> `metadata` or `conversationMetadata`
+- readable timeline -> `agentPerspective.messages[]`
+- developer/raw panel -> `events[]`
+- usage/cost widgets -> `modelUsage`
+- transcript replay panel -> archive `events[]`
+
+Recommended rendering rules:
+
+- show `ai` at both conversation level and event/message level when debugging per-plan model overrides
+- show `a2a` only when populated to avoid clutter for standard conversations
+- keep `payload` collapsible rather than fully expanded by default
+- treat `model.usage` data as append-only accounting events and aggregate with `AuditUsageSupport` semantics rather than recomputing from message text
+
+For a concrete example, use `samples/agent-support-service/src/main/resources/frontend/audit.html` as the reference console implementation. It already demonstrates:
+
+- conversation listing
+- metadata and topic rendering
+- normalized agent-perspective timelines
+- raw JSON export
+- MCP tool invocation for audit and runtime controls
+
 ### Conversation Archive
 
 Conversation archive persistence is transcript-focused and distinct from the main audit trail.

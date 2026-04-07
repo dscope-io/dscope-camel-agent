@@ -363,6 +363,316 @@ agent:
         driver-class-name: org.postgresql.Driver
 ```
 
+      ### Audit Trail Data APIs
+
+      The runtime exposes two related but distinct data surfaces:
+
+      - audit trail for operator diagnostics and execution tracing
+      - conversation archive for transcript-style replay and session-centric UX
+
+      Audit trail is built from events such as:
+
+      - `user.message`
+      - `assistant.message`
+      - `assistant.manual.message`
+      - `tool.*`
+      - `realtime.*`
+      - `model.usage`
+      - `conversation.plan.selected`
+      - `agent.definition.refreshed`
+      - `conversation.a2a.*`
+
+      Conversation archive is built from transcript-oriented events such as:
+
+      - `conversation.user.message`
+      - `conversation.assistant.message`
+      - `conversation.realtime.observed`
+
+      Use audit trail when you need:
+
+      - request and tool lifecycle diagnostics
+      - provider and model usage analysis
+      - plan/version attribution
+      - A2A and AGUI correlation debugging
+
+      Use conversation archive when you need:
+
+      - transcript replay
+      - user/assistant message feeds
+      - session-scoped history views
+
+      #### HTTP Endpoints
+
+      The sample runtime exposes these REST-style endpoints on the admin/AGUI port:
+
+      - `GET /audit/search`
+      - `GET /audit/conversations`
+      - `GET /audit/conversation/view`
+      - `POST /audit/conversation/agent-message`
+      - `GET /audit/conversation/usage`
+      - `GET /audit/conversation/session-data`
+      - `GET /audit/agent/catalog`
+      - `GET /audit/agent-md`
+      - `GET /audit/ui`
+
+      Common query/body fields:
+
+      - `conversationId`: required for conversation-specific reads
+      - `limit`: bounded server-side limit for result size
+      - `type`: exact event type filter
+      - `q`: substring search across event type and payload text
+      - `from` and `to`: ISO-8601 timestamps
+      - `sessionId`: transcript/session archive filter for `audit.conversation.sessionData`
+      - `topic`, `sortBy`, `order`: conversation-list filters
+
+      #### MCP Tools
+
+      The same audit and runtime controls are also exposed through the admin MCP endpoint at `POST /mcp/admin` using `tools/list` and `tools/call`.
+
+      Primary audit MCP tools:
+
+      - `audit.events.search`
+      - `audit.conversations.list`
+      - `audit.conversation.view`
+      - `audit.conversation.sessionData`
+      - `audit.conversation.agentMessage`
+      - `audit.agent.catalog`
+      - `audit.agent.blueprint`
+
+      Operational companion tools commonly used by audit consoles:
+
+      - `runtime.audit.granularity.get`
+      - `runtime.audit.granularity.set`
+      - `runtime.conversation.persistence.get`
+      - `runtime.conversation.persistence.set`
+      - `runtime.refresh`
+      - `runtime.conversation.close`
+      - `runtime.purge.preview`
+
+      ### Audit Response Shapes
+
+      #### Conversation List
+
+      `GET /audit/conversations` and `audit.conversations.list` return a search-oriented list of conversation summaries.
+
+      Top-level response fields:
+
+      - `query`
+      - `topic`
+      - `sortBy`
+      - `order`
+      - `limit`
+      - `count`
+      - `blueprintUri`
+      - `items[]`
+
+      Each item includes:
+
+      - `conversationId`
+      - `ai`: resolved provider/model/config for the active conversation state
+      - `metadata`
+
+      Useful `metadata` fields:
+
+      - `title`
+      - `description`
+      - `topics[]`
+      - `agentTitle`
+      - `agentName`
+      - `agentVersion`
+      - `planName`
+      - `planVersion`
+      - `blueprintUri`
+      - `conversationKind`
+      - `eventCount`
+      - `firstEventAt`
+      - `lastEventAt`
+      - `modelUsageTotals`
+      - optional A2A correlation fields such as `a2aAgentId`, `a2aRemoteConversationId`, and `a2aRemoteTaskId`
+
+      #### Event Search
+
+      `GET /audit/search` and `audit.events.search` return filtered raw/projection-ready event data for one conversation.
+
+      Top-level response fields:
+
+      - `conversationId`
+      - `ai`
+      - `conversationMetadata`
+      - `modelUsage`
+      - `filters`
+      - `count`
+      - `events[]`
+
+      Each event includes:
+
+      - `conversationId`
+      - `taskId`
+      - `type`
+      - `payload`
+      - `timestamp`
+      - `agent`
+
+      The nested `agent` block is the resolved per-step agent state at the moment of that event and can include:
+
+      - `planName`
+      - `planVersion`
+      - `blueprintUri`
+      - `agentName`
+      - `agentVersion`
+      - `ai`
+
+      #### Conversation View
+
+      `GET /audit/conversation/view` and `audit.conversation.view` return a console-friendly normalized view for one conversation.
+
+      Top-level response fields:
+
+      - `conversationId`
+      - `eventCount`
+      - `copilotKitAvailable`
+      - `agui`
+      - `agentPerspective`
+      - `modelUsage`
+      - `agent`
+      - `a2a`
+
+      `agui` contains:
+
+      - `sessionId`
+      - `runId`
+      - `threadId`
+
+      `agentPerspective.messages[]` contains normalized display rows with:
+
+      - `role`
+      - `type`
+      - `text`
+      - `timestamp`
+      - `manual`
+      - `payload`
+      - `agent`
+
+      This is the best feed for a console message timeline because it filters out most low-signal technical events and preserves a readable message-oriented sequence.
+
+      #### Usage View
+
+      `GET /audit/conversation/usage` returns token and cost analytics derived from `model.usage` events.
+
+      Top-level response fields:
+
+      - `conversationId`
+      - `eventCount`
+      - `modelUsage`
+
+      `modelUsage` includes:
+
+      - `callCount`
+      - `totals`
+      - `byModel[]`
+      - `calls[]`
+
+      Useful usage fields inside `totals`, `byModel[]`, and `calls[]`:
+
+      - `provider`
+      - `model`
+      - `apiMode`
+      - `promptTokens`
+      - `completionTokens`
+      - `totalTokens`
+      - `promptCostUsd`
+      - `completionCostUsd`
+      - `totalCostUsd`
+      - `currency`
+      - `timestamp`
+      - `taskId`
+
+      #### Session Data View
+
+      `GET /audit/conversation/session-data` and `audit.conversation.sessionData` return transcript/archive events from `ConversationArchiveService`.
+
+      Top-level response fields:
+
+      - `conversationId`
+      - `sessionId`
+      - `archivePersistenceEnabled`
+      - `filters`
+      - `count`
+      - `events[]`
+
+      Each archive event includes:
+
+      - `conversationId`
+      - `taskId`
+      - `type`
+      - `role`
+      - `direction`
+      - `source`
+      - `sessionId`
+      - `runId`
+      - `text`
+      - `payload`
+      - `timestamp`
+
+      #### Agent Message Append
+
+      `POST /audit/conversation/agent-message` and `audit.conversation.agentMessage` append a manual assistant message to an existing conversation.
+
+      Input fields:
+
+      - `conversationId`
+      - `message` or `text`
+      - optional `sessionId`
+      - optional `runId`
+      - optional `threadId`
+
+      Response fields:
+
+      - `accepted`
+      - `conversationId`
+      - `message`
+      - `timestamp`
+      - `aguiSessionId`
+      - `aguiRunId`
+      - `aguiThreadId`
+
+      This is intended for operator-driven corrections, replay experiments, or console-side manual annotations.
+
+      ### Building A Custom Audit Console
+
+      Recommended composition for a custom audit UI:
+
+      1. Use `audit.conversations.list` or `GET /audit/conversations` for the left-hand searchable conversation index.
+      2. Use `audit.conversation.view` or `GET /audit/conversation/view` for the main message timeline because it already normalizes visible text into `agentPerspective.messages[]`.
+      3. Use `audit.events.search` or `GET /audit/search` for a raw event inspector, filters panel, or export/download action.
+      4. Use `GET /audit/conversation/usage` for token/cost widgets and model breakdown panels.
+      5. Use `audit.conversation.sessionData` when you need transcript replay or per-session voice/chat feeds distinct from operator diagnostics.
+      6. Use `audit.agent.catalog` and `audit.agent.blueprint` to show plan/version metadata and the exact blueprint content behind a conversation.
+
+      Recommended screen model:
+
+      - conversation list pane backed by `items[].metadata`
+      - conversation summary header backed by `conversationMetadata` or `metadata`
+      - normalized timeline backed by `agentPerspective.messages[]`
+      - raw event panel backed by `events[]`
+      - usage panel backed by `modelUsage`
+      - transcript/session panel backed by `session-data.events[]`
+
+      Recommended filtering strategy:
+
+      - list/search by `conversationId`, `title`, `topics`, `planName`, and `agentName`
+      - narrow event view by `type`, `q`, `from`, `to`, and `limit`
+      - keep archive and audit filters separate because archive is transcript-oriented while audit is diagnostics-oriented
+
+      Recommended rendering rules:
+
+      - treat `agentPerspective.messages[]` as the human-readable default
+      - keep `events[].payload` available in expandable raw JSON views
+      - render `ai` and `modelUsage` prominently because plan-scoped AI overrides can change provider/model per conversation
+      - show A2A correlation fields only when `conversationKind=a2a-linked` or the top-level `a2a` block is populated
+
+      For a working reference implementation, study the sample console in `samples/agent-support-service/src/main/resources/frontend/audit.html`, which combines conversation listing, metadata rendering, agent-perspective timelines, raw event export, and MCP-backed tool calls.
+
 #### AGUI Binding And Pre-Run
 
 | Property | Default | Meaning |
