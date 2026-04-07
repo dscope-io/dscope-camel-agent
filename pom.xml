@@ -49,6 +49,15 @@
     </dependencies>
   </dependencyManagement>
 
+  <dependencies>
+    <dependency>
+      <groupId>org.apache.derby</groupId>
+      <artifactId>derby</artifactId>
+      <version>10.17.1.0</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
   <modules>
     <module>camel-agent-core</module>
     <module>camel-agent-persistence-dscope</module>
