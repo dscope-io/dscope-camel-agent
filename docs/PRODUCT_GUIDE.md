@@ -152,6 +152,9 @@ Use this when the agent must participate in telephony flows.
 - Realtime processors map final transcript turns into the same `agent:` flow used by web chat.
 - Outbound support calls use `OutboundSipCallRequest`, `OutboundSipCallResult`, and `SipProviderClient` from core.
 - Provider-specific placement logic lives in adapter modules such as `camel-agent-twilio`.
+- Reusable OpenAI/Twilio onboarding is exposed through `POST /telephony/onboarding/openai-twilio` and `GET /telephony/onboarding/openai-twilio`.
+- Onboarding plans persist sanitized config under deterministic ids shaped like `telephony:onboarding:{tenantId}:{agentId}` so tenant-specific agent projects can regenerate the same checklist and route settings.
+- For OpenAI Realtime SIP, the preferred production topology is `Twilio Elastic SIP Trunk -> OpenAI SIP URI -> sample webhook /openai/realtime/sip/webhook`.
 
 This keeps call control provider-specific while the conversation, audit, and route orchestration model stays uniform.
 
@@ -408,12 +411,18 @@ agent:
       - `GET /audit/search`
       - `GET /audit/conversations`
       - `GET /audit/conversation/view`
+      - `GET /audit/conversation/sip`
       - `POST /audit/conversation/agent-message`
       - `GET /audit/conversation/usage`
       - `GET /audit/conversation/session-data`
       - `GET /audit/agent/catalog`
       - `GET /audit/agent-md`
       - `GET /audit/ui`
+
+      The same sample runtime also exposes telephony onboarding APIs:
+
+      - `POST /telephony/onboarding/openai-twilio`
+      - `GET /telephony/onboarding/openai-twilio`
 
       Common query/body fields:
 
@@ -434,6 +443,7 @@ agent:
       - `audit.events.search`
       - `audit.conversations.list`
       - `audit.conversation.view`
+      - `audit.conversation.sip`
       - `audit.conversation.sessionData`
       - `audit.conversation.agentMessage`
       - `audit.agent.catalog`

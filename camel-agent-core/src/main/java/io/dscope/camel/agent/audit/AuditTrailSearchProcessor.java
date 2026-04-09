@@ -72,6 +72,7 @@ public class AuditTrailSearchProcessor implements Processor {
         String effectiveBlueprint = resolveBlueprint(conversationId);
         AuditMetadataSupport.BlueprintMetadata blueprintMetadata = AuditMetadataSupport.loadBlueprintMetadata(effectiveBlueprint);
         AuditMetadataSupport.AgentStepMetadata currentAgentState = AuditMetadataSupport.deriveAgentStepMetadata(loaded, effectiveBlueprint);
+        AuditMetadataSupport.SipMetadata currentSipState = AuditMetadataSupport.deriveSipMetadata(loaded);
         Map<String, Object> conversationMetadata = AuditMetadataSupport.buildConversationMetadata(
             conversationId,
             loaded,
@@ -85,6 +86,7 @@ public class AuditTrailSearchProcessor implements Processor {
         response.put("ai", currentAgentState == null || currentAgentState.ai() == null ? Map.of() : currentAgentState.ai().asMap());
         response.put("conversationMetadata", conversationMetadata);
         response.put("modelUsage", AuditUsageSupport.summarize(loaded));
+        response.put("sip", currentSipState.asMap());
         response.put("filters", Map.of(
             "type", type == null ? "" : type,
             "q", query == null ? "" : query,
@@ -149,13 +151,15 @@ public class AuditTrailSearchProcessor implements Processor {
             effectiveBlueprint,
             AuditMetadataSupport.loadBlueprintMetadata(effectiveBlueprint)
         );
+        AuditMetadataSupport.SipMetadata sipState = AuditMetadataSupport.SipMetadata.empty();
 
         for (AgentEvent event : loaded) {
             agentState = AuditMetadataSupport.advanceAgentStepMetadata(agentState, event);
+            sipState = AuditMetadataSupport.advanceSipMetadata(sipState, event);
             if (!matchesFilters(event, normalizedType, normalizedQuery, from, to)) {
                 continue;
             }
-            projected.add(toJson(event, agentState));
+            projected.add(toJson(event, agentState, sipState));
             if (projected.size() >= limit) {
                 break;
             }
@@ -190,7 +194,9 @@ public class AuditTrailSearchProcessor implements Processor {
         return true;
     }
 
-    private Map<String, Object> toJson(AgentEvent event, AuditMetadataSupport.AgentStepMetadata agentState) {
+    private Map<String, Object> toJson(AgentEvent event,
+                                       AuditMetadataSupport.AgentStepMetadata agentState,
+                                       AuditMetadataSupport.SipMetadata sipState) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("conversationId", event.conversationId());
         data.put("taskId", event.taskId());
@@ -198,6 +204,7 @@ public class AuditTrailSearchProcessor implements Processor {
         data.put("payload", event.payload());
         data.put("timestamp", event.timestamp() == null ? null : event.timestamp().toString());
         data.put("agent", agentState == null ? Map.of() : agentState.asMap());
+        data.put("sip", sipState == null ? Map.of() : sipState.asMap());
         return data;
     }
 

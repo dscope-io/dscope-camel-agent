@@ -7,6 +7,7 @@ import io.dscope.camel.agent.audit.AuditAgentCatalogProcessor;
 import io.dscope.camel.agent.audit.AuditConversationAgentMessageProcessor;
 import io.dscope.camel.agent.audit.AuditConversationListProcessor;
 import io.dscope.camel.agent.audit.AuditConversationSessionDataProcessor;
+import io.dscope.camel.agent.audit.AuditConversationSipProcessor;
 import io.dscope.camel.agent.audit.AuditConversationViewProcessor;
 import io.dscope.camel.agent.audit.AuditTrailSearchProcessor;
 import io.dscope.camel.agent.runtime.RuntimeAuditGranularityProcessor;
@@ -33,6 +34,7 @@ public class AuditMcpToolsCallProcessor extends AbstractMcpResponseProcessor {
     private final AuditTrailSearchProcessor auditTrailSearchProcessor;
     private final AuditConversationListProcessor auditConversationListProcessor;
     private final AuditConversationViewProcessor auditConversationViewProcessor;
+    private final AuditConversationSipProcessor auditConversationSipProcessor;
     private final AuditConversationSessionDataProcessor auditConversationSessionDataProcessor;
     private final AuditConversationAgentMessageProcessor auditConversationAgentMessageProcessor;
     private final AuditAgentBlueprintProcessor auditAgentBlueprintProcessor;
@@ -47,6 +49,7 @@ public class AuditMcpToolsCallProcessor extends AbstractMcpResponseProcessor {
                                       AuditTrailSearchProcessor auditTrailSearchProcessor,
                                       AuditConversationListProcessor auditConversationListProcessor,
                                       AuditConversationViewProcessor auditConversationViewProcessor,
+                                      AuditConversationSipProcessor auditConversationSipProcessor,
                                       AuditConversationSessionDataProcessor auditConversationSessionDataProcessor,
                                       AuditConversationAgentMessageProcessor auditConversationAgentMessageProcessor,
                                       AuditAgentBlueprintProcessor auditAgentBlueprintProcessor,
@@ -60,6 +63,7 @@ public class AuditMcpToolsCallProcessor extends AbstractMcpResponseProcessor {
         this.auditTrailSearchProcessor = auditTrailSearchProcessor;
         this.auditConversationListProcessor = auditConversationListProcessor;
         this.auditConversationViewProcessor = auditConversationViewProcessor;
+        this.auditConversationSipProcessor = auditConversationSipProcessor;
         this.auditConversationSessionDataProcessor = auditConversationSessionDataProcessor;
         this.auditConversationAgentMessageProcessor = auditConversationAgentMessageProcessor;
         this.auditAgentBlueprintProcessor = auditAgentBlueprintProcessor;
@@ -88,6 +92,8 @@ public class AuditMcpToolsCallProcessor extends AbstractMcpResponseProcessor {
             case "audit.conversations.list" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, auditConversationListProcessor,
                 message -> setHeaders(message, effectiveArguments, "q", "topic", "sortBy", "order", "limit")));
             case "audit.conversation.view" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, auditConversationViewProcessor,
+                message -> setHeaders(message, effectiveArguments, "conversationId", "limit")));
+            case "audit.conversation.sip" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, auditConversationSipProcessor,
                 message -> setHeaders(message, effectiveArguments, "conversationId", "limit")));
             case "audit.conversation.sessionData" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, auditConversationSessionDataProcessor,
                 message -> setHeaders(message, effectiveArguments, "conversationId", "sessionId", "type", "q", "from", "to", "limit")));

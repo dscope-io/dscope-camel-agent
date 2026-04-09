@@ -101,6 +101,21 @@ final class SupportOpenAiSipWebhookProcessor implements Processor {
             CallLifecycleState.INCOMING_WEBHOOK_RECEIVED
         );
 
+        ObjectNode incomingAudit = objectMapper.createObjectNode();
+        incomingAudit.put("conversationKind", "sip");
+        incomingAudit.put("provider", providerMetadata.providerName());
+        incomingAudit.put("providerReference", providerReference == null ? "" : providerReference);
+        incomingAudit.put("destination", destination == null ? "" : destination);
+        incomingAudit.put("requestId", requestId);
+        incomingAudit.put("state", CallLifecycleState.INCOMING_WEBHOOK_RECEIVED.name());
+        ObjectNode incomingOpenAi = incomingAudit.putObject("openai");
+        incomingOpenAi.put("callId", incoming.callId());
+        incomingOpenAi.put("projectId", property(exchange, "agent.runtime.telephony.openai.project-id", ""));
+        incomingOpenAi.put("sipUri", io.dscope.camel.agent.telephony.onboarding.OpenAiTwilioSipOnboardingService.buildSipUri(
+            property(exchange, "agent.runtime.telephony.openai.project-id", "")
+        ));
+        SupportSipAuditSupport.appendEvent(exchange, conversationId, "sip.openai.incoming", incomingAudit);
+
         ObjectNode acceptPayload = requestFactory.acceptRequest(
             property(exchange, "agent.runtime.realtime.model", "gpt-realtime"),
             property(exchange, "agent.runtime.telephony.openai.instructions", "You are a support agent handling an outbound customer call."),
@@ -109,8 +124,17 @@ final class SupportOpenAiSipWebhookProcessor implements Processor {
             objectMapper.createObjectNode()
         );
         callControlClient.accept(incoming.callId(), acceptPayload);
+        ObjectNode acceptedAudit = incomingAudit.deepCopy();
+        acceptedAudit.put("state", CallLifecycleState.ACCEPTED.name());
+        acceptedAudit.withObject("openai").put("model", property(exchange, "agent.runtime.realtime.model", "gpt-realtime"));
+        acceptedAudit.withObject("openai").put("voice", property(exchange, "agent.runtime.realtime.voice", "alloy"));
+        SupportSipAuditSupport.appendEvent(exchange, conversationId, "sip.openai.accepted", acceptedAudit);
         boolean monitorConnected = connectRealtimeMonitor(exchange, incoming.callId(), conversationId);
         sessionRegistry.updateState(incoming.callId(), monitorConnected ? CallLifecycleState.ACTIVE : CallLifecycleState.ACCEPTED, null);
+        ObjectNode monitorAudit = acceptedAudit.deepCopy();
+        monitorAudit.put("state", monitorConnected ? CallLifecycleState.ACTIVE.name() : CallLifecycleState.ACCEPTED.name());
+        monitorAudit.put("monitorConnected", monitorConnected);
+        SupportSipAuditSupport.appendEvent(exchange, conversationId, "sip.openai.monitor", monitorAudit);
 
         ObjectNode response = objectMapper.createObjectNode();
         response.put("processed", true);

@@ -2,7 +2,16 @@
 
 ## What The Sample Supports
 
-The sample now exposes a SIP-oriented HTTP adapter contract on the default runtime port:
+The sample now supports two distinct telephony integration shapes.
+
+Shared runtime APIs:
+
+- `POST /telephony/onboarding/openai-twilio`
+- `GET /telephony/onboarding/openai-twilio`
+- `GET /audit/conversation/sip`
+- `POST /openai/realtime/sip/webhook`
+
+Adapter-style SIP ingress APIs:
 
 - `POST /sip/adapter/v1/session/{conversationId}/start`
 - `POST /sip/adapter/v1/session/{conversationId}/turn`
@@ -10,31 +19,132 @@ The sample now exposes a SIP-oriented HTTP adapter contract on the default runti
 
 These routes reuse the same realtime session-init and transcript-routing processors as the browser/WebRTC path.
 
-Concrete request/response sequence example:
+Important distinction:
 
-- `docs/TWILIO_ADAPTER_FLOW_EXAMPLE.md`
+- the sample is still **not** a SIP server, SBC, or RTP media endpoint
+- it still does **not** accept SIP INVITEs directly
+- for OpenAI Realtime SIP, Twilio targets the OpenAI SIP URI, not this Java process
+- for custom media flows, another service still translates telephony events into the JSON adapter contract above
 
-Important limitation:
+## Preferred Topology For OpenAI Realtime SIP
 
-- the sample is **not** a SIP server, SBC, or RTP media endpoint
-- it does **not** accept SIP INVITEs directly
-- it expects another service to translate telephony events into the JSON contract above
+Use this when Twilio Elastic SIP Trunk should hand the call to OpenAI Realtime SIP and the sample should remain the orchestration, webhook, and audit runtime.
 
-## Twilio Integration Model
+1. Call the onboarding API:
 
-To make phone calls work through Twilio, insert a Twilio-facing adapter in front of the sample.
+```http
+POST /telephony/onboarding/openai-twilio
+Content-Type: application/json
+```
 
-The sample now ships two Twilio-related scaffolds:
+Example body:
+
+```json
+{
+  "tenantId": "acme",
+  "agentId": "support",
+  "openAi": {
+    "projectId": "proj_123"
+  },
+  "webhook": {
+    "baseUrl": "https://agent.example.com"
+  },
+  "twilio": {
+    "trunkDomain": "acme.pstn.twilio.com"
+  }
+}
+```
+
+2. Read the response and configure Twilio Elastic SIP Trunk to target the generated OpenAI SIP URI:
+
+```text
+sip:{projectId}@sip.api.openai.com;transport=tls
+```
+
+Example onboarding response excerpt:
+
+```json
+{
+  "conversationId": "telephony:onboarding:acme:support",
+  "status": "accepted",
+  "sip": {
+    "provider": "twilio",
+    "uri": "sip:proj_123@sip.api.openai.com;transport=tls",
+    "trunkDomain": "acme.pstn.twilio.com",
+    "webhookUrl": "https://agent.example.com/openai/realtime/sip/webhook"
+  },
+  "runtime": {
+    "properties": {
+      "openai.project.id": "proj_123"
+    }
+  }
+}
+```
+
+3. Configure the OpenAI Realtime SIP webhook to point at:
+
+```text
+https://agent.example.com/openai/realtime/sip/webhook
+```
+
+4. When a call arrives, OpenAI sends the webhook to the sample.
+5. The sample verifies the webhook, accepts the call through OpenAI call control, correlates the conversation, and records SIP lifecycle audit events.
+6. Use `GET /audit/conversation/sip?conversationId=<conversationId>` to inspect provider ids, direction, call status, and onboarding correlation.
+
+Example SIP audit response excerpt:
+
+```json
+{
+  "conversationId": "sip:openai:call_01HXYZ",
+  "eventCount": 3,
+  "sip": {
+    "provider": "twilio",
+    "direction": "inbound",
+    "status": "accepted",
+    "callId": "CA1234567890abcdef",
+    "openAiCallId": "call_01HXYZ",
+    "onboardingConversationId": "telephony:onboarding:acme:support"
+  },
+  "events": [
+    {
+      "type": "sip.openai.incoming",
+      "timestamp": "2026-04-08T10:00:00Z"
+    },
+    {
+      "type": "sip.openai.accepted",
+      "timestamp": "2026-04-08T10:00:01Z"
+    },
+    {
+      "type": "sip.openai.monitor",
+      "timestamp": "2026-04-08T10:00:02Z"
+    }
+  ]
+}
+```
+
+The onboarding record is also persisted under a deterministic conversation id:
+
+```text
+telephony:onboarding:{tenantId}:{agentId}
+```
+
+That lets a tenant-specific agent project re-run lookup and audit queries without introducing a second config store.
+
+## Adapter-Backed Telephony Option
+
+Use this when you want to keep media handling outside OpenAI Realtime SIP or when you need a provider-specific adapter.
+
+The sample ships two Twilio-related scaffolds:
 
 1. a thin HTTP adapter skeleton under `/twilio/adapter/v1/call/{callSid}/{start|turn|end}`
 2. Camel Twilio producer routes for `direct:twilio-outbound-call` and `direct:twilio-send-message`
 
-The first scaffold is for media/call lifecycle bridging into the existing realtime flow. The second is for Twilio REST operations only.
+The first scaffold is for media and call-lifecycle bridging into the existing realtime flow. The second is for Twilio REST operations only.
 
-### Recommended Topology
+### Recommended Adapter Topology
 
 1. A Twilio phone number or Twilio Elastic SIP Trunk receives the inbound call.
-2. A Twilio adapter service handles signaling/media.
+2. A Twilio adapter service handles signaling and media.
 3. The adapter maps the Twilio call to a backend `conversationId` such as `sip:twilio:<CallSid>`.
 4. The adapter calls the sample SIP endpoints for start, final transcript turns, and end-of-call.
 5. The adapter converts `assistantMessage` text to audio and sends it back to the caller.
@@ -101,44 +211,45 @@ POST /sip/adapter/v1/session/{conversationId}/end
 Content-Type: application/json
 ```
 
-## Twilio Options
+## Twilio Deployment Options
 
-### Option 1: Twilio SIP Trunk + External SIP Adapter
+### Option 1: Twilio Elastic SIP Trunk To OpenAI SIP
 
-Use this when you want a telephony architecture that stays SIP-first.
+Use this when OpenAI Realtime SIP should own the SIP leg.
 
-- Twilio Elastic SIP Trunk or BYOC points to your SIP adapter / SBC
+- Twilio Elastic SIP Trunk points to the OpenAI SIP URI returned by onboarding
+- OpenAI sends webhook events to this sample
+- this sample handles verification, call acceptance, conversation correlation, and SIP audit projection
+
+This is the preferred topology for the OpenAI realtime voice path in this repo.
+
+### Option 2: Twilio SIP Trunk Or Media Streams To Your Adapter
+
+Use this when you need a custom SIP/media layer.
+
+- Twilio points to your adapter or SBC
 - your adapter handles SIP signaling, RTP, STT, and TTS
 - your adapter translates into this sample's `/sip/adapter/v1/...` contract
 
-This is the closest match to the sample's current SIP adapter design.
-
-### Option 2: Twilio Voice Media Streams + HTTP/WebSocket Adapter
-
-Use this when you do not need a full SIP stack in your Java sample.
-
-- Twilio Media Streams sends audio to your adapter over WebSocket
-- your adapter runs STT and TTS
-- your adapter calls the sample `/start`, `/turn`, and `/end` HTTP endpoints
-
-This is often easier to prototype than standing up a SIP SBC.
+This stays closest to the generic SIP adapter design.
 
 ## What You Need To Configure In Twilio
 
 At minimum:
 
-1. Provision an inbound Twilio number.
-2. Decide whether you are using SIP trunking or Media Streams.
-3. Point Twilio to your adapter service, not directly to the sample.
-4. Make the adapter publicly reachable over HTTPS/WSS.
-5. Preserve `CallSid` or SIP `Call-ID` across all adapter callbacks so conversation continuity works.
+1. Provision an inbound Twilio number or trunk.
+2. Decide whether you are using OpenAI-managed SIP or an adapter-managed path.
+3. For OpenAI-managed SIP, point the Twilio trunk to the generated OpenAI SIP URI.
+4. For adapter-managed flows, point Twilio to your adapter service, not directly to the sample.
+5. Make the webhook or adapter edge publicly reachable over HTTPS or WSS.
+6. Preserve `CallSid` or SIP `Call-ID` across all callbacks so conversation continuity works.
 
 ## Security And Production Requirements
 
 Before exposing this publicly, add:
 
-1. request authentication between Twilio adapter and sample
-2. Twilio signature validation or SIP trunk IP allow-listing at the adapter edge
+1. request authentication and signature verification on the webhook or adapter edge
+2. SIP trunk IP allow-listing where applicable
 3. HTTPS termination and certificate management
 4. rate limiting and call concurrency limits
 5. PII policy for caller number, transcript text, and call metadata
@@ -148,28 +259,28 @@ Before exposing this publicly, add:
 For local validation:
 
 1. run the sample
-2. verify the adapter contract with `bash scripts/sip-adapter-v1-smoke.sh`
-3. expose the adapter service with a tunnel such as `ngrok` if Twilio must reach it during development
-4. only after the adapter works locally, connect the Twilio number/trunk to that adapter
+2. call `POST /telephony/onboarding/openai-twilio` and verify the generated OpenAI SIP URI and webhook URL
+3. verify the adapter contract with `bash scripts/sip-adapter-v1-smoke.sh` if you are building the adapter-backed path
+4. expose the webhook or adapter edge with a tunnel such as `ngrok` when Twilio or OpenAI must reach it during development
+5. use `GET /audit/conversation/sip` to confirm the expected call ids and lifecycle events are being recorded
 
 ## Current Gaps You Must Fill
 
-The sample still leaves these responsibilities to the adapter layer:
+The sample still leaves these responsibilities outside the Java runtime:
 
-- SIP signaling termination
-- RTP/media handling
-- speech-to-text
-- text-to-speech
+- SIP signaling termination when you choose the adapter-managed path
+- RTP and media handling
+- speech-to-text and text-to-speech outside the OpenAI-managed path
 - barge-in handling
-- DTMF / IVR behavior
-- call transfer / conferencing semantics
+- DTMF and IVR behavior
+- call transfer and conferencing semantics
 
 ## Recommended First Increment
 
-If the immediate goal is "support calls from a phone," the fastest path is:
+If the immediate goal is to support Twilio phone calls through OpenAI Realtime SIP, the fastest path is:
 
 1. keep this sample as the backend agent runtime
-2. build a thin Twilio adapter that maps `CallSid -> conversationId`
-3. send `/start`, `/turn`, and `/end` to the sample
-4. use Twilio or external STT/TTS in the adapter
-5. add auth in front of the sample SIP endpoints before public exposure
+2. use `POST /telephony/onboarding/openai-twilio` to generate the OpenAI SIP URI and webhook target
+3. point Twilio Elastic SIP Trunk at that SIP URI
+4. expose `/openai/realtime/sip/webhook` publicly with authentication and HTTPS
+5. inspect `GET /audit/conversation/sip` during the first call to confirm provider correlation and lifecycle state

@@ -93,6 +93,30 @@ methods:
         structuredContent:
           type: object
 
+  - name: audit.conversation.sip
+    title: Get SIP conversation metadata
+    description: Returns SIP onboarding and call-correlation metadata for one conversation.
+    inputSchema:
+      type: object
+      additionalProperties: false
+      properties:
+        conversationId:
+          type: string
+          description: Conversation identifier.
+        limit:
+          type: integer
+          description: Scan limit, default 300.
+      required: [conversationId]
+    outputSchema:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            type: object
+        structuredContent:
+          type: object
+
   - name: audit.conversation.sessionData
     title: Get archived conversation data
     description: Returns archived conversation events for a conversation id and optional session id.

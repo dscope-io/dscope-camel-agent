@@ -34,7 +34,7 @@ agent:
     crm:
       endpoint-uri: ${AGENT_TOOLS_CRM_ENDPOINT_URI:mcp:https://${AGENT_SUPPORT_CRM_MCP_HOST:camel-crm-service-702748800338.europe-west1.run.app}/mcp}
   runtime:
-    routes-include-pattern: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ticket-service.camel.yaml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/admin-platform.camel.yaml,classpath:routes/sip-adapter-platform.camel.yaml,classpath:routes/twilio-adapter-platform.camel.yaml,classpath:routes/twilio-management.camel.yaml,classpath:routes/openai-sip-support.camel.yaml
+    routes-include-pattern: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ticket-service.camel.yaml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/admin-platform.camel.yaml,classpath:routes/sip-adapter-platform.camel.yaml,classpath:routes/twilio-adapter-platform.camel.yaml,classpath:routes/twilio-management.camel.yaml,classpath:routes/openai-sip-support.camel.yaml,classpath:routes/telephony-onboarding-platform.camel.yaml
     agent-routes-enabled: true
     sample-agent-endpoint-uri: "{{agent.runtime.calendar-agent-endpoint-uri}}"
     calendar-agent-endpoint-uri: agent:calendar?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}

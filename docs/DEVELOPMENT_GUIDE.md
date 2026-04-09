@@ -227,17 +227,18 @@ Core audit services and processors:
 - `AuditTrailSearchProcessor`: filtered raw event search for one conversation
 - `AuditConversationListProcessor`: searchable/sortable conversation summary list
 - `AuditConversationViewProcessor`: normalized message-oriented conversation projection for console UIs
+- `AuditConversationSipProcessor`: SIP-focused lifecycle projection for onboarding records and live call conversations
 - `AuditConversationUsageProcessor`: token and cost summary from `model.usage` events
 - `AuditConversationSessionDataProcessor`: transcript/archive reads backed by `ConversationArchiveService`
 - `AuditConversationAgentMessageProcessor`: manual assistant-message append for operator tooling
 - `AuditAgentCatalogProcessor`: plan/version catalog metadata for console sidebars or picker UIs
 - `AuditAgentBlueprintProcessor`: resolved blueprint content and metadata for the selected conversation
-- `AuditMetadataSupport`: shared projection logic for agent metadata, AI config, A2A correlation, and blueprint-derived labels
+- `AuditMetadataSupport`: shared projection logic for agent metadata, AI config, SIP correlation, A2A correlation, and blueprint-derived labels
 - `AuditUsageSupport`: parser/aggregator for `model.usage` events
 
 Runtime bootstrap bindings:
 
-- `AgentRuntimeBootstrap` binds `auditTrailService`, `auditTrailSearchProcessor`, `auditConversationListProcessor`, `auditConversationViewProcessor`, `auditConversationUsageProcessor`, `auditConversationSessionDataProcessor`, `auditConversationAgentMessageProcessor`, `auditAgentCatalogProcessor`, and `auditAgentBlueprintProcessor`
+- `AgentRuntimeBootstrap` binds `auditTrailService`, `auditTrailSearchProcessor`, `auditConversationListProcessor`, `auditConversationViewProcessor`, `auditConversationSipProcessor`, `auditConversationUsageProcessor`, `auditConversationSessionDataProcessor`, `auditConversationAgentMessageProcessor`, `auditAgentCatalogProcessor`, and `auditAgentBlueprintProcessor`
 - the sample admin routes expose these bindings over both HTTP endpoints and MCP tools
 
 Primary event families for audit trail work:
@@ -245,6 +246,7 @@ Primary event families for audit trail work:
 - `user.message`
 - `assistant.message`
 - `assistant.manual.message`
+- `sip.*`
 - `tool.requested`, `tool.started`, `tool.completed`, `tool.failed`
 - `realtime.*`
 - `model.usage`
@@ -272,6 +274,7 @@ When designing new flows, decide explicitly whether the data belongs in:
 
 - `conversationId`
 - `ai`
+- `sip`
 - `conversationMetadata`
 - `modelUsage`
 - `filters`
@@ -284,6 +287,7 @@ Each projected event row includes:
 - `taskId`
 - `type`
 - `payload`
+- `sip`
 - `timestamp`
 - `agent`
 
@@ -317,6 +321,7 @@ Each `items[]` row includes:
 - `title`
 - `description`
 - `topics[]`
+- `channel`
 - `agentTitle`
 - `agentName`
 - `agentVersion`
@@ -328,6 +333,7 @@ Each `items[]` row includes:
 - `lastEventAt`
 - `eventCount`
 - `modelUsageTotals`
+- optional `sip` metadata including provider, call ids, direction, status, and onboarding correlation
 - optional A2A fields such as `a2aAgentId`, `a2aRemoteConversationId`, and `a2aRemoteTaskId`
 
 `AuditConversationViewProcessor` input headers:
@@ -344,6 +350,7 @@ Each `items[]` row includes:
 - `agentPerspective`
 - `modelUsage`
 - `agent`
+- `sip`
 - `a2a`
 
 `agentPerspective.messages[]` is the preferred UI timeline feed. Each row includes:
@@ -416,6 +423,25 @@ Each archive row includes:
 - optional `threadId`
 
 and appends `assistant.manual.message` with correlation metadata suitable for AGUI-linked consoles.
+
+`AuditConversationSipProcessor` input headers:
+
+- `conversationId` required
+- optional `limit`
+
+`AuditConversationSipProcessor` response fields:
+
+- `conversationId`
+- `eventCount`
+- `sip`
+- `events[]`
+
+Each SIP event row includes:
+
+- `type`
+- `timestamp`
+- `payload`
+- `sip`
 
 #### MCP Audit Surface
 
@@ -684,6 +710,24 @@ Guidelines:
 5. Use route session patches when a tool needs to update future voice-session context.
 
 Do not create a separate call-local conversation model unless the adapter truly spans multiple independent agent conversations.
+
+When using OpenAI Realtime SIP with Twilio Elastic SIP Trunk, the preferred path is different: Twilio points at the OpenAI SIP URI, OpenAI sends verified webhook events to `/openai/realtime/sip/webhook`, and the backend keeps using the same conversation/audit model.
+
+### Reusable OpenAI/Twilio Onboarding
+
+Core onboarding support lives in `camel-agent-core` so other agent projects can bind their own HTTP or MCP surface without copying business logic:
+
+- `OpenAiTwilioSipOnboardingService` builds the onboarding plan, SIP URI, checklist, warnings, and runtime property guidance
+- `TelephonyOnboardingPersistenceService` stores sanitized onboarding records as audit/persistence events
+- onboarding records use deterministic conversation ids shaped like `telephony:onboarding:{tenantId}:{agentId}`
+
+The sample runtime wires those services through:
+
+- `POST /telephony/onboarding/openai-twilio`
+- `GET /telephony/onboarding/openai-twilio`
+- `GET /audit/conversation/sip`
+
+For new agent projects, keep the reusable core services and replace only the edge-specific processor that resolves tenant defaults, secrets, and route naming.
 
 ### Outbound Support Calling
 

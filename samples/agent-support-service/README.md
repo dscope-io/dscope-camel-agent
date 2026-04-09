@@ -555,9 +555,90 @@ Required runtime properties for live Twilio placement:
 - `TWILIO_FROM_NUMBER`
 - optional `OPENAI_PROJECT_ID` for provider/call correlation metadata
 
+### Reusable Telephony Onboarding
+
+The sample now exposes a reusable onboarding surface for the OpenAI Realtime SIP plus Twilio Elastic SIP Trunk path:
+
+- `POST /telephony/onboarding/openai-twilio`
+- `GET /telephony/onboarding/openai-twilio?tenantId=<tenant>&agentId=<agent>`
+- `GET /audit/conversation/sip?conversationId=<conversationId>`
+
+`POST /telephony/onboarding/openai-twilio` validates the request, generates the OpenAI SIP URI, returns a Twilio checklist, and persists sanitized config using the deterministic id `telephony:onboarding:{tenantId}:{agentId}`.
+
+Example onboarding request:
+
+```bash
+curl -s -X POST http://localhost:8080/telephony/onboarding/openai-twilio \
+   -H 'Content-Type: application/json' \
+   -d '{
+      "tenantId": "acme",
+      "agentId": "support",
+      "openAi": {
+         "projectId": "proj_123"
+      },
+      "webhook": {
+         "baseUrl": "https://agent.example.com"
+      },
+      "twilio": {
+         "trunkDomain": "acme.pstn.twilio.com"
+      }
+   }'
+```
+
+Example onboarding response excerpt:
+
+```json
+{
+   "conversationId": "telephony:onboarding:acme:support",
+   "status": "accepted",
+   "provider": "twilio",
+   "sip": {
+      "provider": "twilio",
+      "direction": "inbound",
+      "uri": "sip:proj_123@sip.api.openai.com;transport=tls",
+      "trunkDomain": "acme.pstn.twilio.com",
+      "webhookUrl": "https://agent.example.com/openai/realtime/sip/webhook"
+   },
+   "checklist": [
+      "Create or select a Twilio Elastic SIP Trunk",
+      "Point the trunk target at the generated OpenAI SIP URI",
+      "Expose the webhook endpoint over HTTPS"
+   ]
+}
+```
+
+Use the saved onboarding conversation id with `GET /audit/conversation/sip` when you need the resolved SIP URI, provider correlation data, or the persisted onboarding event history.
+
+Example SIP audit response excerpt:
+
+```json
+{
+   "conversationId": "sip:openai:call_01HXYZ",
+   "eventCount": 3,
+   "sip": {
+      "provider": "twilio",
+      "direction": "inbound",
+      "status": "accepted",
+      "callId": "CA1234567890abcdef",
+      "openAiCallId": "call_01HXYZ",
+      "onboardingConversationId": "telephony:onboarding:acme:support"
+   },
+   "events": [
+      {
+         "type": "sip.openai.incoming",
+         "timestamp": "2026-04-08T10:00:00Z"
+      },
+      {
+         "type": "sip.openai.accepted",
+         "timestamp": "2026-04-08T10:00:01Z"
+      }
+   ]
+}
+```
+
 ### Twilio Phone Integration
 
-The sample exposes an HTTP SIP-adapter contract. It does not terminate raw SIP or RTP by itself.
+The sample exposes an HTTP SIP-adapter contract, and it also supports the OpenAI-managed SIP trunk path. It does not terminate raw SIP or RTP by itself.
 
 The sample now also includes a thin Twilio-oriented adapter skeleton that maps Twilio call ids into the same backend contract:
 
@@ -567,12 +648,18 @@ The sample now also includes a thin Twilio-oriented adapter skeleton that maps T
 
 Those routes derive `conversationId = sip:twilio:{callSid}` and forward into the same realtime processors used by the SIP adapter.
 
-That means Twilio cannot point a phone call directly at this Java process as a SIP endpoint. You need a small adapter layer that does two jobs:
+Recommended OpenAI SIP topology:
+
+- Twilio Elastic SIP Trunk sends the call to the OpenAI SIP URI returned by the onboarding API
+- OpenAI emits webhook events to `POST /openai/realtime/sip/webhook`
+- the sample verifies the webhook, accepts the call, correlates it to a backend conversation, and records SIP audit events
+
+Twilio still cannot point a phone call directly at this Java process as a SIP endpoint. If you are not using the OpenAI-managed SIP leg, you need a small adapter layer that does two jobs:
 
 1. terminate Twilio telephony/media
 2. translate call lifecycle and transcripts into the sample's `/sip/adapter/v1/session/{conversationId}/{start|turn|end}` contract
 
-Recommended production shape:
+Recommended adapter-backed production shape:
 
 - Twilio phone number or Elastic SIP trunk receives the PSTN call
 - Twilio forwards audio/signaling to your SIP/media adapter

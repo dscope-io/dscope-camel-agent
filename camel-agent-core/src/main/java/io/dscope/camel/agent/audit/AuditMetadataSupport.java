@@ -196,8 +196,64 @@ final class AuditMetadataSupport {
         if (!agentStepMetadata.ai().isEmpty()) {
             metadata.put("ai", agentStepMetadata.ai().asMap());
         }
+        SipMetadata sip = deriveSipMetadata(events);
+        if (sip.present()) {
+            metadata.put("channel", "sip");
+            metadata.put("sip", sip.asMap());
+            if (!sip.conversationKind().isBlank()) {
+                metadata.put("conversationKind", sip.conversationKind());
+            }
+        }
         metadata.put("modelUsageTotals", AuditUsageSupport.summarizeTotals(events));
         return metadata;
+    }
+
+    static SipMetadata deriveSipMetadata(List<AgentEvent> events) {
+        SipMetadata current = SipMetadata.empty();
+        if (events == null) {
+            return current;
+        }
+        for (AgentEvent event : events) {
+            current = advanceSipMetadata(current, event);
+        }
+        return current;
+    }
+
+    static SipMetadata advanceSipMetadata(SipMetadata current, AgentEvent event) {
+        SipMetadata state = current == null ? SipMetadata.empty() : current;
+        if (event == null || event.payload() == null || event.payload().isNull()) {
+            return state;
+        }
+        JsonNode payload = event.payload();
+        JsonNode openAi = object(payload, "openai");
+        JsonNode twilio = object(payload, "twilio");
+        String conversationKind = firstNonBlank(
+            text(payload, "conversationKind"),
+            event.type() != null && event.type().equals("sip.onboarding.saved") ? "sip-onboarding" : ""
+        );
+        return state.merge(
+            conversationKind,
+            firstNonBlank(text(payload, "channel"), "sip"),
+            firstNonBlank(text(payload, "provider"), text(twilio, "provider"), state.providerName()),
+            firstNonBlank(text(payload, "providerReference"), text(payload, "requestId"), state.providerReference()),
+            firstNonBlank(text(payload, "destination"), state.destination()),
+            firstNonBlank(text(payload, "callerId"), text(twilio, "fromNumber"), state.callerId()),
+            firstNonBlank(text(openAi, "projectId"), state.openAiProjectId()),
+            firstNonBlank(text(openAi, "callId"), state.openAiCallId()),
+            firstNonBlank(text(openAi, "sipUri"), state.openAiSipUri()),
+            firstNonBlank(text(openAi, "webhookUrl"), state.openAiWebhookUrl()),
+            firstNonBlank(text(openAi, "model"), state.model()),
+            firstNonBlank(text(openAi, "voice"), state.voice()),
+            firstNonBlank(text(payload, "tenantId"), state.tenantId()),
+            firstNonBlank(text(payload, "agentId"), state.agentId()),
+            firstNonBlank(text(twilio, "trunkName"), state.trunkName()),
+            firstNonBlank(text(twilio, "fromNumber"), state.fromNumber()),
+            firstNonBlank(text(twilio, "phoneNumber"), state.phoneNumber()),
+            firstNonBlank(text(payload, "configConversationId"), state.onboardingConversationId()),
+            firstNonBlank(text(payload, "state"), state.lifecycleState()),
+            boolValue(payload, "monitorConnected", state.monitorConnected()),
+            event.type() == null ? state.lastEventType() : event.type()
+        );
     }
 
     static A2ACorrelationMetadata deriveA2ACorrelation(List<AgentEvent> events) {
@@ -289,6 +345,34 @@ final class AuditMetadataSupport {
             }
         }
         return null;
+    }
+
+    private static JsonNode object(JsonNode payload, String fieldName) {
+        if (payload == null || payload.isNull() || payload.isMissingNode()) {
+            return null;
+        }
+        JsonNode candidate = payload.path(fieldName);
+        return candidate != null && candidate.isObject() ? candidate : null;
+    }
+
+    private static Boolean boolValue(JsonNode payload, String fieldName, Boolean fallback) {
+        if (payload == null || payload.isNull() || payload.isMissingNode()) {
+            return fallback;
+        }
+        JsonNode candidate = payload.path(fieldName);
+        if (candidate.isBoolean()) {
+            return candidate.booleanValue();
+        }
+        if (candidate.isTextual()) {
+            String text = candidate.asText("");
+            if (text.equalsIgnoreCase("true") || text.equalsIgnoreCase("yes")) {
+                return true;
+            }
+            if (text.equalsIgnoreCase("false") || text.equalsIgnoreCase("no")) {
+                return false;
+            }
+        }
+        return fallback;
     }
 
     private static String firstNonBlank(String... values) {
@@ -389,6 +473,177 @@ final class AuditMetadataSupport {
             maxTokens,
             properties
         );
+    }
+
+    record SipMetadata(String conversationKind,
+                       String channel,
+                       String providerName,
+                       String providerReference,
+                       String destination,
+                       String callerId,
+                       String openAiProjectId,
+                       String openAiCallId,
+                       String openAiSipUri,
+                       String openAiWebhookUrl,
+                       String model,
+                       String voice,
+                       String tenantId,
+                       String agentId,
+                       String trunkName,
+                       String fromNumber,
+                       String phoneNumber,
+                       String onboardingConversationId,
+                       String lifecycleState,
+                       Boolean monitorConnected,
+                       String lastEventType) {
+        private static final SipMetadata EMPTY = new SipMetadata(
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            null,
+            ""
+        );
+
+        static SipMetadata empty() {
+            return EMPTY;
+        }
+
+        boolean present() {
+            return !providerName.isBlank()
+                || !openAiProjectId.isBlank()
+                || !openAiCallId.isBlank()
+                || !destination.isBlank()
+                || !onboardingConversationId.isBlank()
+                || !trunkName.isBlank();
+        }
+
+        SipMetadata merge(String conversationKind,
+                          String channel,
+                          String providerName,
+                          String providerReference,
+                          String destination,
+                          String callerId,
+                          String openAiProjectId,
+                          String openAiCallId,
+                          String openAiSipUri,
+                          String openAiWebhookUrl,
+                          String model,
+                          String voice,
+                          String tenantId,
+                          String agentId,
+                          String trunkName,
+                          String fromNumber,
+                          String phoneNumber,
+                          String onboardingConversationId,
+                          String lifecycleState,
+                          Boolean monitorConnected,
+                          String lastEventType) {
+            return new SipMetadata(
+                blankToFallback(conversationKind, this.conversationKind),
+                blankToFallback(channel, this.channel),
+                blankToFallback(providerName, this.providerName),
+                blankToFallback(providerReference, this.providerReference),
+                blankToFallback(destination, this.destination),
+                blankToFallback(callerId, this.callerId),
+                blankToFallback(openAiProjectId, this.openAiProjectId),
+                blankToFallback(openAiCallId, this.openAiCallId),
+                blankToFallback(openAiSipUri, this.openAiSipUri),
+                blankToFallback(openAiWebhookUrl, this.openAiWebhookUrl),
+                blankToFallback(model, this.model),
+                blankToFallback(voice, this.voice),
+                blankToFallback(tenantId, this.tenantId),
+                blankToFallback(agentId, this.agentId),
+                blankToFallback(trunkName, this.trunkName),
+                blankToFallback(fromNumber, this.fromNumber),
+                blankToFallback(phoneNumber, this.phoneNumber),
+                blankToFallback(onboardingConversationId, this.onboardingConversationId),
+                blankToFallback(lifecycleState, this.lifecycleState),
+                monitorConnected == null ? this.monitorConnected : monitorConnected,
+                blankToFallback(lastEventType, this.lastEventType)
+            );
+        }
+
+        Map<String, Object> asMap() {
+            Map<String, Object> data = new LinkedHashMap<>();
+            if (!conversationKind.isBlank()) {
+                data.put("conversationKind", conversationKind);
+            }
+            data.put("channel", channel.isBlank() ? "sip" : channel);
+            if (!providerName.isBlank()) {
+                data.put("providerName", providerName);
+            }
+            if (!providerReference.isBlank()) {
+                data.put("providerReference", providerReference);
+            }
+            if (!destination.isBlank()) {
+                data.put("destination", destination);
+            }
+            if (!callerId.isBlank()) {
+                data.put("callerId", callerId);
+            }
+            if (!openAiProjectId.isBlank()) {
+                data.put("openAiProjectId", openAiProjectId);
+            }
+            if (!openAiCallId.isBlank()) {
+                data.put("openAiCallId", openAiCallId);
+            }
+            if (!openAiSipUri.isBlank()) {
+                data.put("openAiSipUri", openAiSipUri);
+            }
+            if (!openAiWebhookUrl.isBlank()) {
+                data.put("openAiWebhookUrl", openAiWebhookUrl);
+            }
+            if (!model.isBlank()) {
+                data.put("model", model);
+            }
+            if (!voice.isBlank()) {
+                data.put("voice", voice);
+            }
+            if (!tenantId.isBlank()) {
+                data.put("tenantId", tenantId);
+            }
+            if (!agentId.isBlank()) {
+                data.put("agentId", agentId);
+            }
+            if (!trunkName.isBlank()) {
+                data.put("trunkName", trunkName);
+            }
+            if (!fromNumber.isBlank()) {
+                data.put("fromNumber", fromNumber);
+            }
+            if (!phoneNumber.isBlank()) {
+                data.put("phoneNumber", phoneNumber);
+            }
+            if (!onboardingConversationId.isBlank()) {
+                data.put("onboardingConversationId", onboardingConversationId);
+            }
+            if (!lifecycleState.isBlank()) {
+                data.put("lifecycleState", lifecycleState);
+            }
+            if (monitorConnected != null) {
+                data.put("monitorConnected", monitorConnected);
+            }
+            if (!lastEventType.isBlank()) {
+                data.put("lastEventType", lastEventType);
+            }
+            return data;
+        }
     }
 
     record A2ACorrelationMetadata(String agentId,

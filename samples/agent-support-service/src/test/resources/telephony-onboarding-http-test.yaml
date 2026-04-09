@@ -1,0 +1,29 @@
+agui:
+  rpc:
+    port: ${agent.runtime.test-port:18081}
+
+agent:
+  runtime:
+    routes-include-pattern: classpath:routes/telephony-onboarding-platform.camel.yaml
+    agent-routes-enabled: false
+    a2a:
+      public-base-url: https://agent.example.test
+    realtime:
+      model: gpt-realtime
+      voice: alloy
+    telephony:
+      openai:
+        project-id: proj_default
+        instructions: You are a helpful phone assistant.
+      twilio:
+        from: +15557650002
+
+camel:
+  component:
+    twilio:
+      account-sid: twilio-account-sid-test
+      password: test-token
+
+openai:
+  api:
+    key: test-openai-key

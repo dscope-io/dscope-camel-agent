@@ -21,6 +21,7 @@ final class SampleAdminMcpBindings {
             Object auditTrailSearchProcessor = required(main, "auditTrailSearchProcessor");
             Object auditConversationListProcessor = required(main, "auditConversationListProcessor");
             Object auditConversationViewProcessor = required(main, "auditConversationViewProcessor");
+            Object auditConversationSipProcessor = required(main, "auditConversationSipProcessor");
             Object auditConversationSessionDataProcessor = required(main, "auditConversationSessionDataProcessor");
             Object auditConversationAgentMessageProcessor = required(main, "auditConversationAgentMessageProcessor");
             Object auditAgentBlueprintProcessor = required(main, "auditAgentBlueprintProcessor");
@@ -74,6 +75,7 @@ final class SampleAdminMcpBindings {
                     auditTrailSearchProcessor.getClass(),
                     auditConversationListProcessor.getClass(),
                     auditConversationViewProcessor.getClass(),
+                    auditConversationSipProcessor.getClass(),
                     auditConversationSessionDataProcessor.getClass(),
                     auditConversationAgentMessageProcessor.getClass(),
                     auditAgentBlueprintProcessor.getClass(),
@@ -89,6 +91,7 @@ final class SampleAdminMcpBindings {
                     auditTrailSearchProcessor,
                     auditConversationListProcessor,
                     auditConversationViewProcessor,
+                    auditConversationSipProcessor,
                     auditConversationSessionDataProcessor,
                     auditConversationAgentMessageProcessor,
                     auditAgentBlueprintProcessor,
@@ -183,6 +186,12 @@ final class SampleAdminMcpBindings {
                 "io.dscope.camel.agent.audit.AuditConversationViewProcessor",
                 new Class<?>[] { Object.class, ObjectMapper.class, Object.class, String.class, String.class },
                 new Object[] { persistenceFacade, objectMapper, planSelectionResolver, plansConfig, blueprintUri }
+            ));
+        bindIfMissing(main, "auditConversationSipProcessor",
+            newInstance(
+                "io.dscope.camel.agent.audit.AuditConversationSipProcessor",
+                new Class<?>[] { Object.class, ObjectMapper.class },
+                new Object[] { persistenceFacade, objectMapper }
             ));
         bindIfMissing(main, "auditConversationSessionDataProcessor",
             newInstance(

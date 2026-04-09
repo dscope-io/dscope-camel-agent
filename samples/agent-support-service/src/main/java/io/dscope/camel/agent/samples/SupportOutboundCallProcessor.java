@@ -68,6 +68,25 @@ class SupportOutboundCallProcessor implements Processor {
         response.put("conversationId", result.conversationId());
         response.put("destination", pending.destination());
 
+        ObjectNode auditPayload = objectMapper.createObjectNode();
+        auditPayload.put("conversationKind", "sip");
+        auditPayload.put("provider", result.providerName());
+        auditPayload.put("requestId", pending.requestId());
+        auditPayload.put("providerReference", nullToEmpty(result.providerReference()));
+        auditPayload.put("destination", pending.destination());
+        auditPayload.put("callerId", callerId);
+        auditPayload.put("purpose", nullToEmpty(purpose));
+        auditPayload.put("customerName", nullToEmpty(customerName));
+        auditPayload.put("state", result.status().name());
+        ObjectNode openAi = auditPayload.putObject("openai");
+        openAi.put("projectId", outbound.openAiProjectId());
+        ObjectNode twilio = auditPayload.putObject("twilio");
+        twilio.put("fromNumber", callerId);
+        if (result.providerMetadata() != null) {
+            twilio.put("providerCallId", nullToEmpty(result.providerMetadata().providerCallId()));
+        }
+        SupportSipAuditSupport.appendEvent(exchange, result.conversationId(), "sip.outbound.requested", auditPayload);
+
         exchange.getMessage().setHeader(Exchange.CONTENT_TYPE, "application/json");
         exchange.getMessage().setBody(objectMapper.writeValueAsString(response));
     }

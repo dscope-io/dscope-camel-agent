@@ -52,6 +52,8 @@ public final class Main {
                 openAiRealtimeRelayClient
             )
         );
+        main.bind("supportTelephonyOnboardingProcessor", new SupportTelephonyOnboardingProcessor(objectMapper));
+        main.bind("supportTelephonyOnboardingLookupProcessor", new SupportTelephonyOnboardingLookupProcessor(objectMapper));
         main.bind("supportTwilioCallStartEnvelopeProcessor", new TwilioCallStartEnvelopeProcessor());
         main.bind("supportTwilioTranscriptEnvelopeProcessor", new TwilioTranscriptEnvelopeProcessor());
         AgentRuntimeBootstrap.bootstrap(main, "application.yaml");

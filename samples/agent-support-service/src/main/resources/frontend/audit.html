@@ -65,6 +65,10 @@
     .copilot-send { margin-top: 10px; display: grid; gap: 8px; }
     .copilot-send textarea { width: 100%; min-height: 72px; border-radius: 8px; border: 1px solid #314074; background: #0f1731; color: #ecf1ff; padding: 8px; resize: vertical; }
     .copilot-send-actions { display: flex; gap: 8px; align-items: center; }
+    .sip-view { margin-top: 12px; display: grid; gap: 10px; }
+    .sip-grid { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 8px; }
+    .sip-list { display: grid; gap: 8px; }
+    .sip-empty { border: 1px solid #314074; border-radius: 10px; background: #0f1731; padding: 10px; font-size: 12px; opacity: .85; }
     .meta-panel { margin-top: 12px; border: 1px solid #314074; border-radius: 10px; background: #0f1731; padding: 10px; }
     .meta-title { font-size: 14px; font-weight: 700; }
     .meta-description { margin-top: 6px; font-size: 12px; opacity: .9; }
@@ -203,6 +207,7 @@
       <div class="view-switch">
         <button id="treeViewBtn" class="active" type="button">Tree View</button>
         <button id="graphViewBtn" type="button">Graph View</button>
+        <button id="sipViewBtn" type="button">SIP View</button>
         <button id="rawViewBtn" type="button">Raw JSON</button>
         <label class="raw-toggle" for="augmentedRawToggle"><input id="augmentedRawToggle" type="checkbox" />Augmented Raw</label>
         <button id="agentMdViewBtn" type="button">Agent.md</button>
@@ -211,6 +216,7 @@
       <pre id="result">{ "hint": "Run a query to view audit events." }</pre>
       <div id="graphView" class="graph-view hidden"></div>
       <div id="treeView" class="tree-view hidden"></div>
+      <div id="sipView" class="sip-view hidden"></div>
       <div id="agentMdView" class="agent-md-view hidden">
         <div id="agentMdMeta" class="agent-md-meta">Agent.md not loaded yet.</div>
         <pre id="agentMdContent" class="agent-md-content"></pre>
@@ -258,6 +264,7 @@
     const rawViewBtnEl = document.getElementById('rawViewBtn');
     const graphViewBtnEl = document.getElementById('graphViewBtn');
     const treeViewBtnEl = document.getElementById('treeViewBtn');
+    const sipViewBtnEl = document.getElementById('sipViewBtn');
     const agentMdViewBtnEl = document.getElementById('agentMdViewBtn');
     const augmentedRawToggleEl = document.getElementById('augmentedRawToggle');
     const copilotKitViewBtnEl = document.getElementById('copilotKitViewBtn');
@@ -265,6 +272,7 @@
     const resultEl = document.getElementById('result');
     const graphViewEl = document.getElementById('graphView');
     const treeViewEl = document.getElementById('treeView');
+    const sipViewEl = document.getElementById('sipView');
     const agentMdViewEl = document.getElementById('agentMdView');
     const agentMdMetaEl = document.getElementById('agentMdMeta');
     const agentMdContentEl = document.getElementById('agentMdContent');
@@ -280,6 +288,7 @@
     let lastResultJson = null;
     let lastAgentMd = null;
     let lastCopilotKit = null;
+    let lastSipResult = null;
     let lastConversationsResult = null;
     let activeView = 'raw';
     let augmentedRawEnabled = false;
@@ -426,6 +435,55 @@
         : '<span class="topic-chip">No topics</span>';
     }
 
+    function renderSipView(data) {
+      lastSipResult = data || null;
+      if (!data || typeof data !== 'object') {
+        sipViewEl.innerHTML = '<div class="sip-empty">SIP data not loaded yet.</div>';
+        return;
+      }
+
+      const sip = data.sip && typeof data.sip === 'object' ? data.sip : {};
+      const events = Array.isArray(data.events) ? data.events : [];
+      const provider = sip.provider || sip.providerName || '-';
+      const direction = sip.direction || '-';
+      const status = sip.status || sip.callStatus || '-';
+      const callId = sip.callId || sip.providerCallId || sip.twilioCallSid || '-';
+      const openAiCallId = sip.openAiCallId || sip.openaiCallId || '-';
+      const trunkDomain = sip.trunkDomain || '-';
+      const webhookUrl = sip.webhookUrl || '-';
+      const onboardingConversationId = sip.onboardingConversationId || '-';
+      const eventRows = events.length
+        ? events.map((event) => {
+            const eventSip = event?.sip && typeof event.sip === 'object' ? event.sip : {};
+            const rowStatus = eventSip.status || eventSip.callStatus || status;
+            const rowCallId = eventSip.callId || eventSip.providerCallId || eventSip.twilioCallSid || callId;
+            return `
+              <div class="event-card">
+                <div class="event-top">
+                  <div class="event-type">${escapeHtml(String(event?.type || 'unknown'))}</div>
+                  <div class="event-time">${escapeHtml(String(event?.timestamp || ''))}</div>
+                </div>
+                <div class="event-meta">status=${escapeHtml(String(rowStatus || '-'))} | callId=${escapeHtml(String(rowCallId || '-'))}</div>
+                <div class="event-payload">${escapeHtml(payloadPreview(event?.payload))}</div>
+              </div>`;
+          }).join('')
+        : '<div class="sip-empty">No SIP lifecycle events were returned for this conversation.</div>';
+
+      sipViewEl.innerHTML = `
+        <div class="sip-grid">
+          <div class="summary-card"><div class="summary-label">Provider</div><div class="summary-value">${escapeHtml(String(provider))}</div></div>
+          <div class="summary-card"><div class="summary-label">Direction</div><div class="summary-value">${escapeHtml(String(direction))}</div></div>
+          <div class="summary-card"><div class="summary-label">Status</div><div class="summary-value">${escapeHtml(String(status))}</div></div>
+          <div class="summary-card"><div class="summary-label">Event Count</div><div class="summary-value">${events.length}</div></div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Conversation</div>
+          <div class="event-payload">conversationId=${escapeHtml(String(data.conversationId || '-'))}\ncallId=${escapeHtml(String(callId))}\nopenAiCallId=${escapeHtml(String(openAiCallId))}\ntrunkDomain=${escapeHtml(String(trunkDomain))}\nwebhookUrl=${escapeHtml(String(webhookUrl))}\nonboardingConversationId=${escapeHtml(String(onboardingConversationId))}</div>
+        </div>
+        <div class="sip-list">${eventRows}</div>
+      `;
+    }
+
     function renderConversationList(items) {
       if (!Array.isArray(items) || !items.length) {
         conversationListEl.innerHTML = '<div class="empty-list">No conversations found.</div>';
@@ -557,6 +615,41 @@
       } catch (err) {
         renderCopilotKitView(null);
         copilotKitMetaEl.textContent = `CopilotKit load failed: ${String(err)}`;
+      }
+    }
+
+    async function loadSipAudit(conversationId) {
+      const id = (conversationId || '').trim();
+      if (!id) {
+        renderSipView(null);
+        if (activeView === 'sip') {
+          setStatus('conversationId is required', 'err');
+        }
+        return;
+      }
+      try {
+        const result = await mcpRpc('tools/call', {
+          name: 'audit.conversation.sip',
+          arguments: { conversationId: id }
+        });
+        const parsed = parseToolResult(result);
+        if (!parsed) {
+          renderSipView(null);
+          if (activeView === 'sip') {
+            setStatus('SIP audit load failed (empty MCP result)', 'err');
+          }
+          return;
+        }
+        renderSipView(parsed);
+        if (activeView === 'sip') {
+          const count = Array.isArray(parsed.events) ? parsed.events.length : 0;
+          setStatus(`OK (${count} SIP events)`, 'ok');
+        }
+      } catch (err) {
+        renderSipView(null);
+        if (activeView === 'sip') {
+          setStatus(`SIP audit load failed: ${String(err)}`, 'err');
+        }
       }
     }
 
@@ -1027,22 +1120,28 @@
     }
 
     function setView(mode) {
-      activeView = mode === 'graph' || mode === 'tree' || mode === 'agent-md' || mode === 'copilot' ? mode : 'raw';
+      activeView = mode === 'graph' || mode === 'tree' || mode === 'sip' || mode === 'agent-md' || mode === 'copilot' ? mode : 'raw';
       const graphMode = activeView === 'graph';
       const treeMode = activeView === 'tree';
+      const sipMode = activeView === 'sip';
       const agentMdMode = activeView === 'agent-md';
       const copilotMode = activeView === 'copilot';
-      resultEl.classList.toggle('hidden', graphMode || treeMode || agentMdMode || copilotMode);
+      resultEl.classList.toggle('hidden', graphMode || treeMode || sipMode || agentMdMode || copilotMode);
       graphViewEl.classList.toggle('hidden', !graphMode);
       treeViewEl.classList.toggle('hidden', !treeMode);
+      sipViewEl.classList.toggle('hidden', !sipMode);
       agentMdViewEl.classList.toggle('hidden', !agentMdMode);
       copilotKitViewEl.classList.toggle('hidden', !copilotMode);
       rawViewBtnEl.classList.toggle('active', activeView === 'raw');
       graphViewBtnEl.classList.toggle('active', graphMode);
       treeViewBtnEl.classList.toggle('active', treeMode);
+      sipViewBtnEl.classList.toggle('active', sipMode);
       agentMdViewBtnEl.classList.toggle('active', agentMdMode);
       copilotKitViewBtnEl.classList.toggle('active', copilotMode);
 
+      if (sipMode) {
+        loadSipAudit((conversationIdEl.value || '').trim());
+      }
       if (copilotMode) {
         loadCopilotKit((conversationIdEl.value || '').trim());
       }
@@ -1083,6 +1182,7 @@
         return;
       }
       loadAgentMd(conversationId);
+      loadSipAudit(conversationId);
       const params = new URLSearchParams();
       params.set('conversationId', conversationId);
       const type = (typeEl.value || '').trim();
@@ -1175,7 +1275,7 @@
       const q = (params.get('q') || '').trim();
       const view = (params.get('view') || '').trim().toLowerCase();
       const augmentedRaw = (params.get('augmentedRaw') || '').trim().toLowerCase();
-      const requestedView = (view === 'raw' || view === 'graph' || view === 'tree' || view === 'agent-md' || view === 'copilot') ? view : '';
+      const requestedView = (view === 'raw' || view === 'graph' || view === 'tree' || view === 'sip' || view === 'agent-md' || view === 'copilot') ? view : '';
 
       const listQ = (params.get('listQ') || '').trim();
       const listTopic = (params.get('listTopic') || '').trim();
@@ -1244,6 +1344,11 @@
     rawViewBtnEl.addEventListener('click', () => setView('raw'));
     graphViewBtnEl.addEventListener('click', () => setView('graph'));
     treeViewBtnEl.addEventListener('click', () => setView('tree'));
+    sipViewBtnEl.addEventListener('click', () => {
+      const conversationId = (conversationIdEl.value || '').trim();
+      loadSipAudit(conversationId);
+      setView('sip');
+    });
     augmentedRawToggleEl.addEventListener('change', () => {
       augmentedRawEnabled = !!augmentedRawToggleEl.checked;
       syncAugmentedRawStateToUrl(augmentedRawEnabled);

@@ -1,0 +1,29 @@
+- route:
+    id: sample-telephony-onboarding-openai-twilio-post
+    from:
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/telephony/onboarding/openai-twilio?httpMethodRestrict=POST
+      steps:
+        - process:
+            ref: supportTelephonyOnboardingProcessor
+
+- route:
+    id: sample-telephony-onboarding-openai-twilio-get
+    from:
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/telephony/onboarding/openai-twilio?httpMethodRestrict=GET
+      steps:
+        - process:
+            ref: supportTelephonyOnboardingLookupProcessor
+
+- route:
+    id: sample-audit-conversation-sip
+    from:
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/audit/conversation/sip?httpMethodRestrict=GET
+      steps:
+        - process:
+            ref: auditConversationSipProcessor

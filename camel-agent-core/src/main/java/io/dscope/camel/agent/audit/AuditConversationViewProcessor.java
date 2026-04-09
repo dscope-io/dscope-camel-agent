@@ -125,6 +125,7 @@ public class AuditConversationViewProcessor implements Processor {
         response.put("modelUsage", AuditUsageSupport.summarize(events));
         response.put("agent", currentAgentState.asMap());
         response.put("a2a", currentA2aState.asMap());
+        response.put("sip", AuditMetadataSupport.deriveSipMetadata(events).asMap());
 
         exchange.getMessage().setHeader(Exchange.CONTENT_TYPE, "application/json");
         exchange.getMessage().setBody(objectMapper.writeValueAsString(response));

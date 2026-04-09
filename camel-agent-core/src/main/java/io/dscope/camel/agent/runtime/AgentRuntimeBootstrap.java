@@ -7,6 +7,7 @@ import io.dscope.camel.agent.audit.AuditAgentBlueprintProcessor;
 import io.dscope.camel.agent.audit.AuditAgentCatalogProcessor;
 import io.dscope.camel.agent.audit.AuditConversationAgentMessageProcessor;
 import io.dscope.camel.agent.audit.AuditConversationListProcessor;
+import io.dscope.camel.agent.audit.AuditConversationSipProcessor;
 import io.dscope.camel.agent.audit.AuditConversationViewProcessor;
 import io.dscope.camel.agent.audit.AuditConversationSessionDataProcessor;
 import io.dscope.camel.agent.audit.AuditConversationUsageProcessor;
@@ -133,6 +134,7 @@ public final class AgentRuntimeBootstrap {
             plansConfig,
             blueprintUri
         );
+        AuditConversationSipProcessor auditConversationSipProcessor = new AuditConversationSipProcessor(persistenceFacade, objectMapper);
         AuditConversationAgentMessageProcessor auditConversationAgentMessageProcessor = new AuditConversationAgentMessageProcessor(persistenceFacade, objectMapper);
         AuditConversationUsageProcessor auditConversationUsageProcessor = new AuditConversationUsageProcessor(persistenceFacade, objectMapper);
         AuditConversationSessionDataProcessor auditConversationSessionDataProcessor =
@@ -177,6 +179,7 @@ public final class AgentRuntimeBootstrap {
         main.bind("auditTrailSearchProcessor", auditTrailSearchProcessor);
         main.bind("auditConversationListProcessor", auditConversationListProcessor);
         main.bind("auditConversationViewProcessor", auditConversationViewBinding);
+        main.bind("auditConversationSipProcessor", auditConversationSipProcessor);
         main.bind("auditConversationAgentMessageProcessor", auditConversationAgentMessageProcessor);
         main.bind("auditConversationUsageProcessor", auditConversationUsageProcessor);
         main.bind("auditConversationSessionDataProcessor", auditConversationSessionDataBinding);
@@ -194,6 +197,7 @@ public final class AgentRuntimeBootstrap {
             auditTrailSearchProcessor,
             auditConversationListProcessor,
             auditConversationViewProcessor,
+            auditConversationSipProcessor,
             auditConversationSessionDataProcessor,
             auditConversationAgentMessageProcessor,
             auditAgentBlueprintProcessor,
@@ -230,6 +234,7 @@ public final class AgentRuntimeBootstrap {
                                           AuditTrailSearchProcessor auditTrailSearchProcessor,
                                           AuditConversationListProcessor auditConversationListProcessor,
                                           AuditConversationViewProcessor auditConversationViewProcessor,
+                                          AuditConversationSipProcessor auditConversationSipProcessor,
                                           AuditConversationSessionDataProcessor auditConversationSessionDataProcessor,
                                           AuditConversationAgentMessageProcessor auditConversationAgentMessageProcessor,
                                           AuditAgentBlueprintProcessor auditAgentBlueprintProcessor,
@@ -266,6 +271,7 @@ public final class AgentRuntimeBootstrap {
             auditTrailSearchProcessor,
             auditConversationListProcessor,
             auditConversationViewProcessor,
+            auditConversationSipProcessor,
             auditConversationSessionDataProcessor,
             auditConversationAgentMessageProcessor,
             auditAgentBlueprintProcessor,

@@ -490,6 +490,9 @@ SIP and telephony note:
 - `POST /sip/adapter/v1/session/{conversationId}/start`, `/turn`, and `/end` reuse the same realtime processors and route agent flow.
 - outbound support calling uses provider-neutral `OutboundSipCallRequest` / `OutboundSipCallResult` / `SipProviderClient` contracts in core.
 - the sample uses `support.call.outbound` plus `SupportOutboundCallProcessor` to place a provider call and return correlation data immediately.
+- `POST /telephony/onboarding/openai-twilio` and `GET /telephony/onboarding/openai-twilio` generate and reload reusable onboarding plans backed by deterministic conversation ids of the form `telephony:onboarding:{tenantId}:{agentId}`.
+- `GET /audit/conversation/sip` returns SIP-specific lifecycle and correlation data for both onboarding records and live call conversations.
+- recommended OpenAI voice topology is `Twilio Elastic SIP Trunk -> OpenAI SIP URI -> /openai/realtime/sip/webhook`; the Java sample remains the webhook/orchestration runtime, not a SIP endpoint.
 
 ## Phase-2 Runtime Commands
 
