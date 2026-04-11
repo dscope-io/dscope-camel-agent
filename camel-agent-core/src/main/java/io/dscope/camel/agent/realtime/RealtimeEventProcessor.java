@@ -20,17 +20,17 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.dscope.camel.agent.api.PersistenceFacade;
 import io.dscope.camel.agent.blueprint.MarkdownBlueprintLoader;
 import io.dscope.camel.agent.config.AgentHeaders;
-import io.dscope.camel.agent.session.AgentSessionService;
 import io.dscope.camel.agent.model.AgentBlueprint;
-import io.dscope.camel.agent.model.AuditGranularity;
 import io.dscope.camel.agent.model.AgentEvent;
+import io.dscope.camel.agent.model.AuditGranularity;
 import io.dscope.camel.agent.model.RealtimeSpec;
 import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 import io.dscope.camel.agent.runtime.ConversationArchiveService;
 import io.dscope.camel.agent.runtime.RealtimeConfigResolver;
 import io.dscope.camel.agent.runtime.ResolvedAgentPlan;
-import io.dscope.camel.agent.runtime.RuntimePlaceholderResolver;
 import io.dscope.camel.agent.runtime.RuntimeControlState;
+import io.dscope.camel.agent.runtime.RuntimePlaceholderResolver;
+import io.dscope.camel.agent.session.AgentSessionService;
 import io.dscope.camel.agent.util.TextEncodingSupport;
 
 public class RealtimeEventProcessor implements Processor {
