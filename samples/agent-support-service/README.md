@@ -13,6 +13,8 @@ Runnable Camel Main sample for the `agent:` runtime with:
 - AGUI component infrastructure from `io.dscope.camel:camel-ag-ui-component`
 - simple Copilot-style web UI (`/agui/ui`) that calls `POST /agui/agent` (AGUI POST+SSE stream response)
 
+For SIP and Twilio realtime ingress, caller identity is promoted into the agent route context as `callerId`, `fromNumber`, `agent.session.params.callerId`, and `agent.session.params.fromNumber`, and the same values are persisted into raw realtime audit events when the bridge supplies them.
+
 ## Prerequisites
 
 - Java 21

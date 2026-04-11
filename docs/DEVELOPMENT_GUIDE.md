@@ -254,6 +254,8 @@ Primary event families for audit trail work:
 - `agent.definition.refreshed`
 - `conversation.a2a.*`
 
+For realtime telephony flows, `realtime.*` ingress events should preserve adapter-supplied caller identity when available. The current runtime enriches persisted realtime payloads with `callerId`, `fromNumber`, and `twilio.fromNumber` from session metadata so audit search and SIP projections can correlate live call activity without depending on downstream route-specific fields.
+
 When designing new flows, decide explicitly whether the data belongs in:
 
 - audit trail for diagnostics, execution tracing, model usage, and operator metadata
@@ -442,6 +444,8 @@ Each SIP event row includes:
 - `timestamp`
 - `payload`
 - `sip`
+
+When caller identity is present, the normalized `sip` projection can expose `callerId` and `fromNumber` even for conversations that entered through realtime SIP or Twilio handoff paths.
 
 #### MCP Audit Surface
 

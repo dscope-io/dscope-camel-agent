@@ -427,6 +427,39 @@ tools:
 
 Critical execution-target fields now fail fast if a placeholder remains unresolved at runtime. See `docs/PRODUCT_GUIDE.md` for the exact field list and behavior.
 
+### Request-Scoped Process Variables
+
+The runtime already normalizes a small set of agent-scoped identifiers onto Camel headers and exchange properties. Use these values when you want `agent.md` or a route template to react to the current request instead of static configuration.
+
+Common values:
+
+- `agent.conversationId` - canonical conversation key for the active agent run
+- `agent.agui.sessionId` - UI/session correlation key
+- `agent.agui.threadId` - optional thread correlation key
+- `agent.session.params` - request params map passed to `AgentSessionService`
+- `agent.session.params.<key>` - flattened request param, for example `agent.session.params.customerId`
+- `callerId` / `fromNumber` - adapter-supplied telephony identity when a SIP or Twilio bridge populates it
+
+For realtime SIP and Twilio handoffs, the runtime also copies telephony identity into `agent.session.params.callerId` and `agent.session.params.fromNumber`, and persists the same values into realtime audit events when they are present in session metadata.
+
+Generic pattern:
+
+1. Put the value on the Camel exchange as a header or property in the route or processor that enters the agent.
+2. Read it in Camel DSL with `${header.someName}` or `${exchangeProperty.someName}`. For the standard runtime values, use the exact header names such as `${header.agent.conversationId}` and `${header.agent.agui.sessionId}`.
+3. If the value should survive the agent call, copy it into one of the standard headers above or into `agent.session.params.<key>`.
+
+Example:
+
+```yaml
+steps:
+  - setHeader:
+    name: agent.conversationId
+    simple: ${header.conversationId}
+  - setProperty:
+    name: agent.session.params.callerId
+    simple: ${header.callerId}
+```
+
 ## Blueprint Static Resources
 
 Blueprints can declare a `resources` section to stage static reference material into agent context.

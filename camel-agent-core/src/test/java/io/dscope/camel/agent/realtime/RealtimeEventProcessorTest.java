@@ -152,6 +152,62 @@ class RealtimeEventProcessorTest {
     }
 
     @Test
+    void shouldPromoteSipCallerIdentityIntoAgentRouteContext() throws Exception {
+        RecordingRelayClient relayClient = new RecordingRelayClient();
+        RealtimeEventProcessor processor = new RealtimeEventProcessor(relayClient, "direct:test-agent-sip-vars");
+
+        RealtimeBrowserSessionRegistry sessionRegistry = new RealtimeBrowserSessionRegistry(10_000L);
+        CamelContext context = createContext(Map.of(), Map.of("supportRealtimeSessionRegistry", sessionRegistry));
+        context.addRoutes(new RouteBuilder() {
+            @Override
+            public void configure() {
+                from("direct:test-agent-sip-vars")
+                    .process(exchange -> {
+                        ObjectNode response = MAPPER.createObjectNode();
+                        response.put("callerId", text(exchange.getMessage().getHeader("callerId", String.class)));
+                        response.put("fromNumber", text(exchange.getMessage().getHeader("fromNumber", String.class)));
+                        response.put(
+                            "paramCallerId",
+                            text(exchange.getProperty("agent.session.params.callerId", String.class))
+                        );
+                        response.put(
+                            "paramFromNumber",
+                            text(exchange.getProperty("agent.session.params.fromNumber", String.class))
+                        );
+                        response.set("params", MAPPER.valueToTree(exchange.getProperty("agent.session.params")));
+                        exchange.getMessage().setBody(MAPPER.writeValueAsString(response));
+                    });
+            }
+        });
+
+        try {
+            String conversationId = "conv-sip-caller-vars";
+            ObjectNode session = MAPPER.createObjectNode();
+            ObjectNode metadata = session.putObject("metadata");
+            ObjectNode sip = metadata.putObject("sip");
+            sip.put("from", "+15551230001");
+            sessionRegistry.putSession(conversationId, session);
+
+            Exchange exchange = new DefaultExchange(context);
+            exchange.getMessage().setHeader("conversationId", conversationId);
+            exchange.getMessage().setBody("{\"type\":\"transcript.final\",\"text\":\"who is calling?\"}");
+
+            processor.process(exchange);
+
+            JsonNode body = MAPPER.readTree(exchange.getMessage().getBody(String.class));
+            JsonNode assistantPayload = MAPPER.readTree(body.path("assistantMessage").asText());
+            Assertions.assertEquals("+15551230001", assistantPayload.path("callerId").asText());
+            Assertions.assertEquals("+15551230001", assistantPayload.path("fromNumber").asText());
+            Assertions.assertEquals("+15551230001", assistantPayload.path("paramCallerId").asText());
+            Assertions.assertEquals("+15551230001", assistantPayload.path("paramFromNumber").asText());
+            Assertions.assertEquals("+15551230001", assistantPayload.path("params").path("callerId").asText());
+            Assertions.assertEquals("+15551230001", assistantPayload.path("params").path("fromNumber").asText());
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Test
     void shouldRouteRelayManagedObservedInputTranscriptToAgent() throws Exception {
         RecordingRelayClient relayClient = new RecordingRelayClient();
         RealtimeEventProcessor processor = new RealtimeEventProcessor(relayClient, "direct:test-agent-observed-input");
@@ -531,6 +587,55 @@ class RealtimeEventProcessorTest {
     }
 
     @Test
+    void shouldPersistCallerIdentityIntoRealtimeAuditTrail() throws Exception {
+        RecordingRelayClient relayClient = new RecordingRelayClient();
+        RealtimeEventProcessor processor = new RealtimeEventProcessor(relayClient, "direct:test-agent-audit-caller");
+
+        InMemoryPersistenceFacade persistence = new InMemoryPersistenceFacade();
+        RealtimeBrowserSessionRegistry sessionRegistry = new RealtimeBrowserSessionRegistry(10_000L);
+        CamelContext context = createContext(
+            Map.of(),
+            Map.of(
+                "persistenceFacade", persistence,
+                "supportRealtimeSessionRegistry", sessionRegistry
+            )
+        );
+        context.addRoutes(new RouteBuilder() {
+            @Override
+            public void configure() {
+                from("direct:test-agent-audit-caller")
+                    .transform(simple("assistant: ${body}"));
+            }
+        });
+
+        try {
+            String conversationId = "conv-realtime-audit-caller";
+            ObjectNode session = MAPPER.createObjectNode();
+            ObjectNode metadata = session.putObject("metadata");
+            ObjectNode sip = metadata.putObject("sip");
+            sip.put("from", "+15551230001");
+            sessionRegistry.putSession(conversationId, session);
+
+            Exchange exchange = new DefaultExchange(context);
+            exchange.getMessage().setHeader("conversationId", conversationId);
+            exchange.getMessage().setBody("{\"type\":\"transcript.final\",\"text\":\"please open ticket\"}");
+
+            processor.process(exchange);
+
+            List<AgentEvent> events = persistence.loadConversation(conversationId, 20);
+            AgentEvent realtimeEvent = events.stream()
+                .filter(event -> "realtime.transcript.final".equals(event.type()))
+                .findFirst()
+                .orElseThrow();
+            Assertions.assertEquals("+15551230001", realtimeEvent.payload().path("callerId").asText());
+            Assertions.assertEquals("+15551230001", realtimeEvent.payload().path("fromNumber").asText());
+            Assertions.assertEquals("+15551230001", realtimeEvent.payload().path("twilio").path("fromNumber").asText());
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Test
     void shouldNotDuplicateTurnMessagesWhenRouteAlreadyPersistedThem() throws Exception {
         RecordingRelayClient relayClient = new RecordingRelayClient();
         RealtimeEventProcessor processor = new RealtimeEventProcessor(relayClient, "direct:test-agent-managed-turn-persistence");
@@ -820,5 +925,9 @@ class RealtimeEventProcessorTest {
             }
             return null;
         }
+    }
+
+    private static String text(String value) {
+        return value == null ? "" : value;
     }
 }

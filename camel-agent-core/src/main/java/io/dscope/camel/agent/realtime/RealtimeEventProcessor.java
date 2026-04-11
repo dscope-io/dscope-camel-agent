@@ -1,6 +1,7 @@
 package io.dscope.camel.agent.realtime;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -19,6 +20,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.dscope.camel.agent.api.PersistenceFacade;
 import io.dscope.camel.agent.blueprint.MarkdownBlueprintLoader;
 import io.dscope.camel.agent.config.AgentHeaders;
+import io.dscope.camel.agent.session.AgentSessionService;
 import io.dscope.camel.agent.model.AgentBlueprint;
 import io.dscope.camel.agent.model.AuditGranularity;
 import io.dscope.camel.agent.model.AgentEvent;
@@ -468,6 +470,7 @@ public class RealtimeEventProcessor implements Processor {
             routed.getMessage().setHeader(AgentHeaders.CONVERSATION_ID, conversationId);
             copyHeader(exchange, routed, AgentHeaders.PLAN_NAME);
             copyHeader(exchange, routed, AgentHeaders.PLAN_VERSION);
+            promoteRequestScopedVariables(exchange, routed, conversationId);
         });
         String assistant = routeExchange.getMessage().getBody(String.class);
         assistant = maybeCanonicalizeTicketAssistantMessage(template, conversationId, transcript, assistant);
@@ -639,12 +642,13 @@ public class RealtimeEventProcessor implements Processor {
             return;
         }
         try {
+            JsonNode enrichedPayload = enrichAuditPayloadWithCallerIdentity(exchange, conversationId, payload);
             persistenceFacade.appendEvent(
                 new AgentEvent(
                     conversationId,
                     null,
                     "realtime." + eventType,
-                    payload == null ? objectMapper.nullNode() : payload.deepCopy(),
+                    enrichedPayload,
                     Instant.now()
                 ),
                 UUID.randomUUID().toString()
@@ -658,6 +662,27 @@ public class RealtimeEventProcessor implements Processor {
                     ? persistenceFailure.getClass().getSimpleName()
                     : persistenceFailure.getMessage());
         }
+    }
+
+    private JsonNode enrichAuditPayloadWithCallerIdentity(Exchange exchange, String conversationId, JsonNode payload) {
+        CallerIdentity callerIdentity = resolveCallerIdentity(exchange, conversationId);
+        JsonNode basePayload = payload == null ? objectMapper.nullNode() : payload.deepCopy();
+        if ((callerIdentity.callerId().isBlank() && callerIdentity.fromNumber().isBlank()) || !basePayload.isObject()) {
+            return basePayload;
+        }
+
+        ObjectNode enriched = (ObjectNode) basePayload;
+        if (!callerIdentity.callerId().isBlank() && !enriched.hasNonNull("callerId")) {
+            enriched.put("callerId", callerIdentity.callerId());
+        }
+        ObjectNode twilio = ensureObject(enriched, "twilio");
+        if (!callerIdentity.fromNumber().isBlank() && !twilio.hasNonNull("fromNumber")) {
+            twilio.put("fromNumber", callerIdentity.fromNumber());
+        }
+        if (!callerIdentity.fromNumber().isBlank() && !enriched.hasNonNull("fromNumber")) {
+            enriched.put("fromNumber", callerIdentity.fromNumber());
+        }
+        return enriched;
     }
 
     private String summarizeObjectKeys(ObjectNode node) {
@@ -786,6 +811,95 @@ public class RealtimeEventProcessor implements Processor {
             parsedAssistant.path("sessionUpdate")
         );
         return fromBody == null ? null : fromBody.deepCopy();
+    }
+
+    private void promoteRequestScopedVariables(Exchange sourceExchange, Exchange targetExchange, String conversationId) {
+        if (sourceExchange == null || targetExchange == null) {
+            return;
+        }
+        CallerIdentity callerIdentity = resolveCallerIdentity(sourceExchange, conversationId);
+        String callerId = callerIdentity.callerId();
+        String fromNumber = callerIdentity.fromNumber();
+
+        if (callerId.isBlank() && fromNumber.isBlank()) {
+            return;
+        }
+
+        if (!callerId.isBlank()) {
+            targetExchange.getMessage().setHeader("callerId", callerId);
+            targetExchange.setProperty(AgentSessionService.SESSION_PARAMS_PROPERTY + ".callerId", callerId);
+        }
+        if (!fromNumber.isBlank()) {
+            targetExchange.getMessage().setHeader("fromNumber", fromNumber);
+            targetExchange.setProperty(AgentSessionService.SESSION_PARAMS_PROPERTY + ".fromNumber", fromNumber);
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> existingParams = firstMap(
+            targetExchange.getProperty(AgentSessionService.SESSION_PARAMS_PROPERTY),
+            sourceExchange.getProperty(AgentSessionService.SESSION_PARAMS_PROPERTY)
+        );
+        Map<String, Object> mergedParams = existingParams == null
+            ? new LinkedHashMap<>()
+            : new LinkedHashMap<>(existingParams);
+        if (!callerId.isBlank()) {
+            mergedParams.put("callerId", callerId);
+        }
+        if (!fromNumber.isBlank()) {
+            mergedParams.put("fromNumber", fromNumber);
+        }
+        targetExchange.setProperty(AgentSessionService.SESSION_PARAMS_PROPERTY, Map.copyOf(mergedParams));
+    }
+
+    private CallerIdentity resolveCallerIdentity(Exchange exchange, String conversationId) {
+        ObjectNode session = sessionSnapshot(exchange, conversationId);
+        String sessionSipCaller = text(session == null ? null : session.path("metadata").path("sip"), "callerId");
+        String sessionSipFromNumber = text(session == null ? null : session.path("metadata").path("sip"), "fromNumber");
+        String sessionSipFrom = text(session == null ? null : session.path("metadata").path("sip"), "from");
+        String sessionTwilioFromNumber = text(session == null ? null : session.path("metadata").path("twilio"), "fromNumber");
+
+        String callerId = firstNonBlank(
+            exchange == null ? null : exchange.getMessage().getHeader("callerId", String.class),
+            exchange == null ? null : exchange.getProperty(AgentSessionService.SESSION_PARAMS_PROPERTY + ".callerId", String.class),
+            sessionSipCaller,
+            sessionSipFromNumber,
+            sessionSipFrom,
+            sessionTwilioFromNumber,
+            exchange == null ? null : exchange.getMessage().getHeader("fromNumber", String.class),
+            exchange == null ? null : exchange.getProperty(AgentSessionService.SESSION_PARAMS_PROPERTY + ".fromNumber", String.class)
+        );
+        String fromNumber = firstNonBlank(
+            exchange == null ? null : exchange.getMessage().getHeader("fromNumber", String.class),
+            exchange == null ? null : exchange.getProperty(AgentSessionService.SESSION_PARAMS_PROPERTY + ".fromNumber", String.class),
+            sessionSipFromNumber,
+            sessionSipCaller,
+            sessionSipFrom,
+            sessionTwilioFromNumber,
+            exchange == null ? null : exchange.getMessage().getHeader("callerId", String.class),
+            exchange == null ? null : exchange.getProperty(AgentSessionService.SESSION_PARAMS_PROPERTY + ".callerId", String.class)
+        );
+        return new CallerIdentity(callerId, fromNumber);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> firstMap(Object... candidates) {
+        for (Object candidate : candidates) {
+            if (candidate instanceof Map<?, ?> map) {
+                return (Map<String, Object>) map;
+            }
+        }
+        return null;
+    }
+
+    private ObjectNode sessionSnapshot(Exchange exchange, String conversationId) {
+        if (exchange == null || conversationId == null || conversationId.isBlank()) {
+            return null;
+        }
+        RealtimeBrowserSessionRegistry sessionRegistry = lookupSessionRegistry(exchange);
+        return sessionRegistry == null ? null : sessionRegistry.getSession(conversationId);
+    }
+
+    private record CallerIdentity(String callerId, String fromNumber) {
     }
 
     private ObjectNode firstObjectNode(Object... candidates) {

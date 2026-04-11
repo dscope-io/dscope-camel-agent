@@ -1053,6 +1053,43 @@ Important distinction:
 - bootstrap property resolution is handled before runtime components are wired, so properties such as `agui.rpc.port`, `agent.runtime.a2a.port`, and `agent.runtime.a2a.public-base-url` can safely reference each other with either placeholder syntax
 - execution-target resolution is a later step used for blueprint fields that directly control route ids, endpoint URIs, and similar runtime invocations
 
+### Request-Scoped Process Variables
+
+Static placeholder syntax is for configuration. Request-scoped values come from the Camel exchange and should be addressed with Camel Simple expressions in routes or processors, not with a special `$callerid` token.
+
+Canonical values exposed by the runtime:
+
+| Value | Where it appears |
+| --- | --- |
+| `agent.conversationId` | Canonical conversation key on the exchange header |
+| `agent.agui.sessionId` | AGUI session correlation header |
+| `agent.agui.threadId` | AGUI thread correlation header |
+| `agent.session.params` | Map of request params passed into `AgentSessionService` |
+| `agent.session.params.<key>` | Flattened request param copied to the exchange property |
+| `callerId` / `fromNumber` | Adapter-supplied telephony identity when the SIP/Twilio bridge provides it |
+
+For realtime SIP and Twilio ingress, the runtime promotes telephony identity into both exchange headers and `agent.session.params.callerId` / `agent.session.params.fromNumber`, and raw realtime audit events keep the same values when they are available from session metadata.
+
+Generic pattern:
+
+1. Set the value on the Camel exchange before invoking the agent.
+2. Reference it in Camel DSL with `${header.someName}` or `${exchangeProperty.someName}`. For the standard runtime values, use the exact header names such as `${header.agent.conversationId}` and `${header.agent.agui.sessionId}`.
+3. Preserve it across the agent invocation by copying it into `agent.conversationId`, `agent.agui.sessionId`, `agent.agui.threadId`, or `agent.session.params.<key>` as appropriate.
+
+Example route snippet:
+
+```yaml
+steps:
+  - setHeader:
+      name: agent.conversationId
+      simple: ${header.conversationId}
+  - setProperty:
+      name: agent.session.params.callerId
+      simple: ${header.callerId}
+```
+
+For SIP flows, the same pattern applies to `callerId` and `fromNumber`: if the adapter provides them, they can be read from the exchange and projected into audit or downstream agent context. The sample already preserves these fields in SIP metadata when present.
+
 ### Route-Driven Session Invocation
 
 Raw `agent:` endpoint usage remains valid, but it returns assistant text only.
