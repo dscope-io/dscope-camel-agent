@@ -1,5 +1,8 @@
 package io.dscope.camel.agent.agui;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.dscope.camel.agent.blueprint.MarkdownBlueprintLoader;
 import io.dscope.camel.agent.config.AgentHeaders;
 import io.dscope.camel.agent.model.AgUiPreRunSpec;
@@ -9,6 +12,7 @@ import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 import io.dscope.camel.agent.runtime.ConversationArchiveService;
 import io.dscope.camel.agent.runtime.ResolvedAgentPlan;
 import io.dscope.camel.agent.runtime.RuntimePlaceholderResolver;
+import io.dscope.camel.agent.util.A2UiPayloadSupport;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -29,10 +33,12 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
     private static final String DEFAULT_AGENT_ENDPOINT_URI = "agent:default?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}";
 
     private final MarkdownBlueprintLoader markdownBlueprintLoader;
+    private final ObjectMapper objectMapper;
     private final Map<String, AgentBlueprint> blueprintCache;
 
     public AgentAgUiPreRunTextProcessor() {
         this.markdownBlueprintLoader = new MarkdownBlueprintLoader();
+        this.objectMapper = new ObjectMapper();
         this.blueprintCache = new ConcurrentHashMap<>();
     }
 
@@ -63,6 +69,7 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
         String runId = firstNonBlank(stringValue(params.get("runId")), UUID.randomUUID().toString());
         String requestedPlanName = stringValue(params.get("planName"));
         String requestedPlanVersion = stringValue(params.get("planVersion"));
+        String locale = resolveLocale(exchange, params);
 
         LOGGER.info("AGUI pre-run started: threadId={}, sessionId={}, runId={}, promptChars={}",
             threadId,
@@ -71,6 +78,7 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             prompt.length());
 
         ResolvedAgentPlan resolvedPlan = resolvePlan(exchange, threadId, requestedPlanName, requestedPlanVersion);
+        AgentBlueprint blueprint = loadBlueprint(resolvedPlan);
         RuntimeConfig runtimeConfig = resolveRuntimeConfig(exchange, resolvedPlan);
 
         ProducerTemplate template = exchange.getContext().createProducerTemplate();
@@ -81,6 +89,7 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             headers.put(AgentHeaders.AGUI_SESSION_ID, sessionId);
             headers.put(AgentHeaders.AGUI_RUN_ID, runId);
             headers.put(AgentHeaders.AGUI_THREAD_ID, threadId);
+            headers.put(AgentHeaders.LOCALE, locale);
             if (requestedPlanName != null && !requestedPlanName.isBlank()) {
                 headers.put(AgentHeaders.PLAN_NAME, requestedPlanName);
             }
@@ -106,10 +115,19 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
         params.put("runId", runId);
         params.put("sessionId", sessionId);
         params.put("threadId", threadId);
+        params.put("locale", locale);
         if (!resolvedPlan.legacyMode()) {
             params.put("planName", resolvedPlan.planName());
             params.put("planVersion", resolvedPlan.planVersion());
         }
+        attachStructuredUi(
+            params,
+            outputText,
+            blueprint,
+            resolvedPlan,
+            locale,
+            A2UiPayloadSupport.supportedCatalogIds(params.get("a2uiSupportedCatalogIds"))
+        );
         exchange.setProperty(AgentAgUiExchangeProperties.PARAMS, params);
 
         ConversationArchiveService archiveService = exchange.getContext().getRegistry().findSingleByType(ConversationArchiveService.class);
@@ -283,6 +301,50 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             }
         }
         return false;
+    }
+
+    private void attachStructuredUi(Map<String, Object> params,
+                                    String outputText,
+                                    AgentBlueprint blueprint,
+                                    ResolvedAgentPlan resolvedPlan,
+                                    String locale,
+                                    List<String> supportedCatalogIds) {
+        params.remove("widget");
+        params.remove("a2ui");
+        JsonNode parsed = parseJson(outputText);
+        if (parsed == null || parsed.isNull() || !parsed.isObject()) {
+            return;
+        }
+        ObjectNode widget = A2UiPayloadSupport.buildWidget(objectMapper, blueprint, parsed, supportedCatalogIds);
+        if (widget != null && !widget.isEmpty()) {
+            params.put("widget", objectMapper.convertValue(widget, Map.class));
+        }
+        ObjectNode a2ui = A2UiPayloadSupport.buildPayload(objectMapper, blueprint, parsed, resolvedPlan, locale, supportedCatalogIds);
+        if (a2ui != null && !a2ui.isEmpty()) {
+            params.put("a2ui", objectMapper.convertValue(a2ui, Map.class));
+        }
+    }
+
+    private String resolveLocale(Exchange exchange, Map<String, Object> params) {
+        return A2UiPayloadSupport.resolveLocale(
+            stringValue(params.get("locale")),
+            exchange.getMessage().getHeader(AgentHeaders.LOCALE, String.class),
+            exchange.getMessage().getHeader("Accept-Language", String.class),
+            propertyOrNull(exchange, "agent.locale")
+        );
+    }
+
+    private JsonNode parseJson(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readTree(text);
+        } catch (RuntimeException parseFailure) {
+            return null;
+        } catch (Exception parseFailure) {
+            return null;
+        }
     }
 
     private List<String> csvValues(String csv) {

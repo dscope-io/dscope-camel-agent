@@ -108,7 +108,7 @@ fallback from `application.yaml` (`agent.runtime.realtime.*`).
 
 ```yaml
 aguiPreRun:
-  agentEndpointUri: agent:support?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}
+  agentEndpointUri: "{{agent.runtime.support.agui-agent-endpoint-uri}}"
   fallbackEnabled: true
   fallback:
     kbToolName: kb.search
@@ -116,4 +116,23 @@ aguiPreRun:
     ticketUri: direct:support-ticket-manage
     ticketKeywords: [ticket, open, create, update, close, status, submit, escalate]
     errorMarkers: [api key is missing, openai api key, set -dopenai.api.key]
+```
+
+## A2UI
+
+```yaml
+a2ui:
+  surfaces:
+    - name: support-ticket-card-v1
+      widgetTemplate: ticket-card
+      surfaceIdTemplate: support-ticket-v1-${ticketId}
+      catalogResource: classpath:agents/support/a2ui/ticket-card.catalog.json
+      surfaceResource: classpath:agents/support/a2ui/ticket-card.surface.json
+      matchFields: [ticketId]
+      localeResources:
+        en: classpath:agents/support/a2ui/locales/en.json
+        es: classpath:agents/support/a2ui/locales/es.json
+        fr: classpath:agents/support/a2ui/locales/en.json
+        fr-CA: classpath:agents/support/a2ui/locales/en.json
+        default: classpath:agents/support/a2ui/locales/en.json
 ```

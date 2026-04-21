@@ -12,6 +12,12 @@ Runnable Camel Main sample for the `agent:` runtime with:
 - audit trail persistence via JDBC-backed DScope persistence
 - AGUI component infrastructure from `io.dscope.camel:camel-ag-ui-component`
 - simple Copilot-style web UI (`/agui/ui`) that calls `POST /agui/agent` (AGUI POST+SSE stream response)
+- locale-aware AGUI and realtime request shaping with first-class A2UI payload support sourced from sample-owned catalog, surface, and locale JSON assets
+
+Companion clients in this repo:
+
+- browser sample UI in `src/main/resources/frontend`
+- Flutter mobile sample in [samples/agent-support-flutter](../agent-support-flutter/README.md)
 
 For SIP and Twilio realtime ingress, caller identity is promoted into the agent route context as `callerId`, `fromNumber`, `agent.session.params.callerId`, and `agent.session.params.fromNumber`, and the same values are persisted into raw realtime audit events when the bridge supplies them.
 
@@ -98,15 +104,19 @@ lsof -nP -iTCP:8080 -sTCP:LISTEN | cat
 4. Web chat check:
 
 - Send: `My login is failing, please open a support ticket`.
+- Optionally change `Locale` first, for example `fr-CA` or `es-MX`.
 - Expect the support assistant to call the A2A ticketing service and render ticket JSON/widget behavior.
+- When ticket JSON is returned, the sample should now expose the same response through assistant text, `widget`, and `a2ui` paths.
 
 5. Realtime voice check (browser):
 
+- Set `Locale` before starting voice if you want a non-English transcription/instruction seed.
 - Keep `Pause` profile on `Normal` (or choose `Fast`/`Patient` based on preference).
 - Click `Start Voice`, allow microphone access.
 - Speak a short ticket request (for example: `Please open and escalate a ticket for repeated login failures`).
 - Click `Stop Voice`.
 - Expect transcription routed to agent flow and assistant response (plus audio playback when realtime audio deltas are produced).
+- Expect transcription language to follow the locale language tag, for example `fr` from `fr-CA`.
 - In transcript log, expect one `voice output transcript` assistant message per response (no duplicate compressed variant).
 
 6. Optional API-level realtime sanity check:
@@ -130,11 +140,31 @@ curl -N -X POST http://localhost:8080/agui/agent \
    -d '{
       "threadId":"demo-session",
       "sessionId":"demo-session",
+      "locale":"fr-CA",
       "messages":[{"role":"user","content":"My login is failing, please open a support ticket"}]
    }'
 ```
 
-When assistant text contains ticket JSON, the frontend renders a `ticket-card` widget template.
+When assistant text contains ticket JSON, the runtime now also attaches `widget` and `a2ui` metadata. The sample blueprint points at JSON catalog and surface assets under `agents/support/**/a2ui`, and the frontend advertises its supported catalog IDs from `frontend/a2ui/catalog-registry.json` before mapping `a2ui` back into the existing `ticket-card` widget template.
+
+## Flutter Mobile Client
+
+The repo now also includes a Flutter mobile sample in [samples/agent-support-flutter](../agent-support-flutter/README.md).
+
+It uses:
+
+- AG-UI over WebSocket (`/agui/rpc`) for chat
+- A2UI envelopes from the agent response to render trusted native ticket cards
+- `/realtime/session/{id}/init`, `/token`, and `/event` plus direct OpenAI WebRTC for voice mode
+
+Because Flutter is not installed in this workspace, the native `android/` and `ios/` wrappers are not generated here. On a Flutter machine run:
+
+```bash
+cd samples/agent-support-flutter
+flutter create . --platforms=android,ios
+flutter pub get
+flutter run
+```
 
 ## AGUI Frontend Flow
 
@@ -145,7 +175,8 @@ Current UI transport model in this sample:
    - WebSocket `/agui/rpc` (AGUI event stream over WS)
 2. Backend returns AGUI events for the selected transport.
 3. Frontend parses AGUI events (especially `TEXT_MESSAGE_CONTENT`) and renders assistant text.
-4. If assistant text contains ticket JSON, frontend renders a `ticket-card` widget.
+4. If the AGUI payload includes `a2ui`, frontend resolves `catalogId` through its local registry and normalizes the payload into the existing `ticket-card` widget.
+5. If only legacy widget or raw ticket JSON is present, the old widget fallback still works.
 
 In the current sample, `support.ticket.manage` is an outbound `a2a:` tool:
 
@@ -157,9 +188,12 @@ In the current sample, `support.ticket.manage` is an outbound `a2a:` tool:
 Voice/transcript UX in `/agui/ui`:
 
 - Single dynamic voice toggle button with idle/live/busy visual states.
+- Locale selector persists to URL/local storage and drives browser document language.
 - Pause selector controls realtime VAD silence timeout (`Fast=800ms`, `Normal=1200ms`, `Patient=1800ms`).
 - Current pause milliseconds are shown in the pause label and voice listening status text.
 - WebRTC transcript log panel records input and output transcript events with a clear-log button.
+- AGUI and realtime requests send both `locale` and `Accept-Language`.
+- Realtime transcription language and WebRTC instruction seed are derived from the selected locale.
 - Voice output transcript rendering is de-duplicated so only one final assistant transcript line is shown.
 - Collapsible `Instruction seed (debug)` panel displays the current WebRTC instruction seed derived from realtime session metadata.
 - Instruction debug panel auto-opens when transport switches to `WebRTC` and also on initial page load when current transport is already `WebRTC`.
@@ -252,6 +286,22 @@ The resolved AI configuration is persisted with plan selection and exposed by:
 - session responses under `resolvedAi`
 - audit conversation view/list/search responses under `ai`
 - audit metadata under `conversationMetadata.ai`
+
+## OpenAI Responses Strict Schema Notes
+
+The sample now validates cleanly against OpenAI Responses strict tool mode in both `responses-http` and `responses-ws` flows.
+
+Authoring rules for blueprint and MCP-facing tool schemas:
+
+- object schemas should resolve to `additionalProperties: false`
+- object schemas with declared `properties` should expose a `required` array that matches those keys when the fields are intended to be required by strict mode
+- generic object parameters such as `executeBody` are safer when modeled as explicit empty-object schemas instead of a bare `type: object`
+
+Runtime behavior:
+
+- `camel-agent-spring-ai` now normalizes strict tool schemas before sending them to OpenAI Responses
+- the normalization is recursive, so nested object properties from MCP discovery and JSON route template tools are also normalized
+- this protects common cases where blueprint or MCP schemas omit `required`, `properties`, or `additionalProperties`
 
 ## Tokenized Execution Targets In The Sample Blueprint
 
@@ -702,6 +752,24 @@ Covered scenarios:
 3. Live LLM route decision (when API key is available):
    - validates real tool selection and second-turn context carry-over
 
+Focused live validation path for OpenAI Responses strict mode:
+
+1. Start the sample on an open port.
+2. Call `POST /sample/agent/session` with a prompt that forces the model path, for example a knowledge-base lookup request.
+3. Prefer this endpoint over AGUI or realtime ticket-only flows when validating tool-schema behavior, because deterministic AGUI/realtime routing can bypass the LLM path.
+
+Example:
+
+```bash
+curl -sS -X POST http://localhost:18080/sample/agent/session \
+   -H 'Content-Type: application/json' \
+   -d '{
+      "prompt": "Search the knowledge base for login troubleshooting steps. Do not create a ticket yet.",
+      "sessionId": "strict-model-session",
+      "params": {"channel": "rest"}
+   }'
+```
+
 ## Runtime Config
 
 Primary config is in `src/main/resources/application.yaml`.
@@ -711,6 +779,7 @@ Notable keys:
 - `agent.runtime.ai.mode=spring-ai`
 - `agent.runtime.spring-ai.provider=openai`
 - `agent.runtime.spring-ai.openai.api-mode=chat`
+- set `agent.runtime.spring-ai.openai.api-mode=responses-http` to route LLM calls through the OpenAI Responses HTTP API
 - set `agent.runtime.spring-ai.openai.api-mode=responses-ws` to route LLM calls through OpenAI Responses over WebSocket
 - `agent.runtime.spring-ai.openai.responses-ws.*` configures endpoint/model/timeout/reconnect (`endpoint-uri`, `model`, `request-timeout-ms`, `poll-interval-ms`, `max-send-retries`, `max-reconnects`, `initial-backoff-ms`, `max-backoff-ms`)
 - `agent.runtime.spring-ai.model=gpt-5.4`

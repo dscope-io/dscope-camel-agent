@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-04-19
+
+### OpenAI Responses strict schema compatibility
+
+- Normalized OpenAI Responses tool schemas recursively in `camel-agent-spring-ai` before request submission.
+- Covered strict-mode compatibility for:
+  - MCP-discovered tool schemas missing `required`
+  - nested object parameters missing `additionalProperties: false`
+  - generic `type: object` parameters that need explicit empty-object schema materialization
+- Added focused regression coverage in `OpenAiSdkResponsesGatewayTest` for top-level, nested, and generic object-schema cases.
+
+### Validation updates
+
+- Replayed the live sample model path through `POST /sample/agent/session` and verified successful OpenAI Responses execution after the schema fixes.
+- Confirmed that deterministic AGUI and realtime ticket flows are not sufficient to validate OpenAI strict tool-schema behavior because they can bypass the model path.
+- Ran the gated Postgres persistence/audit helper successfully.
+- Ran the gated live OpenAI sample integration test `SpringAiAuditTrailIntegrationTest#shouldUseLlmDecisionAndCarryFirstTurnResultIntoSecondTurnContext` successfully.
+
 ## 2026-02-26
 
 ### Release 0.5.0

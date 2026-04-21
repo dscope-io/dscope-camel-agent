@@ -35,3 +35,20 @@ realtime:
     initialBackoffMs: 150
     maxBackoffMs: 2000
 ```
+
+## A2UI
+```yaml
+a2ui:
+  surfaces:
+    - name: support-ticket-card-v2
+      widgetTemplate: ticket-card
+      surfaceIdTemplate: support-ticket-v2-${ticketId}
+      catalogResource: classpath:agents/a2ui/support-v2.catalog.json
+      surfaceResource: classpath:agents/a2ui/support-v2.surface.json
+      matchFields: [ticketId]
+      localeResources:
+        en: classpath:agents/a2ui/locales/support-v2.en.json
+        fr: classpath:agents/a2ui/locales/support-v2.fr.json
+        fr-CA: classpath:agents/a2ui/locales/support-v2.fr.json
+        default: classpath:agents/a2ui/locales/support-v2.en.json
+```

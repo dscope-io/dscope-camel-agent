@@ -117,3 +117,20 @@ aguiPreRun:
     ticketKeywords: [ticket, open, create, update, close, status, submit, escalate]
     errorMarkers: [api key is missing, openai api key, set -dopenai.api.key]
 ```
+
+## A2UI
+
+```yaml
+a2ui:
+  surfaces:
+    - name: support-ticket-card
+      widgetTemplate: ticket-card
+      surfaceIdTemplate: support-ticket-${ticketId}
+      catalogResource: classpath:agents/support/a2ui/ticket-card.catalog.json
+      surfaceResource: classpath:agents/support/a2ui/ticket-card.surface.json
+      matchFields: [ticketId]
+      localeResources:
+        en: classpath:agents/support/a2ui/locales/en.json
+        es: classpath:agents/support/a2ui/locales/es.json
+        default: classpath:agents/support/a2ui/locales/en.json
+```

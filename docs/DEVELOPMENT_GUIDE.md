@@ -549,6 +549,15 @@ Developer concerns:
 - preserve correlation keys between `conversationId`, `sessionId`, `threadId`, and `runId`
 - keep fallback behavior aligned with blueprint tool metadata or explicit fallback route config
 - ensure plan-aware request paths continue forwarding `planName` and `planVersion`
+- when AGUI responses are structurally meaningful, attach `widget` and `a2ui` to the AGUI param contract instead of asking the frontend to parse assistant text
+- prefer `agent.locale` as the runtime locale header and resolve it from top-level request `locale` plus `Accept-Language`
+
+Current structured UI contract:
+
+- non-realtime AGUI pre-run (`AgentAgUiPreRunTextProcessor`) can attach `locale`, `widget`, and `a2ui` to AGUI params
+- realtime transcript routing (`RealtimeEventProcessor`) mirrors the same contract inside `aguiMessages` and top-level response payloads
+- `AgentBlueprint.a2ui` is the declaration seam for app-owned A2UI surfaces and locale bundles
+- `A2UiPayloadSupport` is the shared core seam for locale normalization, surface matching, resource loading, and supported-catalog negotiation; concrete catalogs/surfaces live in app JSON assets, not core code
 
 ### Browser Realtime
 
@@ -565,6 +574,8 @@ Developer guidance:
 - treat realtime session instructions as a derived view of blueprint and runtime metadata
 - avoid creating browser-only instruction models that diverge from the core blueprint
 - validate session refresh behavior after blueprint or resource changes
+- keep realtime and AGUI locale handling aligned: selected browser locale should drive transcription language, runtime `agent.locale`, and any generated structured UI payload metadata
+- when testing browser-facing structured responses, verify both the legacy widget path and the top-level `a2ui` contract remain usable
 
 ## MCP Discovery And JSON Route Templates
 
@@ -712,6 +723,11 @@ Guidelines:
 3. Normalize final transcript turns into realtime `transcript.final`.
 4. Let `RealtimeEventProcessor` route transcript turns into the same `agent:` flow as chat.
 5. Use route session patches when a tool needs to update future voice-session context.
+
+Focused verification for the current locale-aware structured UI behavior:
+
+- `AgentAgUiPreRunTextProcessorTest#shouldAttachWidgetAndA2UiPayloadForTicketJsonResponses`
+- `RealtimeEventProcessorTest#shouldPropagateLocaleAndDifferentCatalogIdsAcrossResolvedPlans`
 
 Do not create a separate call-local conversation model unless the adapter truly spans multiple independent agent conversations.
 

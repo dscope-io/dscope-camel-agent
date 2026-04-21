@@ -175,7 +175,8 @@ public class AgentComponent extends DefaultComponent {
             blueprint.mcpToolCatalogs(),
             resolvedRealtime,
             blueprint.aguiPreRun(),
-            blueprint.resources()
+            blueprint.resources(),
+            blueprint.a2ui()
         );
     }
 
@@ -198,7 +199,8 @@ public class AgentComponent extends DefaultComponent {
             blueprint.mcpToolCatalogs(),
             blueprint.realtime(),
             blueprint.aguiPreRun(),
-            blueprint.resources()
+            blueprint.resources(),
+            blueprint.a2ui()
         );
     }
 

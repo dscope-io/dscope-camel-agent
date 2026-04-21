@@ -1,0 +1,10 @@
+{
+  "catalogs": {
+    "urn:io.dscope.sample.support:a2ui:ticket-card:v1": {
+      "widgetTemplate": "ticket-card"
+    },
+    "urn:io.dscope.sample.support:a2ui:ticket-card:v2": {
+      "widgetTemplate": "ticket-card"
+    }
+  }
+}

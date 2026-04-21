@@ -31,6 +31,7 @@ import ch.qos.logback.core.read.ListAppender;
 import io.dscope.camel.agent.config.AgentHeaders;
 import io.dscope.camel.agent.kernel.InMemoryPersistenceFacade;
 import io.dscope.camel.agent.model.AgentEvent;
+import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 
 class RealtimeEventProcessorTest {
 
@@ -282,7 +283,9 @@ class RealtimeEventProcessorTest {
         RecordingRelayClient relayClient = new RecordingRelayClient();
         RealtimeEventProcessor processor = new RealtimeEventProcessor(relayClient, "direct:test-agent-issue-only");
 
-        CamelContext context = createContext(Map.of());
+        CamelContext context = createContext(Map.of(
+            "agent.blueprint", "classpath:agents/valid-agent.md"
+        ));
         context.addRoutes(new RouteBuilder() {
             @Override
             public void configure() {
@@ -314,6 +317,91 @@ class RealtimeEventProcessorTest {
             JsonNode assistantMessage = aguiMessages.get(1);
             Assertions.assertEquals("assistant", assistantMessage.path("role").asText());
             Assertions.assertTrue(assistantMessage.path("widget").path("data").path("ticketId").asText().startsWith("TCK-"));
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Test
+    void shouldPropagateLocaleAndDifferentCatalogIdsAcrossResolvedPlans() throws Exception {
+        RecordingRelayClient relayClient = new RecordingRelayClient();
+        RealtimeEventProcessor processor = new RealtimeEventProcessor(relayClient, "direct:test-agent-structured-a2ui");
+
+        InMemoryPersistenceFacade persistence = new InMemoryPersistenceFacade();
+        AgentPlanSelectionResolver resolver = new AgentPlanSelectionResolver(persistence, MAPPER);
+        CamelContext context = createContext(
+            Map.of(
+                "agent.agents-config", "classpath:runtime/test-agents.yaml",
+                "agent.blueprint", "classpath:agents/valid-agent.md"
+            ),
+            Map.of("agentPlanSelectionResolver", resolver)
+        );
+        context.addRoutes(new RouteBuilder() {
+            @Override
+            public void configure() {
+                from("direct:test-agent-structured-a2ui")
+                    .process(exchange -> {
+                        String locale = exchange.getMessage().getHeader(AgentHeaders.LOCALE, String.class);
+                        String queue = "billing".equals(exchange.getMessage().getHeader(AgentHeaders.PLAN_NAME, String.class))
+                            ? "BILLING"
+                            : "L1-SUPPORT";
+                        String summary = "billing".equals(exchange.getMessage().getHeader(AgentHeaders.PLAN_NAME, String.class))
+                            ? "Refund request"
+                            : "Login issue";
+                        ObjectNode body = MAPPER.createObjectNode();
+                        body.put("ticketId", "TCK-" + exchange.getExchangeId());
+                        body.put("status", "OPEN");
+                        body.put("summary", summary);
+                        body.put("assignedQueue", queue);
+                        body.put("message", "Structured ticket created");
+                        body.put("action", "create");
+                        body.put("localeEcho", locale == null ? "" : locale);
+                        exchange.getMessage().setBody(MAPPER.writeValueAsString(body));
+                    });
+            }
+        });
+
+        try {
+            JsonNode supportResponse = processStructuredTranscript(
+                processor,
+                context,
+                "conv-structured-support",
+                "support",
+                "v2",
+                "fr-CA"
+            );
+            JsonNode billingResponse = processStructuredTranscript(
+                processor,
+                context,
+                "conv-structured-billing",
+                "billing",
+                "v1",
+                "es-MX"
+            );
+
+            Assertions.assertEquals("fr-CA", supportResponse.path("locale").asText());
+            Assertions.assertEquals("fr-CA", supportResponse.path("a2ui").path("locale").asText());
+            Assertions.assertEquals(
+                "urn:io.dscope.test:a2ui:support-ticket-card:v2",
+                supportResponse.path("a2ui").path("catalogId").asText()
+            );
+            Assertions.assertEquals(
+                "urn:io.dscope.test:a2ui:support-ticket-card:v2",
+                supportResponse.path("aguiMessages").get(1).path("a2ui").path("catalogId").asText()
+            );
+            Assertions.assertEquals("fr-CA", MAPPER.readTree(supportResponse.path("assistantMessage").asText()).path("localeEcho").asText());
+
+            Assertions.assertEquals("es-MX", billingResponse.path("locale").asText());
+            Assertions.assertEquals("es-MX", billingResponse.path("a2ui").path("locale").asText());
+            Assertions.assertEquals(
+                "urn:io.dscope.test:a2ui:billing-ticket-card:v1",
+                billingResponse.path("a2ui").path("catalogId").asText()
+            );
+            Assertions.assertEquals("es-MX", MAPPER.readTree(billingResponse.path("assistantMessage").asText()).path("localeEcho").asText());
+            Assertions.assertNotEquals(
+                supportResponse.path("a2ui").path("catalogId").asText(),
+                billingResponse.path("a2ui").path("catalogId").asText()
+            );
         } finally {
             context.stop();
         }
@@ -838,6 +926,29 @@ class RealtimeEventProcessorTest {
         context.getPropertiesComponent().setInitialProperties(initial);
         context.start();
         return context;
+    }
+
+    private JsonNode processStructuredTranscript(RealtimeEventProcessor processor,
+                                                 CamelContext context,
+                                                 String conversationId,
+                                                 String planName,
+                                                 String planVersion,
+                                                 String locale) throws Exception {
+        Exchange exchange = new DefaultExchange(context);
+        exchange.getMessage().setHeader("conversationId", conversationId);
+        exchange.getMessage().setHeader("Accept-Language", locale);
+        ObjectNode request = MAPPER.createObjectNode()
+            .put("type", "transcript.final")
+            .put("text", "please create a structured ticket")
+            .put("planName", planName)
+            .put("planVersion", planVersion)
+            .put("locale", locale);
+        request.putArray("a2uiSupportedCatalogIds")
+            .add("urn:io.dscope.test:a2ui:support-ticket-card:v2")
+            .add("urn:io.dscope.test:a2ui:billing-ticket-card:v1");
+        exchange.getMessage().setBody(request.toString());
+        processor.process(exchange);
+        return MAPPER.readTree(exchange.getMessage().getBody(String.class));
     }
 
     private static final class RecordingRelayClient implements RealtimeRelayClient {

@@ -17,3 +17,19 @@ tools:
         query:
           type: string
 ```
+
+## A2UI
+```yaml
+a2ui:
+  surfaces:
+    - name: support-ticket-card-v1
+      widgetTemplate: ticket-card
+      surfaceIdTemplate: support-ticket-${ticketId}
+      catalogResource: classpath:agents/a2ui/support-v1.catalog.json
+      surfaceResource: classpath:agents/a2ui/support-v1.surface.json
+      matchFields: [ticketId]
+      localeResources:
+        en: classpath:agents/a2ui/locales/support-v1.en.json
+        es: classpath:agents/a2ui/locales/support-v1.es.json
+        default: classpath:agents/a2ui/locales/support-v1.en.json
+```

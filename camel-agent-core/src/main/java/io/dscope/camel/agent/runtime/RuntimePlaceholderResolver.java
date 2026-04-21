@@ -1,6 +1,8 @@
 package io.dscope.camel.agent.runtime;
 
 import io.dscope.camel.agent.model.AgUiPreRunSpec;
+import io.dscope.camel.agent.model.A2UiSpec;
+import io.dscope.camel.agent.model.A2UiSurfaceSpec;
 import io.dscope.camel.agent.model.AgentBlueprint;
 import io.dscope.camel.agent.model.RealtimeSpec;
 import io.dscope.camel.agent.model.ToolSpec;
@@ -38,8 +40,49 @@ public final class RuntimePlaceholderResolver {
             blueprint.mcpToolCatalogs(),
             resolveRealtimeSpec(camelContext, blueprint.realtime(), blueprintName),
             resolveAgUiPreRunSpec(camelContext, blueprint.aguiPreRun(), blueprintName),
-            blueprint.resources()
+            blueprint.resources(),
+            resolveA2UiSpec(camelContext, blueprint.a2ui(), blueprintName)
         );
+    }
+
+    public static A2UiSpec resolveA2UiSpec(CamelContext camelContext, A2UiSpec spec, String blueprintName) {
+        if (spec == null || spec.surfaces() == null || spec.surfaces().isEmpty()) {
+            return spec;
+        }
+        String context = blueprintContext(blueprintName);
+        List<A2UiSurfaceSpec> resolvedSurfaces = new ArrayList<>();
+        for (A2UiSurfaceSpec surface : spec.surfaces()) {
+            if (surface == null) {
+                continue;
+            }
+            resolvedSurfaces.add(new A2UiSurfaceSpec(
+                resolveString(camelContext, surface.name()),
+                resolveString(camelContext, surface.widgetTemplate()),
+                resolveString(camelContext, surface.surfaceIdTemplate()),
+                resolveString(camelContext, surface.catalogId()),
+                resolveRequiredExecutionTarget(camelContext, surface.catalogResource(), contextualFieldName(context, "a2ui.surfaces[].catalogResource")),
+                resolveRequiredExecutionTarget(camelContext, surface.surfaceResource(), contextualFieldName(context, "a2ui.surfaces[].surfaceResource")),
+                surface.matchFields(),
+                resolveLocaleResources(camelContext, surface.localeResources(), context)
+            ));
+        }
+        return new A2UiSpec(resolvedSurfaces);
+    }
+
+    private static java.util.Map<String, String> resolveLocaleResources(CamelContext camelContext,
+                                                                        java.util.Map<String, String> resources,
+                                                                        String context) {
+        if (resources == null || resources.isEmpty()) {
+            return java.util.Map.of();
+        }
+        java.util.Map<String, String> resolved = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<String, String> entry : resources.entrySet()) {
+            resolved.put(
+                entry.getKey(),
+                resolveRequiredExecutionTarget(camelContext, entry.getValue(), contextualFieldName(context, "a2ui.surfaces[].localeResources." + entry.getKey()))
+            );
+        }
+        return java.util.Map.copyOf(resolved);
     }
 
     public static ToolSpec resolveToolSpec(CamelContext camelContext, ToolSpec toolSpec) {

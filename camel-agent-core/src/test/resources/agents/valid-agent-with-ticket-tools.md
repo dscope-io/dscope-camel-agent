@@ -24,3 +24,20 @@ tools:
         query:
           type: string
 ```
+
+## A2UI
+```yaml
+a2ui:
+  surfaces:
+    - name: billing-ticket-card-v1
+      widgetTemplate: ticket-card
+      surfaceIdTemplate: billing-ticket-${ticketId}
+      catalogResource: classpath:agents/a2ui/billing-v1.catalog.json
+      surfaceResource: classpath:agents/a2ui/billing-v1.surface.json
+      matchFields: [ticketId]
+      localeResources:
+        en: classpath:agents/a2ui/locales/billing-v1.en.json
+        es: classpath:agents/a2ui/locales/billing-v1.es.json
+        es-MX: classpath:agents/a2ui/locales/billing-v1.es.json
+        default: classpath:agents/a2ui/locales/billing-v1.en.json
+```

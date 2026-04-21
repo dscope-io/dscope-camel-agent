@@ -1,0 +1,24 @@
+name: agent_support_flutter
+description: Flutter mobile client for the Camel agent support sample using AG-UI, A2UI, and WebRTC.
+publish_to: 'none'
+
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  http: ^1.2.2
+  web_socket_channel: ^3.0.1
+  flutter_webrtc: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

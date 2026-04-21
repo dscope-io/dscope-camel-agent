@@ -1,0 +1,19 @@
+{
+  "protocol": "a2ui",
+  "version": "v0.9",
+  "template": "${widgetTemplate}",
+  "catalogId": "${catalogId}",
+  "surfaceId": "${surfaceId}",
+  "envelopes": [
+    {
+      "createSurface": {
+        "surfaceId": "${surfaceId}",
+        "catalogId": "${catalogId}",
+        "sendDataModel": true,
+        "theme": {
+          "locale": "${locale}"
+        }
+      }
+    }
+  ]
+}

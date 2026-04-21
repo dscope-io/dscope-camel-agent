@@ -1,6 +1,7 @@
 package io.dscope.camel.agent.realtime;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -31,6 +32,7 @@ import io.dscope.camel.agent.runtime.ResolvedAgentPlan;
 import io.dscope.camel.agent.runtime.RuntimeControlState;
 import io.dscope.camel.agent.runtime.RuntimePlaceholderResolver;
 import io.dscope.camel.agent.session.AgentSessionService;
+import io.dscope.camel.agent.util.A2UiPayloadSupport;
 import io.dscope.camel.agent.util.TextEncodingSupport;
 
 public class RealtimeEventProcessor implements Processor {
@@ -48,6 +50,7 @@ public class RealtimeEventProcessor implements Processor {
     private final String defaultAgentEndpointUri;
     private final ObjectMapper objectMapper;
     private final MarkdownBlueprintLoader markdownBlueprintLoader;
+    private final Map<String, AgentBlueprint> blueprintCache;
     private final Map<String, RealtimeSpec> blueprintRealtimeCache;
     private final Map<String, Long> lastRealtimeResponseCreateAt;
 
@@ -56,11 +59,13 @@ public class RealtimeEventProcessor implements Processor {
         this.defaultAgentEndpointUri = defaultAgentEndpointUri;
         this.objectMapper = new ObjectMapper();
         this.markdownBlueprintLoader = new MarkdownBlueprintLoader();
+        this.blueprintCache = new ConcurrentHashMap<>();
         this.blueprintRealtimeCache = new ConcurrentHashMap<>();
         this.lastRealtimeResponseCreateAt = new ConcurrentHashMap<>();
     }
 
     public void clearBlueprintRealtimeCache() {
+        blueprintCache.clear();
         blueprintRealtimeCache.clear();
     }
 
@@ -74,6 +79,8 @@ public class RealtimeEventProcessor implements Processor {
 
         JsonNode root = parseJsonBody(exchange);
         ResolvedAgentPlan resolvedPlan = resolvePlan(exchange, conversationId, root);
+        AgentBlueprint blueprint = loadBlueprint(resolvedPlan == null ? null : resolvedPlan.blueprint());
+        List<String> supportedCatalogIds = A2UiPayloadSupport.supportedCatalogIds(root.path("a2uiSupportedCatalogIds"));
         String eventType = firstNonBlank(text(root, "type"), "unknown");
         String transcript = firstNonBlank(
             text(root, "transcript"),
@@ -104,7 +111,7 @@ public class RealtimeEventProcessor implements Processor {
             boolean relayManaged = root.path("relayManaged").asBoolean(false)
                 || root.path("payload").path("relayManaged").asBoolean(false);
             if (relayManaged && "input".equalsIgnoreCase(direction) && !transcript.isBlank()) {
-                populateTranscriptRouteResponse(exchange, response, conversationId, transcript, auditGranularity, "voice-transcript");
+                populateTranscriptRouteResponse(exchange, response, conversationId, transcript, auditGranularity, "voice-transcript", resolvedPlan, blueprint, supportedCatalogIds);
                 writeJson(exchange, response);
                 return;
             }
@@ -212,7 +219,7 @@ public class RealtimeEventProcessor implements Processor {
         }
 
         if ("transcript.final".equals(eventType) && !transcript.isBlank()) {
-            populateTranscriptRouteResponse(exchange, response, conversationId, transcript, auditGranularity, "voice-transcript");
+            populateTranscriptRouteResponse(exchange, response, conversationId, transcript, auditGranularity, "voice-transcript", resolvedPlan, blueprint, supportedCatalogIds);
         } else if ("transcript.final".equals(eventType)) {
             LOGGER.warn("Realtime transcript.final received without transcript text: conversationId={}", conversationId);
         } else {
@@ -228,16 +235,21 @@ public class RealtimeEventProcessor implements Processor {
                                                 String conversationId,
                                                 String transcript,
                                                 AuditGranularity auditGranularity,
-                                                String userMessageSource) {
+                                                String userMessageSource,
+                                                ResolvedAgentPlan resolvedPlan,
+                                                AgentBlueprint blueprint,
+                                                List<String> supportedCatalogIds) {
         LOGGER.info("Realtime transcript received: conversationId={}, chars={}", conversationId, transcript.length());
         ProducerTemplate template = exchange.getContext().createProducerTemplate();
         RouteAssistantResult routeResult = routeTranscriptToAssistant(exchange, template, conversationId, transcript);
         String assistant = routeResult.assistantMessage();
+        String locale = resolveUiLocale(exchange);
         if (shouldPersistRealtimeTurns(auditGranularity) && !routeResult.turnEventsPersisted()) {
             persistRealtimeTurnEvents(exchange, conversationId, transcript, assistant);
         }
         archiveRealtimeTurn(exchange, conversationId, transcript, assistant);
         response.put("assistantMessage", assistant == null ? "" : assistant);
+        response.put("locale", locale);
         ObjectNode realtimeSessionUpdate = composeRealtimeSessionUpdate(routeResult.sessionUpdate(), transcript, assistant);
         LOGGER.info("Realtime context update composed: conversationId={}, routePatchPresent={}, keys={}, transcriptChars={}, assistantChars={}",
             conversationId,
@@ -264,7 +276,11 @@ public class RealtimeEventProcessor implements Processor {
             .put("content", transcript)
             .put("source", firstNonBlank(userMessageSource, "voice-transcript")));
         if (assistant != null && !assistant.isBlank()) {
-            aguiMessages.add(buildAssistantAgUiMessage(assistant));
+            ObjectNode assistantMessage = buildAssistantAgUiMessage(assistant, blueprint, resolvedPlan, locale, supportedCatalogIds);
+            aguiMessages.add(assistantMessage);
+            if (assistantMessage.has("a2ui")) {
+                response.set("a2ui", assistantMessage.path("a2ui").deepCopy());
+            }
         }
         response.set("aguiMessages", aguiMessages);
         response.put("routedToAgent", true);
@@ -387,27 +403,39 @@ public class RealtimeEventProcessor implements Processor {
             .lookupByNameAndType("conversationArchiveService", ConversationArchiveService.class);
     }
 
-    private JsonNode buildAssistantAgUiMessage(String assistantContent) {
+    private ObjectNode buildAssistantAgUiMessage(String assistantContent,
+                                                 AgentBlueprint blueprint,
+                                                 ResolvedAgentPlan resolvedPlan,
+                                                 String locale,
+                                                 List<String> supportedCatalogIds) {
         var assistantMessage = objectMapper.createObjectNode()
             .put("role", "assistant")
             .put("content", assistantContent)
-            .put("source", "agent");
+            .put("source", "agent")
+            .put("locale", A2UiPayloadSupport.resolveLocale(locale));
 
         JsonNode parsed = parseJson(assistantContent);
-        if (parsed != null && parsed.isObject() && !parsed.isEmpty() && parsed.hasNonNull("ticketId")) {
-            var widget = objectMapper.createObjectNode()
-                .put("template", "ticket-card");
-            var data = objectMapper.createObjectNode()
-                .put("ticketId", parsed.path("ticketId").asText(""))
-                .put("status", parsed.path("status").asText("OPEN"))
-                .put("summary", parsed.path("summary").asText(""))
-                .put("assignedQueue", parsed.path("assignedQueue").asText("L1-SUPPORT"))
-                .put("message", parsed.path("message").asText(""));
-            widget.set("data", data);
-            assistantMessage.set("widget", widget);
+        if (parsed != null && parsed.isObject() && !parsed.isEmpty()) {
+            ObjectNode widget = A2UiPayloadSupport.buildWidget(objectMapper, blueprint, parsed, supportedCatalogIds);
+            if (widget != null && !widget.isEmpty()) {
+                assistantMessage.set("widget", widget);
+            }
+            ObjectNode a2ui = A2UiPayloadSupport.buildPayload(objectMapper, blueprint, parsed, resolvedPlan, locale, supportedCatalogIds);
+            if (a2ui != null && !a2ui.isEmpty()) {
+                assistantMessage.set("a2ui", a2ui);
+            }
         }
 
         return assistantMessage;
+    }
+
+    private String resolveUiLocale(Exchange exchange) {
+        return A2UiPayloadSupport.resolveLocale(
+            exchange.getMessage().getHeader(AgentHeaders.LOCALE, String.class),
+            exchange.getMessage().getHeader("Accept-Language", String.class),
+            exchange.getProperty(AgentHeaders.LOCALE, String.class),
+            exchange.getProperty("Accept-Language", String.class)
+        );
     }
 
     private boolean maybeStartRealtimeVoiceBranch(String conversationId) {
@@ -468,6 +496,7 @@ public class RealtimeEventProcessor implements Processor {
         Exchange routeExchange = template.request(resolveAgentEndpoint(exchange), routed -> {
             routed.getMessage().setBody(transcript);
             routed.getMessage().setHeader(AgentHeaders.CONVERSATION_ID, conversationId);
+            routed.getMessage().setHeader(AgentHeaders.LOCALE, resolveUiLocale(exchange));
             copyHeader(exchange, routed, AgentHeaders.PLAN_NAME);
             copyHeader(exchange, routed, AgentHeaders.PLAN_VERSION);
             promoteRequestScopedVariables(exchange, routed, conversationId);
@@ -1121,11 +1150,18 @@ public class RealtimeEventProcessor implements Processor {
 
     private RealtimeSpec loadRealtimeSpec(String location) {
         try {
-            AgentBlueprint blueprint = markdownBlueprintLoader.load(location);
+            AgentBlueprint blueprint = loadBlueprint(location);
             return blueprint.realtime();
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private AgentBlueprint loadBlueprint(String location) {
+        if (location == null || location.isBlank()) {
+            return null;
+        }
+        return blueprintCache.computeIfAbsent(location, markdownBlueprintLoader::load);
     }
 
     private String resolveAgentEndpoint(Exchange exchange) {

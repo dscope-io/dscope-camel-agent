@@ -84,6 +84,20 @@ class MarkdownBlueprintLoaderTest {
     }
 
     @Test
+    void shouldParseA2UiSection() {
+        MarkdownBlueprintLoader loader = new MarkdownBlueprintLoader();
+        var blueprint = loader.load("classpath:agents/valid-agent-with-realtime.md");
+
+        Assertions.assertNotNull(blueprint.a2ui());
+        Assertions.assertEquals(1, blueprint.a2ui().surfaces().size());
+        Assertions.assertEquals("support-ticket-card-v2", blueprint.a2ui().surfaces().getFirst().name());
+        Assertions.assertEquals("ticket-card", blueprint.a2ui().surfaces().getFirst().widgetTemplate());
+        Assertions.assertEquals("classpath:agents/a2ui/support-v2.catalog.json", blueprint.a2ui().surfaces().getFirst().catalogResource());
+        Assertions.assertEquals("classpath:agents/a2ui/support-v2.surface.json", blueprint.a2ui().surfaces().getFirst().surfaceResource());
+        Assertions.assertEquals("classpath:agents/a2ui/locales/support-v2.fr.json", blueprint.a2ui().surfaces().getFirst().localeResources().get("fr-CA"));
+    }
+
+    @Test
     void shouldParseKameletToolAsEndpointUri() {
         MarkdownBlueprintLoader loader = new MarkdownBlueprintLoader();
         var blueprint = loader.load("classpath:agents/valid-agent-with-kamelet-tool.md");

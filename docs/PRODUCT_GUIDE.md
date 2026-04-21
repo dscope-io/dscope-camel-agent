@@ -97,8 +97,17 @@ Use this when the agent must participate in browser UI, realtime session init, t
 - If the response is empty or looks like an auth/key failure, fallback can route directly to deterministic tools.
 - Fallback can derive target URIs from blueprint tool metadata or use explicit override URIs.
 - Realtime processors can seed browser-side context and patch future session state.
+- Both AGUI pre-run and realtime transcript responses can attach first-class `a2ui` payloads when the assistant returns ticket JSON.
+- UI catalogs, surfaces, and locale bundles are declared by the resolved blueprint, so different agents and versions can expose different structured UI assets without hardcoding templates in core.
+- Browser locale can be passed as top-level `locale` or `Accept-Language`, and core forwards the resolved value as `agent.locale`.
 
 This is how the sample keeps `/agui/ui` usable without a valid OpenAI key while still exercising the normal conversation and plan-selection model.
+
+Current sample behavior:
+
+- `/agui/ui` still renders assistant text and the existing `ticket-card` widget path
+- the sample frontend now prefers `a2ui` when available, advertises supported catalog ids from a local registry, and maps accepted catalogs back into the same ticket-card visual component
+- realtime transcription language and browser instructions are derived from the chosen locale instead of being fixed to English
 
 ### 5. MCP Discovery
 
@@ -178,6 +187,8 @@ Or use the sample launcher:
 ```bash
 samples/agent-support-service/run-sample.sh
 ```
+
+The sample browser UI now includes a locale selector and sends that locale through AGUI and realtime requests so multilingual demos do not require code edits.
 
 ### Local DScope Bootstrap
 
@@ -310,7 +321,7 @@ These are the provider-facing properties demonstrated by the sample runtime and 
 | `agent.runtime.spring-ai.model` | `gpt-5.4` in the sample | Global default model if a provider-specific model is not set. |
 | `agent.runtime.spring-ai.temperature` | `0.2` | Default sampling temperature. |
 | `agent.runtime.spring-ai.max-tokens` | `800` | Default max output tokens. |
-| `agent.runtime.spring-ai.openai.api-mode` | `chat` | OpenAI mode. Supported values in code: `chat`, `responses-http` or `responses-ws`. `responses-http` currently returns terminal guidance instead of executing. |
+| `agent.runtime.spring-ai.openai.api-mode` | `chat` | OpenAI mode. Supported values in code: `chat`, `responses-http` or `responses-ws`. `responses-http` executes against the OpenAI Responses HTTP API and normalizes strict tool schemas before submission. |
 | `agent.runtime.spring-ai.openai.base-url` | `https://api.openai.com` | OpenAI base URL. |
 | `agent.runtime.spring-ai.openai.api-key` | unset | Direct OpenAI API key property. |
 | `agent.runtime.spring-ai.openai.api-key-system-property` | `openai.api.key` | System property name checked for the key. |
@@ -332,6 +343,14 @@ These are the provider-facing properties demonstrated by the sample runtime and 
 | `agent.runtime.spring-ai.claude.model` | `claude-3-5-sonnet-20241022` | Claude model override. |
 | `agent.runtime.spring-ai.claude.api-key-system-property` | `anthropic.api.key` | System property name checked for Anthropic key. |
 | `agent.runtime.spring-ai.claude.anthropic-version` | `2023-06-01` | Anthropic API version header value. |
+
+OpenAI Responses strict schema note:
+
+- OpenAI strict tool validation requires every object schema node to be explicit.
+- In practice that means object nodes should resolve to `additionalProperties: false`.
+- If an object node declares `properties`, its `required` array must match the property keys expected by the model.
+- If an object node is intentionally open only as a typed container, represent it as an explicit empty object schema rather than a bare `type: object`.
+- `OpenAiSdkResponsesGateway` now normalizes common blueprint and MCP schema gaps before sending requests, including nested object nodes.
 
 #### Audit Persistence And Archive
 

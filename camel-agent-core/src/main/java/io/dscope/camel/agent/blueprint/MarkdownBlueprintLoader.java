@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.dscope.camel.agent.api.BlueprintLoader;
 import io.dscope.camel.agent.model.AgUiPreRunSpec;
+import io.dscope.camel.agent.model.A2UiSpec;
+import io.dscope.camel.agent.model.A2UiSurfaceSpec;
 import io.dscope.camel.agent.model.AgentBlueprint;
 import io.dscope.camel.agent.model.BlueprintResourceSpec;
 import io.dscope.camel.agent.model.JsonRouteTemplateSpec;
@@ -45,6 +47,7 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
         List<JsonRouteTemplateSpec> jsonRouteTemplates = parseJsonRouteTemplates(config);
         RealtimeSpec realtime = parseRealtime(config);
         AgUiPreRunSpec agUiPreRun = parseAgUiPreRun(config);
+        A2UiSpec a2ui = parseA2Ui(config);
         List<BlueprintResourceSpec> resourceSpecs = parseResources(config);
         List<ResolvedBlueprintResource> resources = resourceResolver.resolve(resourceSpecs);
         tools.addAll(toolsFromTemplates(jsonRouteTemplates));
@@ -60,8 +63,59 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
             jsonRouteTemplates,
             realtime,
             agUiPreRun,
+            a2ui,
             resources
         );
+    }
+
+    private A2UiSpec parseA2Ui(JsonNode root) {
+        if (root == null || root.isMissingNode()) {
+            return null;
+        }
+        JsonNode node = root.path("a2ui");
+        if (!node.isObject()) {
+            return null;
+        }
+        JsonNode surfacesNode = node.path("surfaces");
+        if (!surfacesNode.isArray()) {
+            return null;
+        }
+        List<A2UiSurfaceSpec> surfaces = new ArrayList<>();
+        for (JsonNode surfaceNode : surfacesNode) {
+            if (!surfaceNode.isObject()) {
+                continue;
+            }
+            String surfaceResource = text(surfaceNode, "surfaceResource", "surface-resource", "templateResource", "template-resource");
+            if (surfaceResource == null || surfaceResource.isBlank()) {
+                continue;
+            }
+            Map<String, String> localeResources = new LinkedHashMap<>();
+            JsonNode localeNode = surfaceNode.path("localeResources");
+            if (!localeNode.isObject()) {
+                localeNode = surfaceNode.path("locales");
+            }
+            if (localeNode.isObject()) {
+                localeNode.properties().forEach(entry -> {
+                    if (entry.getValue() != null && !entry.getValue().isNull()) {
+                        String value = entry.getValue().asText("").trim();
+                        if (!value.isBlank()) {
+                            localeResources.put(entry.getKey(), value);
+                        }
+                    }
+                });
+            }
+            surfaces.add(new A2UiSurfaceSpec(
+                text(surfaceNode, "name"),
+                text(surfaceNode, "widgetTemplate", "widget-template", "template"),
+                text(surfaceNode, "surfaceIdTemplate", "surface-id-template"),
+                text(surfaceNode, "catalogId", "catalog-id"),
+                text(surfaceNode, "catalogResource", "catalog-resource"),
+                surfaceResource,
+                strings(surfaceNode, "matchFields", "match-fields", "requiredFields", "required-fields"),
+                localeResources
+            ));
+        }
+        return surfaces.isEmpty() ? null : new A2UiSpec(surfaces);
     }
 
     private List<BlueprintResourceSpec> parseResources(JsonNode root) {
@@ -85,7 +139,7 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
                 text(node, "loadPolicy", "load-policy"),
                 text(node, "refreshPolicy", "refresh-policy"),
                 Boolean.TRUE.equals(bool(node, "optional")),
-                longValue(node, "maxBytes", "max-bytes") == null ? 262_144L : longValue(node, "maxBytes", "max-bytes")
+                defaultLong(longValue(node, "maxBytes", "max-bytes"), 262_144L)
             ));
         }
         return resources;
@@ -467,6 +521,10 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
             }
         }
         return null;
+    }
+
+    private Long defaultLong(Long value, long fallback) {
+        return value == null ? fallback : value;
     }
 
     private String readHeading(String markdown, String prefix) {

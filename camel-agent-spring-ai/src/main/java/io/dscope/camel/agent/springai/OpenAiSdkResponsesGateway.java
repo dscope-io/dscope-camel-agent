@@ -2,6 +2,8 @@ package io.dscope.camel.agent.springai;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.core.JsonValue;
@@ -129,10 +131,11 @@ final class OpenAiSdkResponsesGateway implements OpenAiResponsesGateway {
             aliases.put(normalizedName, tool.name());
             JsonNode schema = tool.inputSchema() == null || tool.inputSchema().isNull()
                 ? MAPPER.createObjectNode().put("type", "object")
-                : tool.inputSchema();
+                : normalizeStrictToolSchema(tool.inputSchema());
             FunctionTool.Parameters.Builder parameters = FunctionTool.Parameters.builder();
             if (schema.isObject()) {
-                schema.fields().forEachRemaining(entry -> parameters.putAdditionalProperty(entry.getKey(), JsonValue.fromJsonNode(entry.getValue())));
+                schema.properties().forEach(entry ->
+                    parameters.putAdditionalProperty(entry.getKey(), JsonValue.fromJsonNode(entry.getValue())));
             } else {
                 parameters.putAdditionalProperty("type", JsonValue.from("object"));
             }
@@ -140,9 +143,50 @@ final class OpenAiSdkResponsesGateway implements OpenAiResponsesGateway {
                 .name(normalizedName)
                 .description(firstNonBlank(tool.description(), tool.name()))
                 .parameters(parameters.build())
+                .strict(true)
                 .build());
         }
         return new ToolDefinitions(functionTools, aliases);
+    }
+
+    private JsonNode normalizeStrictToolSchema(JsonNode schema) {
+        if (schema == null || !schema.isObject()) {
+            return schema;
+        }
+        return normalizeSchemaNode(schema.deepCopy());
+    }
+
+    private JsonNode normalizeSchemaNode(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return node;
+        }
+        if (node.isArray()) {
+            ArrayNode normalizedArray = MAPPER.createArrayNode();
+            node.forEach(item -> normalizedArray.add(normalizeSchemaNode(item)));
+            return normalizedArray;
+        }
+        if (!node.isObject()) {
+            return node;
+        }
+        ObjectNode normalized = ((ObjectNode) node).deepCopy();
+        normalized.properties().forEach(entry -> normalized.set(entry.getKey(), normalizeSchemaNode(entry.getValue())));
+
+        JsonNode properties = normalized.path("properties");
+        boolean objectSchema = "object".equals(normalized.path("type").asText(null)) || properties.isObject();
+        if (objectSchema) {
+            normalized.put("additionalProperties", false);
+        }
+        if (objectSchema && !properties.isObject()) {
+            normalized.set("properties", MAPPER.createObjectNode());
+            normalized.set("required", MAPPER.createArrayNode());
+            properties = normalized.path("properties");
+        }
+        if (properties.isObject()) {
+            ArrayNode required = MAPPER.createArrayNode();
+            properties.properties().forEach(entry -> required.add(entry.getKey()));
+            normalized.set("required", required);
+        }
+        return normalized;
     }
 
     private List<AiToolCall> extractToolCalls(Response response, Map<String, String> aliases) {

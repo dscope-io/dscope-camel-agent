@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.dscope.camel.agent.api.PersistenceFacade;
 import io.dscope.camel.agent.model.AgentEvent;
+import java.io.IOException;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -53,33 +54,10 @@ final class A2AParentConversationNotifier {
         a2a.put("taskId", fallback(remoteTaskId));
         a2a.put("linkedConversationId", fallback(childConversationId));
 
-        JsonNode widget = ticketWidget(replyText);
-        if (widget != null) {
-            payload.set("widget", widget);
-        }
-
         persistenceFacade.appendEvent(
             new AgentEvent(parentConversationId, remoteTaskId, "conversation.assistant.message", payload, now),
             UUID.randomUUID().toString()
         );
-    }
-
-    private JsonNode ticketWidget(String replyText) {
-        if (replyText == null || replyText.isBlank()) {
-            return null;
-        }
-        try {
-            JsonNode parsed = objectMapper.readTree(replyText);
-            if (!parsed.isObject()) {
-                return null;
-            }
-            ObjectNode widget = objectMapper.createObjectNode();
-            widget.put("template", "ticket-card");
-            widget.set("data", parsed);
-            return widget;
-        } catch (Exception ignored) {
-            return null;
-        }
     }
 
     private String summarize(String replyText) {
@@ -110,7 +88,7 @@ final class A2AParentConversationNotifier {
                 }
                 return summary.length() == 0 ? replyText.trim() : summary.toString();
             }
-        } catch (Exception ignored) {
+        } catch (IOException ignored) {
         }
         return replyText.trim();
     }

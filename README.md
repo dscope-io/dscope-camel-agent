@@ -22,13 +22,16 @@ Core platform capabilities:
 - Multi-plan catalog routing with versioned blueprints, sticky conversation plan selection, and legacy single-blueprint fallback.
 - Persistence-backed conversations, task state, audit trail projection, and optional Spring AI chat-memory integration.
 - Browser AGUI and realtime voice support with session init, transcript event handling, relay integration, and runtime refresh hooks.
+- Browser AGUI and realtime voice responses can now carry first-class A2UI payloads alongside the existing text/widget compatibility path.
 
 Recent additions:
 
 - Blueprint static resources can load Markdown, PDF, local file, classpath, and HTTP(S) content into chat and realtime instruction context.
 - Route-driven agent session invocation now has a structured contract in core via `AgentSessionService` and `AgentSessionInvokeProcessor`.
 - Realtime voice runtime now also supports SIP-style ingress routes, browser session seeding, and route-driven session context patches.
+- AGUI pre-run and realtime transcript handling now propagate locale and resolve blueprint-declared A2UI catalogs, surfaces, and locale bundles so different agents and versions can own different UI assets without hardcoding templates in core.
 - Outbound support calling uses provider-neutral telephony contracts in core with a Twilio adapter module and sample support-call flow.
+- OpenAI Responses tool schemas are now normalized before request submission so strict mode works with MCP-discovered tools and JSON route template tools, including nested object parameters.
 
 ## Compatibility Matrix
 
@@ -76,6 +79,7 @@ agent:agentId?blueprint=classpath:agents/support/agent.md&persistenceMode=redis_
 - Multi-plan routing with `agent.agents-config`, per-request `planName` and `planVersion`, and persisted conversation plan selection.
 - Stateful runtime behavior covering conversation history, task state, audit events, archive streams, and optional Spring AI chat memory.
 - UI and integration surfaces including AGUI, browser realtime, HTTP/SSE A2A endpoints, admin/runtime refresh endpoints, and SIP-style voice entrypoints.
+- Structured UI responses are emitted in a backward-compatible shape: plain assistant text remains available, existing widgets still work, and `a2ui` envelopes are attached from app-owned JSON assets when the agent returns matching structured data.
 
 ## Camel Endpoint Invocation
 
@@ -260,6 +264,13 @@ See sample-specific usage and test guidance in:
 
 - `samples/agent-support-service/README.md`
 
+The support sample browser UI now also includes:
+
+- locale selection persisted in URL/local storage
+- locale-aware AGUI and realtime requests (`locale` + `Accept-Language`)
+- first-class `a2ui` payload rendering mapped into the existing ticket-card widget view
+- plan/version-specific A2UI catalog ids derived from the resolved runtime plan
+
 For local no-key A2A demo runs, the sample also includes:
 
 - `io.dscope.camel.agent.samples.DemoA2ATicketGateway`
@@ -297,7 +308,7 @@ agent:
       openai:
         # Supported values:
         # - chat (default): Spring AI OpenAI Chat Completions
-        # - responses-http: reserved (not yet implemented)
+        # - responses-http: OpenAI Responses API over HTTP with strict tool-schema normalization
         # - responses-ws: delegated to pluggable OpenAiResponsesGateway implementation
         responses-ws:
           endpoint-uri: wss://api.openai.com/v1/responses
@@ -307,9 +318,11 @@ agent:
 Notes:
 
 - OpenAI in this gateway uses Spring AI OpenAI Chat client (`chat` mode).
-- `responses-http` is a planned mode and currently returns a terminal guidance message.
+- `responses-http` is implemented and is the preferred path when you need OpenAI Responses without the WebSocket transport.
 - `responses-ws` is routed through a pluggable `OpenAiResponsesGateway`; if no plugin is wired, the gateway returns a terminal guidance message.
 - The sample runtime also enables A2A by default through `agent.runtime.a2a.enabled=true` and exposes the ticket service through `support.ticket.manage`.
+- The sample AGUI and realtime entrypoints accept top-level `locale` and also honor `Accept-Language`; core forwards the resolved value as `agent.locale`.
+- For OpenAI strict tool mode, author object schemas explicitly. Every object node should resolve to `additionalProperties: false`, and object nodes with declared properties should have `required` aligned to the property keys. The runtime now normalizes common missing cases before sending requests.
 - Gemini uses Spring AI Vertex Gemini client and requires:
   - `agent.runtime.spring-ai.gemini.vertex.project-id`
   - `agent.runtime.spring-ai.gemini.vertex.location`

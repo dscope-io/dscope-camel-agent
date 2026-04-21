@@ -1,0 +1,11 @@
+{
+  "title": "Actualización del ticket",
+  "labels": {
+    "ticketTitle": "Actualización del ticket",
+    "ticketActionTitle": "Ticket ${action}",
+    "idLabel": "ID",
+    "statusLabel": "Estado",
+    "queueLabel": "Cola",
+    "summaryLabel": "Resumen"
+  }
+}

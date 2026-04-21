@@ -34,7 +34,9 @@
     .transcript-log-actions { padding: 0 10px 8px 10px; display: flex; justify-content: flex-end; }
     .transcript-log-clear { border: 1px solid #3b4f93; border-radius: 7px; background: #172548; color: #ecf1ff; padding: 4px 8px; font-size: 11px; font-weight: 600; cursor: pointer; }
     .transcript-log { margin: 0; padding: 10px; border-top: 1px solid #314074; font-size: 12px; line-height: 1.35; max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
-    textarea { width: 100%; min-height: 84px; resize: vertical; border-radius: 10px; border: 1px solid #314074; background: #0f1731; color: #ecf1ff; padding: 10px; }
+    textarea, input, select { border-radius: 10px; border: 1px solid #314074; background: #0f1731; color: #ecf1ff; }
+    textarea { width: 100%; min-height: 84px; resize: vertical; padding: 10px; }
+    input, select { padding: 8px 10px; }
     button { width: max-content; border: 0; border-radius: 9px; background: #4b72ff; color: white; padding: 8px 14px; font-weight: 600; cursor: pointer; }
     .voice-toggle { display: inline-flex; align-items: center; gap: 6px; }
     .voice-toggle-icon {
@@ -80,6 +82,8 @@
           <select id="plan-name"></select>
           <label for="plan-version" class="status">Version</label>
           <select id="plan-version"></select>
+          <label for="locale-setting" class="status">Locale</label>
+          <input id="locale-setting" type="text" inputmode="text" placeholder="en-US" spellcheck="false" />
           <span id="plan-status" class="status">Loading agent catalog...</span>
         </div>
         <button type="submit">Send</button>
@@ -139,6 +143,7 @@
     const aguiTransportModeEl = document.getElementById('agui-transport-mode');
     const planNameEl = document.getElementById('plan-name');
     const planVersionEl = document.getElementById('plan-version');
+    const localeSettingEl = document.getElementById('locale-setting');
     const planStatusEl = document.getElementById('plan-status');
     const voiceToggleEl = document.getElementById('voice-toggle');
     const transportModeEl = document.getElementById('transport-mode');
@@ -153,9 +158,13 @@
     const webRtcTranscriptLogEl = document.getElementById('webrtc-transcript-log');
     const webRtcTranscriptClearEl = document.getElementById('webrtc-transcript-clear');
     const runtimeUrl = new URL(window.location.href);
+    const localeStorageKey = 'camel-agent.sample.locale';
+    const a2uiCatalogRegistryUrl = '/a2ui/catalog-registry.json';
     let selectedPlanName = (runtimeUrl.searchParams.get('planName') || '').trim();
     let selectedPlanVersion = (runtimeUrl.searchParams.get('planVersion') || '').trim();
+    let selectedLocale = '';
     let agentCatalog = null;
+    let a2uiCatalogRegistry = { catalogs: {} };
     let sessionId = `session-${Date.now()}`;
     let ticketUpdatePollTimer = null;
     let audioContext = null;
@@ -201,6 +210,8 @@
     let webRtcResponsePendingTimer = null;
     let webRtcResponseRecoveryTimer = null;
     const webRtcOutputTranscriptDeltas = new Map();
+    selectedLocale = detectInitialLocale();
+    applySelectedLocale();
 
     function isWebRtcMode() {
       return transportMode === 'webrtc';
@@ -237,6 +248,69 @@
       planStatusEl.className = `status${level ? ` ${level}` : ''}`;
     }
 
+    function normalizeLocaleTag(localeLike) {
+      const raw = String(localeLike || '').trim();
+      if (!raw) {
+        return '';
+      }
+      const primary = raw.split(',')[0].split(';')[0].trim().replace(/_/g, '-');
+      const parts = primary.split('-').filter(Boolean);
+      if (!parts.length) {
+        return '';
+      }
+      const language = parts[0].toLowerCase();
+      if (!/^[a-z]{2,3}$/.test(language)) {
+        return '';
+      }
+      if (parts.length === 1) {
+        return language;
+      }
+      const region = parts[1].length === 2 ? parts[1].toUpperCase() : parts[1];
+      return `${language}-${region}`;
+    }
+
+    function detectInitialLocale() {
+      const candidates = [
+        runtimeUrl.searchParams.get('locale'),
+        (() => {
+          try {
+            return window.localStorage.getItem(localeStorageKey);
+          } catch (_) {
+            return '';
+          }
+        })(),
+        navigator.language,
+        'en'
+      ];
+      for (const candidate of candidates) {
+        const normalized = normalizeLocaleTag(candidate);
+        if (normalized) {
+          return normalized;
+        }
+      }
+      return 'en';
+    }
+
+    function getSelectedLocale() {
+      return normalizeLocaleTag(selectedLocale) || 'en';
+    }
+
+    function getSelectedLanguage() {
+      return getSelectedLocale().split('-')[0] || 'en';
+    }
+
+    function applySelectedLocale() {
+      selectedLocale = getSelectedLocale();
+      if (localeSettingEl && localeSettingEl.value !== selectedLocale) {
+        localeSettingEl.value = selectedLocale;
+      }
+      document.documentElement.lang = selectedLocale;
+      try {
+        window.localStorage.setItem(localeStorageKey, selectedLocale);
+      } catch (_) {
+      }
+    }
+
     function syncPlanSelectionToUrl() {
       const url = new URL(window.location.href);
       if (selectedPlanName) {
@@ -248,6 +322,11 @@
         url.searchParams.set('planVersion', selectedPlanVersion);
       } else {
         url.searchParams.delete('planVersion');
+      }
+      if (selectedLocale) {
+        url.searchParams.set('locale', selectedLocale);
+      } else {
+        url.searchParams.delete('locale');
       }
       window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
     }
@@ -326,6 +405,36 @@
         if (planNameEl) planNameEl.disabled = true;
         if (planVersionEl) planVersionEl.disabled = true;
       }
+    }
+
+    async function loadA2UiCatalogRegistry() {
+      try {
+        const response = await fetch(a2uiCatalogRegistryUrl, {
+          headers: {
+            'Accept-Language': getSelectedLocale()
+          }
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const payload = await response.json();
+        a2uiCatalogRegistry = payload && typeof payload === 'object' ? payload : { catalogs: {} };
+      } catch (error) {
+        a2uiCatalogRegistry = { catalogs: {} };
+        aguiLog('A2UI catalog registry unavailable', error?.message || String(error));
+      }
+    }
+
+    function getSupportedA2UiCatalogIds() {
+      const catalogs = a2uiCatalogRegistry?.catalogs;
+      return catalogs && typeof catalogs === 'object' ? Object.keys(catalogs) : [];
+    }
+
+    function resolveWidgetTemplateForCatalog(catalogId) {
+      if (!catalogId) {
+        return '';
+      }
+      return String(a2uiCatalogRegistry?.catalogs?.[catalogId]?.widgetTemplate || '').trim();
     }
 
     function clearRelayPendingAudio() {
@@ -426,12 +535,14 @@
     function buildRealtimeSessionConfig() {
       const voice = getSelectedVoice();
       const fullDuplex = isFullDuplexMode();
+      const language = getSelectedLanguage();
       const session = {
         voice,
         input_audio_format: 'pcm16',
         output_audio_format: 'pcm16',
         input_audio_transcription: {
-          model: 'gpt-4o-mini-transcribe'
+          model: 'gpt-4o-mini-transcribe',
+          language
         },
         turn_detection: fullDuplex
           ? {
@@ -446,7 +557,7 @@
           input: {
             transcription: {
               model: 'gpt-4o-mini-transcribe',
-              language: 'en'
+              language
             },
             turn_detection: fullDuplex
               ? {
@@ -469,6 +580,7 @@
     function buildWebRtcSessionConfig(existingSession) {
       const voice = getSelectedVoice();
       const contextualInstructions = buildWebRtcInstructions(existingSession);
+      const language = getSelectedLanguage();
       return {
         type: 'realtime',
         model: 'gpt-realtime',
@@ -477,7 +589,7 @@
           input: {
             transcription: {
               model: 'gpt-4o-mini-transcribe',
-              language: 'en'
+              language
             },
             turn_detection: {
               type: 'server_vad',
@@ -494,7 +606,8 @@
     }
 
     function buildWebRtcInstructions(existingSession) {
-      const base = 'Respond in English only. Keep responses concise and do not switch languages unless the user explicitly asks for another language.';
+      const locale = getSelectedLocale();
+      const base = `Respond using locale ${locale}. Keep responses concise and do not switch languages unless the user explicitly asks for another language.`;
       const metadata = existingSession?.metadata?.camelAgent || {};
       const context = metadata?.context || {};
       const agentProfile = metadata?.agentProfile || {};
@@ -634,8 +747,19 @@
 
     function buildVoiceSessionPatch() {
       const voice = getSelectedVoice();
+      const language = getSelectedLanguage();
       return {
+        input_audio_transcription: {
+          model: 'gpt-4o-mini-transcribe',
+          language
+        },
         audio: {
+          input: {
+            transcription: {
+              model: 'gpt-4o-mini-transcribe',
+              language
+            }
+          },
           output: {
             voice
           }
@@ -810,6 +934,7 @@
     }
 
     function renderTicketWidget(data) {
+      const labels = data?.i18n?.labels || {};
       const ticketId = normalizeDisplayText(String(data.ticketId ?? 'N/A'));
       const status = normalizeDisplayText(String(data.status ?? 'OPEN'));
       const action = normalizeDisplayText(String(data.action ?? ''));
@@ -818,15 +943,16 @@
       const message = normalizeDisplayText(String(data.message ?? ''));
       const card = document.createElement('div');
       card.className = 'ticket';
-      const title = action
-        ? `Ticket ${action.charAt(0).toUpperCase()}${action.slice(1).toLowerCase()}`
-        : 'Ticket Update';
+      const actionLabel = action ? `${action.charAt(0).toUpperCase()}${action.slice(1).toLowerCase()}` : '';
+      const title = action && typeof labels.ticketActionTitle === 'string'
+        ? labels.ticketActionTitle.replace('${action}', actionLabel)
+        : (action ? `Ticket ${actionLabel}` : String(labels.ticketTitle || 'Ticket Update'));
       card.innerHTML = `
         <h4>${title}</h4>
-        <div class="ticket-row"><strong>ID:</strong> ${ticketId}</div>
-        <div class="ticket-row"><strong>Status:</strong> ${status}</div>
-        <div class="ticket-row"><strong>Queue:</strong> ${assignedQueue}</div>
-        <div class="ticket-row"><strong>Summary:</strong> ${summary}</div>
+        <div class="ticket-row"><strong>${normalizeDisplayText(String(labels.idLabel || 'ID'))}:</strong> ${ticketId}</div>
+        <div class="ticket-row"><strong>${normalizeDisplayText(String(labels.statusLabel || 'Status'))}:</strong> ${status}</div>
+        <div class="ticket-row"><strong>${normalizeDisplayText(String(labels.queueLabel || 'Queue'))}:</strong> ${assignedQueue}</div>
+        <div class="ticket-row"><strong>${normalizeDisplayText(String(labels.summaryLabel || 'Summary'))}:</strong> ${summary}</div>
         <div class="ticket-row">${message}</div>
       `;
       return card;
@@ -873,7 +999,9 @@
             continue;
           }
           displayedTicketUpdateKeys.add(key);
-          const widget = normalizeWidgetCandidate(event?.payload?.widget) || normalizeWidgetCandidate(event?.payload);
+            const widget = normalizeA2UiCandidate(event?.payload?.a2ui)
+              || normalizeWidgetCandidate(event?.payload?.widget)
+              || normalizeWidgetCandidate(event?.payload);
           tryAddVoiceMessage('agent', String(event?.text || 'Ticket service update'), 'a2a.ticketing', widget, key);
         }
       } catch (_) {
@@ -1045,6 +1173,51 @@
       } catch (_) {
         return null;
       }
+    }
+
+    function normalizeA2UiCandidate(a2uiLike) {
+      if (!a2uiLike || typeof a2uiLike !== 'object') {
+        return null;
+      }
+      const rootCatalogId = firstNonEmptyString([
+        a2uiLike.catalogId,
+        a2uiLike.catalog?.catalogId,
+        a2uiLike.catalog?.id
+      ]);
+      const envelopes = Array.isArray(a2uiLike.envelopes) ? a2uiLike.envelopes : [];
+      for (const envelope of envelopes) {
+        const value = envelope?.updateDataModel?.value;
+        const catalogId = firstNonEmptyString([
+          envelope?.createSurface?.catalogId,
+          envelope?.updateDataModel?.catalogId,
+          rootCatalogId
+        ]);
+        const widget = normalizeWidgetCandidate({
+          template: firstNonEmptyString([a2uiLike.template, resolveWidgetTemplateForCatalog(catalogId)]),
+          catalogId,
+          data: value
+        });
+        if (widget) {
+          return widget;
+        }
+      }
+      return null;
+    }
+
+    function extractStructuredWidgetFromEvents(events) {
+      for (const event of events || []) {
+        const data = event?.data;
+        const widget =
+          normalizeA2UiCandidate(data?.a2ui)
+          || normalizeA2UiCandidate(data?.payload?.a2ui)
+          || normalizeWidgetCandidate(data?.widget)
+          || normalizeWidgetCandidate(data?.data)
+          || normalizeWidgetCandidate(data?.payload);
+        if (widget) {
+          return widget;
+        }
+      }
+      return null;
     }
 
     function extractSpeechText(text) {
@@ -1585,8 +1758,17 @@
       if (!widgetLike || typeof widgetLike !== 'object') {
         return null;
       }
-      if (widgetLike.template === 'ticket-card' && widgetLike.data) {
-        return widgetLike;
+      const catalogId = firstNonEmptyString([widgetLike.catalogId, widgetLike.data?.catalogId]);
+      const resolvedTemplate = firstNonEmptyString([
+        widgetLike.template,
+        resolveWidgetTemplateForCatalog(catalogId)
+      ]);
+      if (resolvedTemplate === 'ticket-card' && widgetLike.data) {
+        return {
+          template: resolvedTemplate,
+          catalogId,
+          data: normalizeTicketWidgetData(widgetLike.data)
+        };
       }
       const data = widgetLike.data || widgetLike.payload || widgetLike;
       if (data && typeof data === 'object') {
@@ -1623,22 +1805,39 @@
           return null;
         }
         return {
-          template: 'ticket-card',
-          data: {
+          template: firstNonEmptyString([resolvedTemplate, 'ticket-card']),
+          catalogId,
+          data: normalizeTicketWidgetData({
+            ...data,
             ticketId: ticketId || '',
             status: status || 'OPEN',
             summary: summary || '',
             assignedQueue: assignedQueue || 'L1-SUPPORT',
             message: message || ''
-          }
+          })
         };
       }
       return null;
     }
 
+    function normalizeTicketWidgetData(data) {
+      return {
+        ...data,
+        ticketId: firstNonEmptyString([data?.ticketId, data?.ticket_id, data?.caseId, data?.case_id, data?.id, data?.ticketNumber]),
+        status: firstNonEmptyString([data?.status, data?.state, 'OPEN']),
+        summary: firstNonEmptyString([data?.summary, data?.issueDescription, data?.issue_description, data?.description, data?.issue, data?.problem, data?.text]),
+        assignedQueue: firstNonEmptyString([data?.assignedQueue, data?.assigned_queue, data?.queue, 'L1-SUPPORT']),
+        message: firstNonEmptyString([data?.message, data?.assistantMessage, data?.reply]),
+        action: firstNonEmptyString([data?.action])
+      };
+    }
+
     function extractWidgetFromRoutedMessage(message, content) {
       const structured =
-        normalizeWidgetCandidate(message?.widget)
+        normalizeA2UiCandidate(message?.a2ui)
+        || normalizeA2UiCandidate(message?.metadata?.a2ui)
+        || normalizeA2UiCandidate(message?.payload?.a2ui)
+        || normalizeWidgetCandidate(message?.widget)
         || normalizeWidgetCandidate(message?.data)
         || normalizeWidgetCandidate(message?.payload)
         || normalizeWidgetCandidate(message?.metadata?.widget);
@@ -1742,7 +1941,7 @@
           }
         }
       } else if (routed?.assistantMessage) {
-        const widget = parseTicketWidgetFromText(routed.assistantMessage);
+        const widget = normalizeA2UiCandidate(routed?.a2ui) || parseTicketWidgetFromText(routed.assistantMessage);
         if (widget) {
           const added = tryAddVoiceMessage('agent', routed.assistantMessage, 'agent', widget, eventScope);
           if (added && !isWebRtcMode()) {
@@ -1751,7 +1950,9 @@
         }
       } else {
         const widget =
-          normalizeWidgetCandidate(routed?.widget)
+          normalizeA2UiCandidate(routed?.a2ui)
+          || normalizeA2UiCandidate(routed?.payload?.a2ui)
+          || normalizeWidgetCandidate(routed?.widget)
           || normalizeWidgetCandidate(routed?.data)
           || normalizeWidgetCandidate(routed?.payload);
         if (widget) {
@@ -1777,6 +1978,8 @@
       const request = {
         threadId: sessionId,
         sessionId,
+        locale: getSelectedLocale(),
+        a2uiSupportedCatalogIds: getSupportedA2UiCatalogIds(),
         messages: [{ role: 'user', content: prompt }]
       };
       if (selectedPlanName) request.planName = selectedPlanName;
@@ -1788,7 +1991,10 @@
       } else {
         const response = await fetch('/agui/agent', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept-Language': getSelectedLocale()
+          },
           body: JSON.stringify(request)
         });
 
@@ -1796,7 +2002,7 @@
         events = parseSseEvents(payload);
       }
       const outputText = extractAssistantText(events);
-      const widget = parseTicketWidgetFromText(outputText);
+      const widget = extractStructuredWidgetFromEvents(events) || parseTicketWidgetFromText(outputText);
       aguiLog('sendPrompt completed', {
         transport: aguiTransportMode,
         eventCount: events.length,
@@ -1812,6 +2018,10 @@
 
     async function postRealtimeEvent(eventBody, timeoutMs = 4000) {
       const effectiveEventBody = { ...(eventBody || {}) };
+      if (!effectiveEventBody.locale) effectiveEventBody.locale = getSelectedLocale();
+      if (!Array.isArray(effectiveEventBody.a2uiSupportedCatalogIds) || !effectiveEventBody.a2uiSupportedCatalogIds.length) {
+        effectiveEventBody.a2uiSupportedCatalogIds = getSupportedA2UiCatalogIds();
+      }
       if (selectedPlanName && !effectiveEventBody.planName) effectiveEventBody.planName = selectedPlanName;
       if (selectedPlanVersion && !effectiveEventBody.planVersion) effectiveEventBody.planVersion = selectedPlanVersion;
       const controller = new AbortController();
@@ -1826,7 +2036,10 @@
       try {
         response = await fetch(`/realtime/session/${encodeURIComponent(sessionId)}/event`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept-Language': getSelectedLocale()
+          },
           body: JSON.stringify(effectiveEventBody),
           signal: controller.signal
         });
@@ -1869,8 +2082,11 @@
     async function requestWebRtcToken() {
       const response = await fetch(`/realtime/session/${encodeURIComponent(sessionId)}/token`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept-Language': getSelectedLocale()
+        },
+        body: JSON.stringify({ locale: getSelectedLocale(), a2uiSupportedCatalogIds: getSupportedA2UiCatalogIds() })
       });
       const rawPayload = await response.text();
       let payload = {};
@@ -1919,11 +2135,16 @@
 
     async function initializeRealtimeSessionContext(sessionPayload) {
       const body = { session: sessionPayload || buildVoiceSessionPatch() };
+      body.locale = getSelectedLocale();
+      body.a2uiSupportedCatalogIds = getSupportedA2UiCatalogIds();
       if (selectedPlanName) body.planName = selectedPlanName;
       if (selectedPlanVersion) body.planVersion = selectedPlanVersion;
       const response = await fetch(`/realtime/session/${encodeURIComponent(sessionId)}/init`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept-Language': getSelectedLocale()
+        },
         body: JSON.stringify(body)
       });
       const payload = await response.json();
@@ -2897,6 +3118,17 @@
       }
     });
 
+    localeSettingEl?.addEventListener('change', async () => {
+      selectedLocale = normalizeLocaleTag(localeSettingEl.value) || detectInitialLocale();
+      applySelectedLocale();
+      syncPlanSelectionToUrl();
+      setPlanStatus(`Using ${selectedPlanName}/${selectedPlanVersion} (${selectedLocale})`, 'ok');
+      try {
+        await initializeRealtimeSessionContext(buildVoiceSessionPatch());
+      } catch (_) {
+      }
+    });
+
     voiceToggleEl?.addEventListener('click', async () => {
       if (voiceToggleBusy) {
         return;
@@ -2999,7 +3231,7 @@
         aguiTransportMode = (aguiTransportModeEl.value || 'post').toLowerCase();
       });
 
-    loadAgentCatalog()
+    Promise.all([loadA2UiCatalogRegistry(), loadAgentCatalog()])
       .then(() => initializeRealtimeSessionContext(buildVoiceSessionPatch()))
       .catch(() => {
       });

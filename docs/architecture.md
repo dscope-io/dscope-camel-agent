@@ -266,7 +266,16 @@ Frontend transport in `samples/agent-support-service`:
   - `POST /agui/agent` (POST+SSE bridge)
   - `WS /agui/rpc` (AGUI over WebSocket)
 - backend returns AGUI events for the selected transport
-- frontend renders assistant text from AGUI message content events
+- backend preserves assistant text but may also attach `widget`, `a2ui`, and `locale` metadata when the assistant returns structured ticket JSON
+- frontend renders assistant text from AGUI message content events and prefers `a2ui` or `widget` data when available
+
+Structured UI behavior:
+
+- `AgentAgUiPreRunTextProcessor` can enrich non-realtime AGUI params with `widget` and `a2ui`
+- `RealtimeEventProcessor` attaches the same shape to routed transcript responses under both `aguiMessages[*].a2ui` and top-level `a2ui`
+- `AgentBlueprint.a2ui.surfaces[]` declares app-owned catalog, surface, and locale JSON resources per agent/version
+- the sample frontend advertises `a2uiSupportedCatalogIds` from its local registry and maps accepted `catalogId` values back into existing widget renderers
+- this keeps per-agent and per-version UI variants inside the same plan-selection model while leaving concrete UI assets in the app rather than core
 
 Correlation between agent conversations and transport identifiers is handled in core via `CorrelationRegistry`:
 
@@ -290,6 +299,7 @@ Plan-aware request behavior:
 - `POST /realtime/session/{conversationId}/init` accepts top-level `planName` / `planVersion`
 - `POST /realtime/session/{conversationId}/event` accepts top-level `planName` / `planVersion`
 - AGUI and realtime processors forward these as Camel headers to `agent:`
+- AGUI and realtime paths also accept top-level `locale` and resolve `Accept-Language`; core forwards the resolved value as `agent.locale`
 
 ## SIP, Realtime, and Outbound Call Flow
 
@@ -349,12 +359,16 @@ Design intent:
 `samples/agent-support-service` `/agui/ui` voice behavior:
 
 - single toggle control manages start/stop state (`idle`, `live`, `busy`)
+- locale selector persists to URL/local storage and updates `document.documentElement.lang`
 - pause profile drives VAD silence timeout for both relay and WebRTC session setup:
   - `fast` -> `800ms`
   - `normal` -> `1200ms`
   - `patient` -> `1800ms`
 - UI displays current pause timeout in label and listening status text
 - WebRTC transcript log captures input/output transcript events for diagnostics
+- AGUI and realtime requests include both `locale` and `Accept-Language`
+- transcription language is derived from the selected locale language tag instead of being hard-coded to English
+- A2UI envelopes are normalized back into the existing `ticket-card` sample renderer so the frontend remains compatible with existing widget artifacts
 - output transcript processing is de-duplicated at `response.output_audio_transcript.done` handling to prevent duplicate assistant transcript display
 - collapsible `Instruction seed (debug)` panel shows the currently seeded WebRTC instruction context
 - instruction debug panel auto-opens when transport switches to WebRTC and on initial load when transport is already WebRTC
@@ -377,7 +391,7 @@ WebRTC flow contract:
 1. Browser requests ephemeral token via `/realtime/session/{conversationId}/token`.
 2. Browser starts direct WebRTC session with OpenAI Realtime.
 3. Browser posts transcript events to Camel realtime endpoint for routing and context merge.
-4. Backend (`RealtimeEventProcessor`) routes transcript to agent tools/routes and returns branch flags/assistant payloads.
+4. Backend (`RealtimeEventProcessor`) routes transcript to agent tools/routes and returns branch flags, assistant text, locale, and optional A2UI/widget payloads.
 5. Browser renders transcript + assistant output in the WebRTC UI path.
 
 Separation rule:
