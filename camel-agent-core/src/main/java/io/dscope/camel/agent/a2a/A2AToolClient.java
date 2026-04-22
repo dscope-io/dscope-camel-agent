@@ -12,12 +12,12 @@ import io.dscope.camel.agent.model.ToolResult;
 import io.dscope.camel.agent.model.ToolSpec;
 import io.dscope.camel.agent.registry.CorrelationRegistry;
 import io.dscope.camel.a2a.A2AEndpoint;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -113,7 +113,10 @@ public final class A2AToolClient {
             return new ToolResult(content, result, List.of());
         } catch (RuntimeException e) {
             throw e;
-        } catch (Exception e) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("A2A tool execution interrupted for target " + target, e);
+        } catch (IOException e) {
             throw new IllegalStateException("A2A tool execution failed for target " + target, e);
         }
     }
@@ -187,6 +190,22 @@ public final class A2AToolClient {
         metadata.put("aguiRunId", fallback(aguiRunId));
         metadata.put("aguiThreadId", fallback(aguiThreadId));
 
+        ObjectNode message = params.has("message") && params.get("message").isObject()
+            ? (ObjectNode) params.get("message")
+            : buildMessage(arguments);
+        params.set("message", message);
+        enrichMessageMetadata(
+            message,
+            remoteAgentId,
+            context,
+            linkedConversationId,
+            parentConversationId,
+            rootConversationId,
+            aguiSessionId,
+            aguiRunId,
+            aguiThreadId
+        );
+
         if (!params.hasNonNull("conversationId")) {
             String existingRemoteConversationId =
                 registry.resolve(context.conversationId(), CorrelationKeys.A2A_REMOTE_CONVERSATION_ID, "");
@@ -195,13 +214,62 @@ public final class A2AToolClient {
         if (!params.hasNonNull("idempotencyKey")) {
             params.put("idempotencyKey", UUID.randomUUID().toString());
         }
-        if (!params.has("message") || !params.get("message").isObject()) {
-            params.set("message", buildMessage(arguments, remoteAgentId, context));
-        }
         return params;
     }
 
-    private ObjectNode buildMessage(ObjectNode arguments, String remoteAgentId, ExecutionContext context) {
+    private void enrichMessageMetadata(ObjectNode message,
+                                       String remoteAgentId,
+                                       ExecutionContext context,
+                                       String linkedConversationId,
+                                       String parentConversationId,
+                                       String rootConversationId,
+                                       String aguiSessionId,
+                                       String aguiRunId,
+                                       String aguiThreadId) {
+        ObjectNode metadata = message.has("metadata") && message.get("metadata").isObject()
+            ? (ObjectNode) message.get("metadata")
+            : objectMapper.createObjectNode();
+        message.set("metadata", metadata);
+
+        ObjectNode camelAgent = metadata.has("camelAgent") && metadata.get("camelAgent").isObject()
+            ? (ObjectNode) metadata.get("camelAgent")
+            : objectMapper.createObjectNode();
+        metadata.set("camelAgent", camelAgent);
+
+        metadata.put("agentId", fallback(remoteAgentId));
+        metadata.put("localConversationId", fallback(context.conversationId()));
+        metadata.put("linkedConversationId", fallback(linkedConversationId));
+        metadata.put("parentConversationId", parentConversationId);
+        metadata.put("rootConversationId", rootConversationId);
+        metadata.put("traceId", fallback(context.traceId()));
+        metadata.put("aguiSessionId", fallback(aguiSessionId));
+        metadata.put("aguiRunId", fallback(aguiRunId));
+        metadata.put("aguiThreadId", fallback(aguiThreadId));
+
+        camelAgent.put("agentId", fallback(remoteAgentId));
+        camelAgent.put("localConversationId", fallback(context.conversationId()));
+        camelAgent.put("linkedConversationId", fallback(linkedConversationId));
+        camelAgent.put("parentConversationId", parentConversationId);
+        camelAgent.put("rootConversationId", rootConversationId);
+        camelAgent.put("traceId", fallback(context.traceId()));
+        camelAgent.put("aguiSessionId", fallback(aguiSessionId));
+        camelAgent.put("aguiRunId", fallback(aguiRunId));
+        camelAgent.put("aguiThreadId", fallback(aguiThreadId));
+        if (!toolContext.planName().isBlank()) {
+            camelAgent.put("planName", toolContext.planName());
+        }
+        if (!toolContext.planVersion().isBlank()) {
+            camelAgent.put("planVersion", toolContext.planVersion());
+        }
+        if (!toolContext.agentName().isBlank()) {
+            camelAgent.put("agentName", toolContext.agentName());
+        }
+        if (!toolContext.agentVersion().isBlank()) {
+            camelAgent.put("agentVersion", toolContext.agentVersion());
+        }
+    }
+
+    private ObjectNode buildMessage(ObjectNode arguments) {
         String text = firstNonBlank(
             text(arguments, "text"),
             text(arguments, "prompt"),
@@ -217,16 +285,10 @@ public final class A2AToolClient {
         ArrayNode parts = objectMapper.createArrayNode();
         parts.add(part);
 
-        ObjectNode metadata = objectMapper.createObjectNode();
-        metadata.put("agentId", fallback(remoteAgentId));
-        metadata.put("localConversationId", fallback(context.conversationId()));
-        metadata.put("traceId", fallback(context.traceId()));
-
         ObjectNode message = objectMapper.createObjectNode();
         message.put("messageId", UUID.randomUUID().toString());
         message.put("role", "user");
         message.set("parts", parts);
-        message.set("metadata", metadata);
         message.put("createdAt", Instant.now().toString());
         return message;
     }

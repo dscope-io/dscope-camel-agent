@@ -429,6 +429,7 @@ agent:
 
       - `GET /audit/search`
       - `GET /audit/conversations`
+      - `GET /audit/conversation/chain`
       - `GET /audit/conversation/view`
       - `GET /audit/conversation/sip`
       - `POST /audit/conversation/agent-message`
@@ -460,6 +461,7 @@ agent:
       Primary audit MCP tools:
 
       - `audit.events.search`
+      - `audit.conversation.chain`
       - `audit.conversations.list`
       - `audit.conversation.view`
       - `audit.conversation.sip`
@@ -519,9 +521,11 @@ agent:
       - `modelUsageTotals`
       - optional A2A correlation fields such as `a2aAgentId`, `a2aRemoteConversationId`, and `a2aRemoteTaskId`
 
+      `rootConversationId` can be supplied to narrow the list to one agent chain.
+
       #### Event Search
 
-      `GET /audit/search` and `audit.events.search` return filtered raw/projection-ready event data for one conversation.
+      `GET /audit/search` and `audit.events.search` return filtered raw/projection-ready event data for one conversation, or for a full root chain when `rootConversationId` is supplied.
 
       Top-level response fields:
 
@@ -541,6 +545,44 @@ agent:
       - `payload`
       - `timestamp`
       - `agent`
+
+      `conversationId` or `rootConversationId` must be supplied.
+
+      #### Conversation Chain
+
+      `GET /audit/conversation/chain` and `audit.conversation.chain` return an operator-oriented A2A chain view for one `rootConversationId`.
+
+      Top-level response fields:
+
+      - `rootConversationId`
+      - `conversationCount`
+      - `chainSummary`
+      - `hops[]`
+      - `conversations[]`
+      - `modelUsage`
+      - `filters`
+      - `count`
+      - `events[]`
+      - `exports.graph`
+      - `exports.csv`
+
+      `chainSummary` contains compact chain facts such as first/last timestamps, participating agent ids, and participating plan names.
+
+      `hops[]` contains one row per local conversation with:
+
+      - `conversationId`
+      - `parentConversationId`
+      - `rootConversationId`
+      - `agentId`
+      - `agentName`
+      - `planName`
+      - `planVersion`
+      - `eventCount`
+      - `children[]`
+
+      `exports.graph` provides a node/edge shape for lineage visualization, and `exports.csv` provides pre-flattened columns, rows, and CSV text for operator export.
+
+      In the sample runtime, `/audit/ui` now supports either `conversationId` or `rootConversationId`, offers a dedicated `Chain View`, and can export full chain JSON or chain CSV directly from the browser.
 
       The nested `agent` block is the resolved per-step agent state at the moment of that event and can include:
 
@@ -674,6 +716,7 @@ agent:
       1. Use `audit.conversations.list` or `GET /audit/conversations` for the left-hand searchable conversation index.
       2. Use `audit.conversation.view` or `GET /audit/conversation/view` for the main message timeline because it already normalizes visible text into `agentPerspective.messages[]`.
       3. Use `audit.events.search` or `GET /audit/search` for a raw event inspector, filters panel, or export/download action.
+      4. Use `audit.conversation.chain` or `GET /audit/conversation/chain` when operators need to follow one root A2A chain across multiple local conversations.
       4. Use `GET /audit/conversation/usage` for token/cost widgets and model breakdown panels.
       5. Use `audit.conversation.sessionData` when you need transcript replay or per-session voice/chat feeds distinct from operator diagnostics.
       6. Use `audit.agent.catalog` and `audit.agent.blueprint` to show plan/version metadata and the exact blueprint content behind a conversation.

@@ -454,6 +454,7 @@ When caller identity is present, the normalized `sip` projection can expose `cal
 Primary tool names:
 
 - `audit.events.search`
+- `audit.conversation.chain`
 - `audit.conversations.list`
 - `audit.conversation.view`
 - `audit.conversation.sessionData`
@@ -478,11 +479,13 @@ This MCP surface is the easiest way to build a console that wants one transport 
 For a custom audit console, prefer this data flow:
 
 1. use `audit.conversations.list` for the searchable left-hand conversation index
+  `rootConversationId` can be passed when the list should be narrowed to one correlated agent chain.
 2. use `audit.conversation.view` for the main timeline because it already normalizes visible user/assistant messages
 3. use `audit.events.search` for raw event inspection, export, and advanced filters
-4. use `GET /audit/conversation/usage` for cost/token charts and provider/model breakdowns
-5. use `audit.conversation.sessionData` for transcript replay or session-oriented subviews
-6. use `audit.agent.catalog` and `audit.agent.blueprint` for plan/version context and blueprint inspection
+4. use `audit.conversation.chain` for cross-agent lineage and root-chain inspection
+5. use `GET /audit/conversation/usage` for cost/token charts and provider/model breakdowns
+6. use `audit.conversation.sessionData` for transcript replay or session-oriented subviews
+7. use `audit.agent.catalog` and `audit.agent.blueprint` for plan/version context and blueprint inspection
 
 Recommended UI mapping:
 
@@ -490,8 +493,11 @@ Recommended UI mapping:
 - conversation header -> `metadata` or `conversationMetadata`
 - readable timeline -> `agentPerspective.messages[]`
 - developer/raw panel -> `events[]`
+- lineage/chain panel -> `chainSummary`, `hops[]`, or `exports.graph`
 - usage/cost widgets -> `modelUsage`
 - transcript replay panel -> archive `events[]`
+
+For CSV export, prefer `exports.csv.text` from `audit.conversation.chain` instead of rebuilding rows in the client. That keeps browser and HTTP callers aligned on the same traversal shape.
 
 Recommended rendering rules:
 

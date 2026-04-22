@@ -42,6 +42,7 @@ public class RealtimeEventProcessor implements Processor {
     private static final String DEFAULT_MODEL = "gpt-4o-realtime-preview";
     private static final String DEFAULT_ENDPOINT = "wss://api.openai.com/v1/realtime";
     private static final String DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
+    private static final String SUPPORT_TICKET_ROUTE_URI = "direct:support-ticket-manage?block=false";
     private static final String SESSION_REGISTRY_BEAN = "supportRealtimeSessionRegistry";
     private static final String PERSISTENCE_FACADE_BEAN = "persistenceFacade";
     private static final int MAX_RECENT_TURNS = 16;
@@ -480,7 +481,7 @@ public class RealtimeEventProcessor implements Processor {
                                                             String transcript) {
         if (isTicketPrompt(transcript)) {
             try {
-                String ticketResponse = template.requestBody("direct:support-ticket-manage", Map.of("query", transcript), String.class);
+                String ticketResponse = template.requestBody(SUPPORT_TICKET_ROUTE_URI, Map.of("query", transcript), String.class);
                 if (ticketResponse != null && !ticketResponse.isBlank()) {
                     LOGGER.info("Realtime transcript routed via ticket tool: conversationId={}", conversationId);
                     return new RouteAssistantResult(ticketResponse, extractSessionUpdate(null, ticketResponse), false);

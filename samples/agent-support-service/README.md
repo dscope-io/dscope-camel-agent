@@ -83,6 +83,13 @@ Then open:
 - `http://localhost:8080/audit/ui` for audit exploration
 - Use the single voice toggle button in the UI to start/stop mic streaming to realtime.
 
+Audit console notes:
+
+- `Search` still loads one conversation by `conversationId`
+- `Load Chain` loads a full correlated chain by `rootConversationId`
+- `Chain View` renders hop lineage using the same `/audit/conversation/chain` response
+- `Export JSON` exports the current search or chain payload, and `Export Chain CSV` uses the server-provided flattened chain export
+
 ## Manual Verification Checklist (Web + Realtime)
 
 1. Start the sample:
@@ -285,7 +292,13 @@ The resolved AI configuration is persisted with plan selection and exposed by:
 
 - session responses under `resolvedAi`
 - audit conversation view/list/search responses under `ai`
+- root-chain inspection via `GET /audit/conversation/chain?rootConversationId=...`
 - audit metadata under `conversationMetadata.ai`
+
+The same root-chain response also includes:
+
+- `exports.graph.nodes[]` and `exports.graph.edges[]` for visualization
+- `exports.csv.columns[]`, `exports.csv.rows[]`, and `exports.csv.text` for export/download workflows
 
 ## OpenAI Responses Strict Schema Notes
 

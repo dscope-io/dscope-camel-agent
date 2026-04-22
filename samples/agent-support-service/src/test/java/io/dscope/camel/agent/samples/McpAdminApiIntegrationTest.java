@@ -7,6 +7,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
@@ -19,6 +20,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.dscope.camel.agent.api.PersistenceFacade;
+import io.dscope.camel.agent.model.AgentEvent;
 import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 import io.dscope.camel.agent.runtime.AgentRuntimeBootstrap;
 
@@ -154,6 +156,46 @@ class McpAdminApiIntegrationTest {
         }
     }
 
+    @Test
+    @Timeout(60)
+    void shouldServeAuditChainOverHttp() throws Exception {
+        int port = randomPort();
+        String previousPort = System.getProperty("agent.runtime.test-port");
+        System.setProperty("agent.runtime.test-port", Integer.toString(port));
+
+        Main main = new Main();
+        main.bind("ticketLifecycleProcessor", new SupportTicketLifecycleProcessor(MAPPER));
+        try {
+            AgentRuntimeBootstrap.bootstrap(main, "ag-ui-playwright-audit-direct-blueprint-test.yaml");
+            SampleAdminMcpBindings.bindIfMissing(main, "ag-ui-playwright-audit-direct-blueprint-test.yaml");
+            main.start();
+
+            seedAuditChain(main, "root-http-1");
+
+            HttpResult response = get(port, "/audit/conversation/chain?rootConversationId=root-http-1&limit=100");
+            Assertions.assertEquals(200, response.statusCode(), response.body());
+
+            JsonNode body = MAPPER.readTree(response.body());
+            Assertions.assertEquals("root-http-1", body.path("rootConversationId").asText());
+            Assertions.assertEquals(2, body.path("conversationCount").asInt());
+            Assertions.assertEquals("chain-http-a", body.path("chainSummary").path("entryConversationId").asText());
+            Assertions.assertTrue(body.path("count").asInt() >= 4);
+            Assertions.assertEquals(2, body.path("exports").path("graph").path("nodes").size());
+            Assertions.assertEquals(1, body.path("exports").path("graph").path("edges").size());
+            Assertions.assertTrue(body.path("exports").path("csv").path("text").asText().contains("root-http-1"));
+        } finally {
+            try {
+                main.stop();
+            } catch (Exception ignored) {
+            }
+            if (previousPort == null) {
+                System.clearProperty("agent.runtime.test-port");
+            } else {
+                System.setProperty("agent.runtime.test-port", previousPort);
+            }
+        }
+    }
+
     private static void seedPlanSelection(Main main,
                                           String conversationId,
                                           String planName,
@@ -173,6 +215,62 @@ class McpAdminApiIntegrationTest {
                     main.getCamelContext().resolvePropertyPlaceholders("{{agent.agents-config}}"),
                     main.getCamelContext().resolvePropertyPlaceholders("{{agent.blueprint}}")
                 )
+            ),
+            UUID.randomUUID().toString()
+        );
+    }
+
+    private static void seedAuditChain(Main main, String rootConversationId) throws Exception {
+        PersistenceFacade persistenceFacade = main.getCamelContext().getRegistry().findSingleByType(PersistenceFacade.class);
+        Assertions.assertNotNull(persistenceFacade, "PersistenceFacade should be bound");
+
+        persistenceFacade.appendEvent(
+            new AgentEvent(
+                "chain-http-a",
+                null,
+                "conversation.a2a.outbound.completed",
+                MAPPER.valueToTree(Map.of(
+                    "_correlation", Map.of(
+                        "a2aRootConversationId", rootConversationId,
+                        "a2aParentConversationId", "origin-http-0"
+                    )
+                )),
+                Instant.parse("2026-04-21T20:00:00Z")
+            ),
+            UUID.randomUUID().toString()
+        );
+        persistenceFacade.appendEvent(
+            new AgentEvent(
+                "chain-http-a",
+                null,
+                "agent.message",
+                MAPPER.getNodeFactory().textNode("root agent message"),
+                Instant.parse("2026-04-21T20:00:01Z")
+            ),
+            UUID.randomUUID().toString()
+        );
+        persistenceFacade.appendEvent(
+            new AgentEvent(
+                "chain-http-b",
+                null,
+                "conversation.a2a.outbound.completed",
+                MAPPER.valueToTree(Map.of(
+                    "_correlation", Map.of(
+                        "a2aRootConversationId", rootConversationId,
+                        "a2aParentConversationId", "chain-http-a"
+                    )
+                )),
+                Instant.parse("2026-04-21T20:00:02Z")
+            ),
+            UUID.randomUUID().toString()
+        );
+        persistenceFacade.appendEvent(
+            new AgentEvent(
+                "chain-http-b",
+                null,
+                "agent.message",
+                MAPPER.getNodeFactory().textNode("child agent message"),
+                Instant.parse("2026-04-21T20:00:03Z")
             ),
             UUID.randomUUID().toString()
         );
@@ -218,6 +316,17 @@ class McpAdminApiIntegrationTest {
             .timeout(Duration.ofSeconds(10))
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body == null ? "" : body))
+            .build();
+
+        HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+        return new HttpResult(response.statusCode(), response.body() == null ? "" : response.body());
+    }
+
+    private static HttpResult get(int port, String path) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create("http://127.0.0.1:" + port + path))
+            .timeout(Duration.ofSeconds(10))
+            .GET()
             .build();
 
         HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());

@@ -12,6 +12,9 @@ methods:
         topic:
           type: string
           description: Topic filter.
+        rootConversationId:
+          type: string
+          description: Root conversation identifier filter for one agent chain.
         limit:
           type: integer
           description: Result limit, default 50.
@@ -35,7 +38,7 @@ methods:
 
   - name: audit.events.search
     title: Search audit events
-    description: Searches events for a conversation with optional filters.
+    description: Searches events for a conversation or root chain with optional filters.
     inputSchema:
       type: object
       additionalProperties: false
@@ -43,6 +46,9 @@ methods:
         conversationId:
           type: string
           description: Conversation identifier.
+        rootConversationId:
+          type: string
+          description: Root conversation identifier for chain-wide search.
         type:
           type: string
           description: Event type filter.
@@ -58,7 +64,42 @@ methods:
         limit:
           type: integer
           description: Result limit, default 200.
-      required: [conversationId]
+    outputSchema:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            type: object
+        structuredContent:
+          type: object
+
+  - name: audit.conversation.chain
+    title: Build A2A conversation chain view
+    description: Returns every conversation in a root chain plus hop lineage and aggregated events.
+    inputSchema:
+      type: object
+      additionalProperties: false
+      properties:
+        rootConversationId:
+          type: string
+          description: Root conversation identifier.
+        type:
+          type: string
+          description: Event type filter.
+        q:
+          type: string
+          description: Free-text payload query.
+        from:
+          type: string
+          description: ISO timestamp lower bound.
+        to:
+          type: string
+          description: ISO timestamp upper bound.
+        limit:
+          type: integer
+          description: Result limit, default 200.
+      required: [rootConversationId]
     outputSchema:
       type: object
       properties:

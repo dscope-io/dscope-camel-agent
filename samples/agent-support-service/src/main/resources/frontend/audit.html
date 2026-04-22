@@ -115,7 +115,7 @@
     <div class="subtitle"><a href="/agui/ui">&larr; Back to AGUI chat</a></div>
 
     <div class="panel conv-panel">
-      <div class="grid" style="grid-template-columns: 2fr 1fr 1fr;">
+      <div class="grid" style="grid-template-columns: 2fr 1fr 1fr 1fr;">
         <div class="field">
           <label for="conversationQ">Conversation list query (optional)</label>
           <input id="conversationQ" placeholder="conversationId, title, topic" />
@@ -127,6 +127,10 @@
         <div class="field">
           <label for="conversationListLimit">list limit (default 50)</label>
           <input id="conversationListLimit" type="number" min="1" max="500" placeholder="50" />
+        </div>
+        <div class="field">
+          <label for="conversationRootConversationId">rootConversationId filter (optional)</label>
+          <input id="conversationRootConversationId" placeholder="root-chain-1" />
         </div>
       </div>
       <div class="grid" style="grid-template-columns: 1fr 1fr; margin-top: 10px;">
@@ -173,6 +177,10 @@
           <input id="conversationId" placeholder="sip:trace:2026-02-25-001" />
         </div>
         <div class="field">
+          <label for="rootConversationId">rootConversationId (chain optional)</label>
+          <input id="rootConversationId" placeholder="root-chain-1" />
+        </div>
+        <div class="field">
           <label for="type">type (optional)</label>
           <input id="type" placeholder="tool.call.completed" />
         </div>
@@ -195,7 +203,9 @@
       </div>
       <div class="actions">
         <button id="searchBtn" type="button">Search</button>
+        <button id="loadChainBtn" type="button">Load Chain</button>
         <button id="exportBtn" type="button">Export JSON</button>
+        <button id="exportCsvBtn" type="button">Export Chain CSV</button>
         <span id="status" class="status">Idle</span>
       </div>
       <div id="conversationMeta" class="meta-panel">
@@ -207,6 +217,7 @@
       <div class="view-switch">
         <button id="treeViewBtn" class="active" type="button">Tree View</button>
         <button id="graphViewBtn" type="button">Graph View</button>
+        <button id="chainViewBtn" type="button">Chain View</button>
         <button id="sipViewBtn" type="button">SIP View</button>
         <button id="rawViewBtn" type="button">Raw JSON</button>
         <label class="raw-toggle" for="augmentedRawToggle"><input id="augmentedRawToggle" type="checkbox" />Augmented Raw</label>
@@ -237,6 +248,7 @@
 
   <script>
     const conversationIdEl = document.getElementById('conversationId');
+    const rootConversationIdEl = document.getElementById('rootConversationId');
     const typeEl = document.getElementById('type');
     const limitEl = document.getElementById('limit');
     const fromEl = document.getElementById('from');
@@ -245,6 +257,7 @@
     const conversationQEl = document.getElementById('conversationQ');
     const conversationTopicEl = document.getElementById('conversationTopic');
     const conversationListLimitEl = document.getElementById('conversationListLimit');
+    const conversationRootConversationIdEl = document.getElementById('conversationRootConversationId');
     const conversationSortByEl = document.getElementById('conversationSortBy');
     const conversationSortOrderEl = document.getElementById('conversationSortOrder');
     const loadConversationsBtnEl = document.getElementById('loadConversationsBtn');
@@ -260,9 +273,12 @@
     const conversationStatusEl = document.getElementById('conversationStatus');
     const conversationListEl = document.getElementById('conversationList');
     const searchBtnEl = document.getElementById('searchBtn');
+    const loadChainBtnEl = document.getElementById('loadChainBtn');
     const exportBtnEl = document.getElementById('exportBtn');
+    const exportCsvBtnEl = document.getElementById('exportCsvBtn');
     const rawViewBtnEl = document.getElementById('rawViewBtn');
     const graphViewBtnEl = document.getElementById('graphViewBtn');
+    const chainViewBtnEl = document.getElementById('chainViewBtn');
     const treeViewBtnEl = document.getElementById('treeViewBtn');
     const sipViewBtnEl = document.getElementById('sipViewBtn');
     const agentMdViewBtnEl = document.getElementById('agentMdViewBtn');
@@ -392,6 +408,65 @@
       conversationStatusEl.className = `status ${cls || ''}`.trim();
     }
 
+    function isChainResult(data) {
+      return !!data && typeof data === 'object' && Array.isArray(data.hops) && !!String(data.rootConversationId || '').trim();
+    }
+
+    function sanitizedExportId(value, fallback = 'result') {
+      return String(value || '').trim().replace(/[^a-zA-Z0-9._-]+/g, '_') || fallback;
+    }
+
+    function downloadBlob(text, type, fileName) {
+      const blob = new Blob([text], { type });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    function effectiveRootConversationId() {
+      const explicit = (rootConversationIdEl.value || '').trim();
+      if (explicit) {
+        return explicit;
+      }
+      if (lastResultJson && typeof lastResultJson === 'object') {
+        const derived = String(
+          lastResultJson.rootConversationId
+          || lastResultJson?.chainSummary?.rootConversationId
+          || lastResultJson?.conversationMetadata?.a2aRootConversationId
+          || ''
+        ).trim();
+        if (derived) {
+          rootConversationIdEl.value = derived;
+          return derived;
+        }
+      }
+      return '';
+    }
+
+    function syncSearchStateToUrl({ conversationId, rootConversationId, type, limit, from, to, q, view }) {
+      const url = new URL(window.location.href);
+      const params = url.searchParams;
+
+      if (conversationId) params.set('conversationId', conversationId); else params.delete('conversationId');
+      if (rootConversationId) params.set('rootConversationId', rootConversationId); else params.delete('rootConversationId');
+      if (type) params.set('type', type); else params.delete('type');
+      if (limit) params.set('limit', limit); else params.delete('limit');
+      if (from) params.set('from', from); else params.delete('from');
+      if (to) params.set('to', to); else params.delete('to');
+      if (q) params.set('q', q); else params.delete('q');
+      if (view) params.set('view', view); else params.delete('view');
+      params.set('auto', '1');
+
+      const query = params.toString();
+      const nextUrl = `${url.pathname}${query ? `?${query}` : ''}${url.hash || ''}`;
+      window.history.replaceState(null, '', nextUrl);
+    }
+
     function renderPurgePreviewPanel(parsed) {
       if (!parsed || typeof parsed !== 'object') {
         purgePreviewPanelEl.classList.add('hidden');
@@ -433,6 +508,28 @@
       metaTopicsEl.innerHTML = topics.length
         ? topics.map((topic) => `<span class="topic-chip">${escapeHtml(topic)}</span>`).join('')
         : '<span class="topic-chip">No topics</span>';
+    }
+
+    function renderChainMetadata(data) {
+      const summary = data && typeof data === 'object' && data.chainSummary && typeof data.chainSummary === 'object'
+        ? data.chainSummary
+        : {};
+      const agentNames = Array.isArray(summary.agentNames) ? summary.agentNames.filter(Boolean) : [];
+      const planNames = Array.isArray(summary.planNames) ? summary.planNames.filter(Boolean) : [];
+      renderConversationMetadata({
+        title: summary.rootConversationId || data.rootConversationId || 'Agent chain',
+        description: `${summary.conversationCount || data.conversationCount || 0} correlated conversations in the same root chain.`,
+        conversationId: data.rootConversationId || '',
+        eventCount: summary.eventCount == null ? data.count : summary.eventCount,
+        firstEventAt: summary.firstEventAt || '',
+        lastEventAt: summary.lastEventAt || '',
+        agentName: agentNames.join(', '),
+        planName: planNames.join(', '),
+        topics: [
+          summary.entryConversationId ? `entry:${summary.entryConversationId}` : '',
+          data.rootConversationId ? `root:${data.rootConversationId}` : ''
+        ].filter(Boolean)
+      });
     }
 
     function renderSipView(data) {
@@ -495,12 +592,13 @@
         const title = String(metadata.title || conversationId || 'Conversation');
         const topics = Array.isArray(metadata.topics) ? metadata.topics.slice(0, 4).join(', ') : '';
         const lastEventAt = String(metadata.lastEventAt || '-');
+        const rootConversationId = String(metadata.a2aRootConversationId || '');
         const agentSummary = formatAgentSummary(metadata);
         return `
           <div class="conv-item" data-conversation-id="${escapeHtml(conversationId)}">
             <div class="conv-id">${escapeHtml(conversationId)}</div>
             <div class="conv-title">Title: ${escapeHtml(title)}</div>
-            <div class="conv-meta">Topics: ${escapeHtml(topics || 'No topics')} | Last: ${escapeHtml(lastEventAt)}${agentSummary ? ` | ${escapeHtml(agentSummary)}` : ''}</div>
+            <div class="conv-meta">Topics: ${escapeHtml(topics || 'No topics')} | Last: ${escapeHtml(lastEventAt)}${rootConversationId ? ` | Root: ${escapeHtml(rootConversationId)}` : ''}${agentSummary ? ` | ${escapeHtml(agentSummary)}` : ''}</div>
           </div>
         `;
       }).join('');
@@ -508,8 +606,17 @@
         row.addEventListener('click', () => {
           const conversationId = row.getAttribute('data-conversation-id') || '';
           conversationIdEl.value = conversationId;
-          runSearch();
-          setView(activeView === 'copilot' ? 'copilot' : 'tree');
+          const item = (lastConversationsResult?.items || []).find((candidate) => String(candidate?.conversationId || '') === conversationId);
+          const rootConversationId = String(item?.metadata?.a2aRootConversationId || '').trim();
+          if (rootConversationId) {
+            rootConversationIdEl.value = rootConversationId;
+          }
+          if (activeView === 'chain') {
+            runChainSearch();
+          } else {
+            runSearch();
+            setView(activeView === 'copilot' ? 'copilot' : 'tree');
+          }
         });
       }
     }
@@ -691,16 +798,18 @@
       const params = new URLSearchParams();
       const q = (conversationQEl.value || '').trim();
       const topic = (conversationTopicEl.value || '').trim();
+      const rootConversationId = (conversationRootConversationIdEl.value || '').trim();
       const limit = (conversationListLimitEl.value || '').trim();
       const sortBy = (conversationSortByEl.value || '').trim();
       const order = (conversationSortOrderEl.value || '').trim();
       if (q) params.set('q', q);
       if (topic) params.set('topic', topic);
+      if (rootConversationId) params.set('rootConversationId', rootConversationId);
       if (limit) params.set('limit', limit);
       if (sortBy) params.set('sortBy', sortBy);
       if (order) params.set('order', order);
 
-      syncListStateToUrl({ q, topic, limit, sortBy, order });
+      syncListStateToUrl({ q, topic, rootConversationId, limit, sortBy, order });
 
       setConversationStatus('Loading...', '');
       try {
@@ -709,6 +818,7 @@
           arguments: {
             q,
             topic,
+            rootConversationId,
             limit,
             sortBy,
             order
@@ -842,12 +952,13 @@
       }
     }
 
-    function syncListStateToUrl({ q, topic, limit, sortBy, order }) {
+    function syncListStateToUrl({ q, topic, rootConversationId, limit, sortBy, order }) {
       const url = new URL(window.location.href);
       const params = url.searchParams;
 
       if (q) params.set('listQ', q); else params.delete('listQ');
       if (topic) params.set('listTopic', topic); else params.delete('listTopic');
+      if (rootConversationId) params.set('listRootConversationId', rootConversationId); else params.delete('listRootConversationId');
       if (limit) params.set('listLimit', limit); else params.delete('listLimit');
       if (sortBy) params.set('listSortBy', sortBy); else params.delete('listSortBy');
       if (order) params.set('listOrder', order); else params.delete('listOrder');
@@ -958,6 +1069,49 @@
     function renderGraphView(data) {
       if (!data || !Array.isArray(data.events)) {
         graphViewEl.innerHTML = '<div class="summary-card">No structured JSON result to visualize yet.</div>';
+        return;
+      }
+
+      if (isChainResult(data)) {
+        const summary = data.chainSummary && typeof data.chainSummary === 'object' ? data.chainSummary : {};
+        const graph = data.exports && data.exports.graph && typeof data.exports.graph === 'object' ? data.exports.graph : {};
+        const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+        const edges = Array.isArray(graph.edges) ? graph.edges : [];
+        const hops = Array.isArray(data.hops) ? data.hops : [];
+        const hopCards = hops.length
+          ? hops.map((hop) => {
+              const children = Array.isArray(hop.children) ? hop.children : [];
+              const lineage = hop.parentConversationId
+                ? `${hop.parentConversationId} -> ${hop.conversationId}`
+                : `${hop.conversationId} (entry)`;
+              const hopSummary = [hop.agentName, hop.planName, hop.planVersion].filter(Boolean).join(' | ');
+              return `
+                <div class="event-card">
+                  <div class="event-top">
+                    <div class="event-type">${escapeHtml(lineage)}</div>
+                    <div class="event-time">${escapeHtml(String(hop.lastEventAt || ''))}</div>
+                  </div>
+                  <div class="event-meta">root=${escapeHtml(String(hop.rootConversationId || ''))} | events=${escapeHtml(String(hop.eventCount || 0))}${hopSummary ? ` | ${escapeHtml(hopSummary)}` : ''}</div>
+                  <div class="event-payload">children=${escapeHtml(children.length ? children.join(', ') : '(none)')}</div>
+                </div>`;
+            }).join('')
+          : '<div class="summary-card">No chain hops to display.</div>';
+
+        graphViewEl.innerHTML = `
+          <div class="graph-summary">
+            <div class="summary-card"><div class="summary-label">Root</div><div class="summary-value">${escapeHtml(String(data.rootConversationId || '-'))}</div></div>
+            <div class="summary-card"><div class="summary-label">Conversations</div><div class="summary-value">${summary.conversationCount || data.conversationCount || 0}</div></div>
+            <div class="summary-card"><div class="summary-label">Events</div><div class="summary-value">${summary.eventCount || data.count || 0}</div></div>
+            <div class="summary-card"><div class="summary-label">Edges</div><div class="summary-value">${edges.length}</div></div>
+          </div>
+          <div class="type-bars">
+            <div class="summary-label">Chain Topology</div>
+            <div class="type-row"><div>Entry conversation</div><div>${escapeHtml(String(summary.entryConversationId || '-'))}</div><div>${nodes.length}</div></div>
+            <div class="type-row"><div>First event</div><div>${escapeHtml(String(summary.firstEventAt || '-'))}</div><div></div></div>
+            <div class="type-row"><div>Last event</div><div>${escapeHtml(String(summary.lastEventAt || '-'))}</div><div></div></div>
+          </div>
+          <div class="event-list">${hopCards}</div>
+        `;
         return;
       }
 
@@ -1120,20 +1274,22 @@
     }
 
     function setView(mode) {
-      activeView = mode === 'graph' || mode === 'tree' || mode === 'sip' || mode === 'agent-md' || mode === 'copilot' ? mode : 'raw';
+      activeView = mode === 'graph' || mode === 'chain' || mode === 'tree' || mode === 'sip' || mode === 'agent-md' || mode === 'copilot' ? mode : 'raw';
       const graphMode = activeView === 'graph';
+      const chainMode = activeView === 'chain';
       const treeMode = activeView === 'tree';
       const sipMode = activeView === 'sip';
       const agentMdMode = activeView === 'agent-md';
       const copilotMode = activeView === 'copilot';
-      resultEl.classList.toggle('hidden', graphMode || treeMode || sipMode || agentMdMode || copilotMode);
-      graphViewEl.classList.toggle('hidden', !graphMode);
+      resultEl.classList.toggle('hidden', graphMode || chainMode || treeMode || sipMode || agentMdMode || copilotMode);
+      graphViewEl.classList.toggle('hidden', !(graphMode || chainMode));
       treeViewEl.classList.toggle('hidden', !treeMode);
       sipViewEl.classList.toggle('hidden', !sipMode);
       agentMdViewEl.classList.toggle('hidden', !agentMdMode);
       copilotKitViewEl.classList.toggle('hidden', !copilotMode);
       rawViewBtnEl.classList.toggle('active', activeView === 'raw');
       graphViewBtnEl.classList.toggle('active', graphMode);
+      chainViewBtnEl.classList.toggle('active', chainMode);
       treeViewBtnEl.classList.toggle('active', treeMode);
       sipViewBtnEl.classList.toggle('active', sipMode);
       agentMdViewBtnEl.classList.toggle('active', agentMdMode);
@@ -1178,6 +1334,10 @@
     async function runSearch() {
       const conversationId = (conversationIdEl.value || '').trim();
       if (!conversationId) {
+        if (effectiveRootConversationId()) {
+          await runChainSearch();
+          return;
+        }
         setStatus('conversationId is required', 'err');
         return;
       }
@@ -1206,6 +1366,17 @@
       if (to) params.set('to', to);
       if (q) params.set('q', q);
 
+      syncSearchStateToUrl({
+        conversationId,
+        rootConversationId: effectiveRootConversationId(),
+        type,
+        limit,
+        from,
+        to,
+        q,
+        view: activeView === 'chain' ? 'tree' : activeView
+      });
+
       setStatus('Searching...', '');
       try {
         const result = await mcpRpc('tools/call', {
@@ -1232,6 +1403,10 @@
         renderGraphView(parsed);
         renderTreeView(parsed);
         lastResultJson = parsed;
+        const rootConversationId = String(parsed.rootConversationId || parsed?.conversationMetadata?.a2aRootConversationId || '').trim();
+        if (rootConversationId) {
+          rootConversationIdEl.value = rootConversationId;
+        }
         const count = typeof parsed.count === 'number' ? parsed.count : '?';
         if (parsed.conversationMetadata) {
           renderConversationMetadata(parsed.conversationMetadata);
@@ -1246,28 +1421,108 @@
       }
     }
 
+    async function runChainSearch() {
+      const rootConversationId = effectiveRootConversationId();
+      if (!rootConversationId) {
+        setStatus('rootConversationId is required for chain search', 'err');
+        return;
+      }
+
+      const type = (typeEl.value || '').trim();
+      const limit = (limitEl.value || '').trim();
+      const from = localDateTimeToIso(fromEl.value || '');
+      const to = localDateTimeToIso(toEl.value || '');
+      const q = (qEl.value || '').trim();
+
+      if (from === null) {
+        setStatus('Invalid "from" date/time', 'err');
+        return;
+      }
+      if (to === null) {
+        setStatus('Invalid "to" date/time', 'err');
+        return;
+      }
+
+      syncSearchStateToUrl({
+        conversationId: (conversationIdEl.value || '').trim(),
+        rootConversationId,
+        type,
+        limit,
+        from,
+        to,
+        q,
+        view: 'chain'
+      });
+
+      setStatus('Loading chain...', '');
+      try {
+        const result = await mcpRpc('tools/call', {
+          name: 'audit.conversation.chain',
+          arguments: {
+            rootConversationId,
+            type,
+            limit,
+            from,
+            to,
+            q
+          }
+        });
+        const parsed = parseToolResult(result);
+        if (!parsed) {
+          lastResultJson = null;
+          setStatus('Error: empty MCP result', 'err');
+          renderRawView({ error: 'empty_mcp_result' });
+          renderGraphView(null);
+          renderTreeView(null);
+          return;
+        }
+        lastResultJson = parsed;
+        renderRawView(parsed);
+        renderGraphView(parsed);
+        renderTreeView(parsed);
+        renderChainMetadata(parsed);
+        setView('chain');
+        setStatus(`OK (${parsed.conversationCount || 0} conversations / ${parsed.count || 0} events)`, 'ok');
+      } catch (err) {
+        lastResultJson = null;
+        setStatus(`Chain request failed: ${String(err)}`, 'err');
+        resultEl.textContent = String(err);
+        renderGraphView(null);
+        renderTreeView(null);
+      }
+    }
+
     function exportJson() {
       if (!lastResultJson) {
         setStatus('Run a successful search first', 'err');
         return;
       }
-      const conversationId = (conversationIdEl.value || 'audit').trim().replace(/[^a-zA-Z0-9._-]+/g, '_');
-      const fileName = `audit-search-${conversationId || 'result'}.json`;
-      const blob = new Blob([JSON.stringify(lastResultJson, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      const fileName = isChainResult(lastResultJson)
+        ? `audit-chain-${sanitizedExportId(lastResultJson.rootConversationId, 'chain')}.json`
+        : `audit-search-${sanitizedExportId(conversationIdEl.value || 'audit')}.json`;
+      downloadBlob(JSON.stringify(lastResultJson, null, 2), 'application/json', fileName);
+      setStatus(`Exported ${fileName}`, 'ok');
+    }
+
+    function exportChainCsv() {
+      if (!isChainResult(lastResultJson)) {
+        setStatus('Load a chain result first', 'err');
+        return;
+      }
+      const csvText = String(lastResultJson?.exports?.csv?.text || '');
+      if (!csvText) {
+        setStatus('Chain CSV export is unavailable for this result', 'err');
+        return;
+      }
+      const fileName = `audit-chain-${sanitizedExportId(lastResultJson.rootConversationId, 'chain')}.csv`;
+      downloadBlob(csvText, 'text/csv;charset=utf-8', fileName);
       setStatus(`Exported ${fileName}`, 'ok');
     }
 
     function applyQueryParams() {
       const params = new URLSearchParams(window.location.search || '');
       const conversationId = (params.get('conversationId') || '').trim();
+      const rootConversationId = (params.get('rootConversationId') || '').trim();
       const type = (params.get('type') || '').trim();
       const limit = (params.get('limit') || '').trim();
       const from = (params.get('from') || '').trim();
@@ -1275,15 +1530,17 @@
       const q = (params.get('q') || '').trim();
       const view = (params.get('view') || '').trim().toLowerCase();
       const augmentedRaw = (params.get('augmentedRaw') || '').trim().toLowerCase();
-      const requestedView = (view === 'raw' || view === 'graph' || view === 'tree' || view === 'sip' || view === 'agent-md' || view === 'copilot') ? view : '';
+      const requestedView = (view === 'raw' || view === 'graph' || view === 'chain' || view === 'tree' || view === 'sip' || view === 'agent-md' || view === 'copilot') ? view : '';
 
       const listQ = (params.get('listQ') || '').trim();
       const listTopic = (params.get('listTopic') || '').trim();
+      const listRootConversationId = (params.get('listRootConversationId') || '').trim();
       const listLimit = (params.get('listLimit') || '').trim();
       const listSortBy = (params.get('listSortBy') || '').trim();
       const listOrder = (params.get('listOrder') || '').trim().toLowerCase();
 
       if (conversationId) conversationIdEl.value = conversationId;
+      if (rootConversationId) rootConversationIdEl.value = rootConversationId;
       if (type) typeEl.value = type;
       if (limit) limitEl.value = limit;
       if (from) fromEl.value = isoToLocalDateTime(from);
@@ -1292,6 +1549,7 @@
 
       if (listQ) conversationQEl.value = listQ;
       if (listTopic) conversationTopicEl.value = listTopic;
+      if (listRootConversationId) conversationRootConversationIdEl.value = listRootConversationId;
       if (listLimit) conversationListLimitEl.value = listLimit;
       if (listSortBy && ['lastEventAt', 'title', 'eventCount'].includes(listSortBy)) {
         conversationSortByEl.value = listSortBy;
@@ -1306,7 +1564,7 @@
       }
 
       const auto = (params.get('auto') || '').trim().toLowerCase();
-      const shouldAutoSearch = conversationId && auto !== '0' && auto !== 'false';
+      const shouldAutoSearch = (conversationId || rootConversationId) && auto !== '0' && auto !== 'false';
       const listAuto = (params.get('listAuto') || '').trim().toLowerCase();
       const shouldAutoListLoad = listAuto === '1' || listAuto === 'true';
       if (requestedView === 'agent-md' && conversationId) {
@@ -1325,6 +1583,7 @@
     }
 
     searchBtnEl.addEventListener('click', runSearch);
+    loadChainBtnEl.addEventListener('click', runChainSearch);
     loadConversationsBtnEl.addEventListener('click', loadConversations);
     refreshAllBtnEl.addEventListener('click', () => refreshBlueprint(''));
     refreshConversationBtnEl.addEventListener('click', () => {
@@ -1341,8 +1600,16 @@
     });
     purgePreviewBtnEl.addEventListener('click', previewPurgeScope);
     exportBtnEl.addEventListener('click', exportJson);
+    exportCsvBtnEl.addEventListener('click', exportChainCsv);
     rawViewBtnEl.addEventListener('click', () => setView('raw'));
     graphViewBtnEl.addEventListener('click', () => setView('graph'));
+    chainViewBtnEl.addEventListener('click', async () => {
+      if (!isChainResult(lastResultJson) && effectiveRootConversationId()) {
+        await runChainSearch();
+        return;
+      }
+      setView('chain');
+    });
     treeViewBtnEl.addEventListener('click', () => setView('tree'));
     sipViewBtnEl.addEventListener('click', () => {
       const conversationId = (conversationIdEl.value || '').trim();

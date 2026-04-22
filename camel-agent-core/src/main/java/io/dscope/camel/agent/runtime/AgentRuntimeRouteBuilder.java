@@ -24,6 +24,16 @@ public class AgentRuntimeRouteBuilder extends RouteBuilder {
             .log("Audit trail for ${header.conversationId}: ${body}");
 
         if (properties.auditApiEnabled()) {
+            from("undertow:http://" + properties.auditApiHost() + ":" + properties.auditApiPort() + "/audit/conversation/chain?httpMethodRestrict=GET")
+                .routeId("audit-conversation-chain-api")
+                .setHeader("rootConversationId", header("rootConversationId"))
+                .setHeader("type", header("type"))
+                .setHeader("q", header("q"))
+                .setHeader("from", header("from"))
+                .setHeader("to", header("to"))
+                .setHeader("limit", header("limit"))
+                .process("auditTrailSearchProcessor");
+
             from("undertow:http://" + properties.auditApiHost() + ":" + properties.auditApiPort() + "/audit/{conversationId}?httpMethodRestrict=GET")
                 .routeId("audit-trail-api")
                 .setHeader("conversationId", header("conversationId"))

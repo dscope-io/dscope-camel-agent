@@ -44,6 +44,7 @@ public class AuditConversationListProcessor implements Processor {
         int limit = parseLimit(readText(in, "limit"));
         String query = normalizeQuery(readText(in, "q"));
         String topic = normalizeQuery(readText(in, "topic"));
+        String rootConversationId = normalizeQuery(readText(in, "rootConversationId"));
         String sortBy = normalizeSortBy(readText(in, "sortBy"));
         boolean ascending = isAscending(readText(in, "order"));
 
@@ -66,6 +67,9 @@ public class AuditConversationListProcessor implements Processor {
                 continue;
             }
             if (!matchesTopic(topic, metadata)) {
+                continue;
+            }
+            if (!matchesRootConversationId(rootConversationId, metadata)) {
                 continue;
             }
             matchedItems.add(new ConversationListItem(
@@ -91,6 +95,7 @@ public class AuditConversationListProcessor implements Processor {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("query", query == null ? "" : query);
         response.put("topic", topic == null ? "" : topic);
+        response.put("rootConversationId", rootConversationId == null ? "" : rootConversationId);
         response.put("sortBy", sortBy);
         response.put("order", ascending ? "asc" : "desc");
         response.put("limit", limit);
@@ -186,6 +191,13 @@ public class AuditConversationListProcessor implements Processor {
             }
         }
         return false;
+    }
+
+    private static boolean matchesRootConversationId(String rootConversationId, Map<String, Object> metadata) {
+        if (rootConversationId == null || rootConversationId.isBlank()) {
+            return true;
+        }
+        return containsIgnoreCase(String.valueOf(metadata.get("a2aRootConversationId")), rootConversationId);
     }
 
     private static Comparator<ConversationListItem> comparatorFor(String sortBy, boolean ascending) {

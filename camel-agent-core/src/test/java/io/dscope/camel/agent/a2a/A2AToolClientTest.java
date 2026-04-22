@@ -80,6 +80,10 @@ class A2AToolClientTest {
             assertEquals("support", request.path("params").path("metadata").path("planName").asText());
             assertEquals("session-1", request.path("params").path("metadata").path("aguiSessionId").asText());
             assertEquals("thread-1", request.path("params").path("metadata").path("camelAgent").path("aguiThreadId").asText());
+            assertEquals("conv-a2a", request.path("params").path("message").path("metadata").path("parentConversationId").asText());
+            assertEquals("conv-a2a", request.path("params").path("message").path("metadata").path("rootConversationId").asText());
+            assertEquals("conv-a2a", request.path("params").path("message").path("metadata").path("camelAgent").path("rootConversationId").asText());
+            assertEquals("support", request.path("params").path("message").path("metadata").path("camelAgent").path("planName").asText());
             assertEquals("remote answer", result.content());
             assertEquals("remote-task-1", CorrelationRegistry.global().resolve("conv-a2a", "a2a.remoteTaskId", ""));
             assertEquals("child-a2a-1", CorrelationRegistry.global().resolve("conv-a2a", "a2a.linkedConversationId", ""));

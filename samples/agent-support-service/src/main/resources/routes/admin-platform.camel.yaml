@@ -274,6 +274,18 @@
             ref: auditTrailSearchProcessor
 
 - route:
+    id: sample-audit-conversation-chain-api
+    from:
+      id: fromSampleAuditConversationChain
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/audit/conversation/chain?httpMethodRestrict=GET
+      steps:
+        - process:
+            id: processSampleAuditConversationChain
+            ref: auditTrailSearchProcessor
+
+- route:
     id: sample-audit-conversations-api
     from:
       id: fromSampleAuditConversations

@@ -88,9 +88,11 @@ public class AuditMcpToolsCallProcessor extends AbstractMcpResponseProcessor {
 
         switch (toolName) {
             case "audit.events.search" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, auditTrailSearchProcessor,
-                message -> setHeaders(message, effectiveArguments, "conversationId", "type", "q", "from", "to", "limit")));
+                message -> setHeaders(message, effectiveArguments, "conversationId", "rootConversationId", "type", "q", "from", "to", "limit")));
+            case "audit.conversation.chain" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, auditTrailSearchProcessor,
+                message -> setHeaders(message, effectiveArguments, "rootConversationId", "type", "q", "from", "to", "limit")));
             case "audit.conversations.list" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, auditConversationListProcessor,
-                message -> setHeaders(message, effectiveArguments, "q", "topic", "sortBy", "order", "limit")));
+                message -> setHeaders(message, effectiveArguments, "q", "topic", "rootConversationId", "sortBy", "order", "limit")));
             case "audit.conversation.view" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, auditConversationViewProcessor,
                 message -> setHeaders(message, effectiveArguments, "conversationId", "limit")));
             case "audit.conversation.sip" -> writeResult(exchange, invokeTool(exchange, toolName, effectiveArguments, auditConversationSipProcessor,
