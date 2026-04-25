@@ -22,7 +22,7 @@ import org.apache.camel.spi.PropertiesComponent;
 
 public class RuntimeResourceRefreshProcessor implements Processor {
 
-    private static final String DEFAULT_BLUEPRINT = "classpath:agents/support/agent.md";
+    private static final String DEFAULT_BLUEPRINT = "classpath:agents/agent.md";
 
     private final String applicationYamlPath;
     private final PersistenceFacade persistenceFacade;

@@ -99,7 +99,7 @@ public class AgentComponent extends DefaultComponent {
         if (configured != null && !configured.isBlank()) {
             return configured;
         }
-        return defaultIfBlank(runtimeProperty("agent.blueprint"), "classpath:agents/support/agent.md");
+        return defaultIfBlank(runtimeProperty("agent.blueprint"), "classpath:agents/agent.md");
     }
 
     public ObjectMapper objectMapper() {

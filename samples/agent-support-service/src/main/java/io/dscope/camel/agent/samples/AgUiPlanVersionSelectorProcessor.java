@@ -11,7 +11,6 @@ import org.slf4j.LoggerFactory;
 public final class AgUiPlanVersionSelectorProcessor implements Processor {
 
     private static final Logger LOG = LoggerFactory.getLogger(AgUiPlanVersionSelectorProcessor.class);
-    private static final String CALENDAR_PLAN = "calendar";
     private static final String HEADER_PLAN_NAME = "x-agent-plan-name";
     private static final String HEADER_PLAN_VERSION = "x-agent-plan-version";
 
@@ -41,16 +40,20 @@ public final class AgUiPlanVersionSelectorProcessor implements Processor {
             return;
         }
 
-        String normalizedPlanName = planName == null ? CALENDAR_PLAN : planName.trim();
+        String normalizedPlanName = planName == null ? null : planName.trim();
         String normalizedPlanVersion = planVersion == null ? null : planVersion.trim().toLowerCase();
 
-        params.put("planName", normalizedPlanName);
+        if (normalizedPlanName != null) {
+            params.put("planName", normalizedPlanName);
+        }
         if (normalizedPlanVersion != null) {
             params.put("planVersion", normalizedPlanVersion);
         }
         exchange.setProperty(AgentAgUiExchangeProperties.PARAMS, params);
 
-        exchange.getMessage().setHeader(AgentHeaders.PLAN_NAME, normalizedPlanName);
+        if (normalizedPlanName != null) {
+            exchange.getMessage().setHeader(AgentHeaders.PLAN_NAME, normalizedPlanName);
+        }
         if (normalizedPlanVersion != null) {
             exchange.getMessage().setHeader(AgentHeaders.PLAN_VERSION, normalizedPlanVersion);
         }

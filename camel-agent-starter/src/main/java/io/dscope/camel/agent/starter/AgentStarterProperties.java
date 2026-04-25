@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "agent")
 public class AgentStarterProperties {
 
-    private String blueprint = "classpath:agents/support/agent.md";
+    private String blueprint = "classpath:agents/agent.md";
     private String agentsConfig;
     private String persistenceMode = "redis_jdbc";
     private boolean strictSchema = true;

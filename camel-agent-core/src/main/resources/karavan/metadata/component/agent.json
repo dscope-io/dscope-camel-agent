@@ -52,8 +52,8 @@
       "deprecationNote" : "",
       "autowired" : false,
       "secret" : false,
-      "defaultValue" : "classpath:agents/support/agent.md",
-      "description" : "Blueprint location, for example classpath:agents/support/agent.md."
+      "defaultValue" : "classpath:agents/agent.md",
+      "description" : "Blueprint location, for example classpath:agents/agent.md."
     },
     "persistenceMode" : {
       "index" : 2,

@@ -14,8 +14,8 @@ public record AgentRuntimeProperties(
     public static AgentRuntimeProperties from(Properties properties) {
         return new AgentRuntimeProperties(
             properties.getProperty("agent.agents-config", ""),
-            properties.getProperty("agent.blueprint", "classpath:agents/support/agent.md"),
-            properties.getProperty("agent.sample.prompt", "Find docs about persistence"),
+            properties.getProperty("agent.blueprint", "classpath:agents/agent.md"),
+            properties.getProperty("agent.sample.prompt", "Describe the configured agent capabilities."),
             intProperty(properties, "agent.audit.trail.limit", 200),
             booleanProperty(properties, "agent.audit.api.enabled", false),
             properties.getProperty("agent.audit.api.host", "0.0.0.0"),

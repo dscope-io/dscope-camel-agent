@@ -17,7 +17,7 @@ public record A2ARuntimeProperties(
 ) {
     public static A2ARuntimeProperties from(Properties properties) {
         String plansConfig = property(properties, "agent.agents-config", "");
-        String legacyBlueprint = property(properties, "agent.blueprint", "classpath:agents/support/agent.md");
+        String legacyBlueprint = property(properties, "agent.blueprint", "classpath:agents/agent.md");
         String host = firstNonBlank(
             property(properties, "agent.runtime.a2a.host", ""),
             property(properties, "agent.runtime.a2a.bind-host", ""),

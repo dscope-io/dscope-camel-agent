@@ -29,7 +29,7 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentAgUiPreRunTextProcessor.class);
 
-    private static final String DEFAULT_PROMPT = "Please help me with support.";
+    private static final String DEFAULT_PROMPT = "Please help me.";
     private static final String DEFAULT_AGENT_ENDPOINT_URI = "agent:default?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}";
 
     private final MarkdownBlueprintLoader markdownBlueprintLoader;
@@ -143,7 +143,7 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
     private ResolvedAgentPlan resolvePlan(Exchange exchange, String conversationId, String planName, String planVersion) {
         AgentPlanSelectionResolver resolver = exchange.getContext().getRegistry().findSingleByType(AgentPlanSelectionResolver.class);
         if (resolver == null) {
-            return ResolvedAgentPlan.legacy(firstNonBlank(propertyOrNull(exchange, "agent.blueprint"), "classpath:agents/support/agent.md"));
+            return ResolvedAgentPlan.legacy(firstNonBlank(propertyOrNull(exchange, "agent.blueprint"), "classpath:agents/agent.md"));
         }
         return resolver.resolve(
             conversationId,

@@ -25,7 +25,7 @@ openai:
 
 agent:
   agents-config: classpath:agents/agents.yaml
-  blueprint: ${AGENT_BLUEPRINT:classpath:agents/calendar/v2/agent.md}
+  blueprint: ${AGENT_BLUEPRINT:classpath:agents/support/v1/agent.md}
   tools:
     calendar:
       endpoint-uri: ${AGENT_TOOLS_CALENDAR_ENDPOINT_URI:https://camel-calendar-availability-dzl2b73d2a-ew.a.run.app/mcp}
@@ -36,11 +36,11 @@ agent:
   runtime:
     routes-include-pattern: classpath:routes/kb-search.camel.yaml,classpath:routes/kb-search-json.camel.xml,classpath:routes/ticket-service.camel.yaml,classpath:routes/ag-ui-platform.camel.yaml,classpath:routes/admin-platform.camel.yaml,classpath:routes/sip-adapter-platform.camel.yaml,classpath:routes/twilio-adapter-platform.camel.yaml,classpath:routes/twilio-management.camel.yaml,classpath:routes/openai-sip-support.camel.yaml,classpath:routes/telephony-onboarding-platform.camel.yaml
     agent-routes-enabled: true
-    sample-agent-endpoint-uri: "{{agent.runtime.calendar-agent-endpoint-uri}}"
-    calendar-agent-endpoint-uri: agent:calendar?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}
+    sample-agent-endpoint-uri: "{{agent.runtime.support-agent-endpoint-uri}}"
+    support-agent-endpoint-uri: agent:support?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}
     support:
       crm-mcp-endpoint-uri: mcp:https://${AGENT_SUPPORT_CRM_MCP_HOST:camel-crm-service-702748800338.europe-west1.run.app}/mcp
-      agui-agent-endpoint-uri: agent:support?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}
+      agui-agent-endpoint-uri: "{{agent.runtime.support-agent-endpoint-uri}}"
     a2a:
       enabled: true
       public-base-url: http://localhost:{{agui.rpc.port:8080}}
@@ -49,7 +49,7 @@ agent:
       mode: spring-ai
     realtime:
       processor-bean-name: supportRealtimeEventProcessorCore
-      agent-endpoint-uri: "{{agent.runtime.calendar-agent-endpoint-uri}}"
+      agent-endpoint-uri: "{{agent.runtime.support-agent-endpoint-uri}}"
       agent-profile-purpose-max-chars: 0
       resource-context-max-chars: 12000
       # Server-side TTL for browser WebRTC init context (conversationId -> session template)
@@ -74,7 +74,7 @@ agent:
       bind-processors: true
     agui:
       pre-run:
-        agent-endpoint-uri: "{{agent.runtime.calendar-agent-endpoint-uri}}"
+        agent-endpoint-uri: "{{agent.runtime.support-agent-endpoint-uri}}"
         fallback-enabled: true
         fallback:
           kb-tool-name: kb.search

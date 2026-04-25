@@ -9,6 +9,7 @@ import io.dscope.camel.mcp.McpClient;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.apache.camel.ProducerTemplate;
 import org.slf4j.Logger;
@@ -35,10 +36,17 @@ public final class McpToolDiscoveryResolver {
             }
 
             try {
-                LOGGER.debug("MCP discovery started: serviceTool={}, endpoint={}",
+                JsonNode resultNode = McpCallSupport.invoke(
+                    LOGGER,
+                    producerTemplate.getCamelContext(),
+                    "discovery",
+                    toolSpec.endpointUri(),
                     toolSpec.name(),
-                    toolSpec.endpointUri());
-                JsonNode resultNode = McpClient.toolsListResultJson(producerTemplate, toolSpec.endpointUri());
+                    null,
+                    null,
+                    Map.of("method", "tools/list"),
+                    () -> McpClient.toolsListResultJson(producerTemplate, toolSpec.endpointUri())
+                );
                 catalogs.add(mapper.createObjectNode()
                     .put("serviceTool", toolSpec.name())
                     .put("endpointUri", toolSpec.endpointUri())
@@ -68,10 +76,7 @@ public final class McpToolDiscoveryResolver {
                     .put("serviceTool", toolSpec.name())
                     .put("endpointUri", toolSpec.endpointUri())
                     .put("error", e.getMessage()));
-                Throwable root = e;
-                while (root.getCause() != null && root.getCause() != root) {
-                    root = root.getCause();
-                }
+                Throwable root = McpCallSupport.findRootCause(e);
                 String rootMessage = root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
                 LOGGER.warn("MCP discovery failed: serviceTool={}, endpoint={}, reason={}",
                     toolSpec.name(),

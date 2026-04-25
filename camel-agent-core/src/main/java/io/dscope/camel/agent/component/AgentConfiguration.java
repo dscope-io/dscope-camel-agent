@@ -5,9 +5,9 @@ import org.apache.camel.spi.Metadata;
 
 public class AgentConfiguration {
 
-    @UriParam(defaultValue = "classpath:agents/support/agent.md")
-    @Metadata(description = "Blueprint location, for example classpath:agents/support/agent.md.")
-    private String blueprint = "classpath:agents/support/agent.md";
+    @UriParam(defaultValue = "classpath:agents/agent.md")
+    @Metadata(description = "Blueprint location, for example classpath:agents/agent.md.")
+    private String blueprint = "classpath:agents/agent.md";
 
     @UriParam
     @Metadata(description = "Agent catalog configuration, for example classpath:agents/agents.yaml.")
