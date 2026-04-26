@@ -15,6 +15,7 @@
     <maven.compiler.release>21</maven.compiler.release>
     <camel.version>4.15.0</camel.version>
     <camel.mcp.version>1.4.1</camel.mcp.version>
+    <undertow.version>2.3.21.Final</undertow.version>
     <jackson.version>2.20.0</jackson.version>
     <junit.jupiter.version>5.10.2</junit.jupiter.version>
     <persistence.version>1.1.0</persistence.version>
@@ -45,6 +46,16 @@
         <groupId>org.springframework</groupId>
         <artifactId>spring-core</artifactId>
         <version>${spring.framework.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.undertow</groupId>
+        <artifactId>undertow-core</artifactId>
+        <version>${undertow.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.undertow</groupId>
+        <artifactId>undertow-servlet</artifactId>
+        <version>${undertow.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

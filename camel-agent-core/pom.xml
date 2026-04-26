@@ -69,6 +69,12 @@
       <artifactId>camel-a2a-component</artifactId>
       <version>${a2a.version}</version>
     </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>jcl-over-slf4j</artifactId>
+      <version>2.0.17</version>
+      <scope>runtime</scope>
+    </dependency>
 
     <dependency>
       <groupId>org.junit.jupiter</groupId>
