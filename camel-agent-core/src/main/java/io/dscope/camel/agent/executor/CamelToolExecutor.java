@@ -10,7 +10,6 @@ import io.dscope.camel.agent.config.AgentHeaders;
 import io.dscope.camel.agent.model.ExecutionContext;
 import io.dscope.camel.agent.model.ToolResult;
 import io.dscope.camel.agent.model.ToolSpec;
-import io.dscope.camel.agent.mcp.McpCallSupport;
 import io.dscope.camel.agent.runtime.RuntimePlaceholderResolver;
 import io.dscope.camel.mcp.McpClient;
 import java.util.HashMap;
@@ -64,17 +63,35 @@ public class CamelToolExecutor implements ToolExecutor {
             Map<String, Object> params = new LinkedHashMap<>();
             params.put("name", toolSpec.name());
             params.put("arguments", requestArguments);
-            response = McpCallSupport.invoke(
-                LOGGER,
-                camelContext,
-                "tool invoke",
-                target,
-                toolSpec.name(),
+            LOGGER.debug("MCP tool invoke started: conversationId={}, taskId={}, tool={}, endpoint={}, argumentShape={}",
                 context.conversationId(),
                 context.taskId(),
-                params,
-                () -> McpClient.callResultJson(producerTemplate, target, "tools/call", params)
-            );
+                toolSpec.name(),
+                target,
+                argumentShape(requestArguments));
+            try {
+                response = McpClient.callResultJson(producerTemplate, target, "tools/call", params);
+                LOGGER.debug("MCP tool invoke completed: conversationId={}, taskId={}, tool={}, endpoint={}, responseShape={}",
+                    context.conversationId(),
+                    context.taskId(),
+                    toolSpec.name(),
+                    target,
+                    payloadShape(response));
+            } catch (RuntimeException failure) {
+                Throwable root = failure;
+                while (root.getCause() != null && root.getCause() != root) {
+                    root = root.getCause();
+                }
+                String rootMessage = root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
+                LOGGER.warn("MCP tool invoke failed: conversationId={}, taskId={}, tool={}, endpoint={}, reason={}",
+                    context.conversationId(),
+                    context.taskId(),
+                    toolSpec.name(),
+                    target,
+                    rootMessage);
+                LOGGER.debug("MCP tool invoke failure details", failure);
+                throw failure;
+            }
         } else {
             response = producerTemplate.requestBodyAndHeaders(target, requestBody(arguments), headers);
         }
@@ -109,5 +126,31 @@ public class CamelToolExecutor implements ToolExecutor {
 
     private boolean isA2ATarget(String target) {
         return target != null && target.startsWith("a2a:");
+    }
+
+    private String argumentShape(Object arguments) {
+        if (arguments == null) {
+            return "null";
+        }
+        if (arguments instanceof Map<?, ?> map) {
+            return "map(keys=" + map.keySet() + ")";
+        }
+        if (arguments instanceof List<?> list) {
+            return "list(size=" + list.size() + ")";
+        }
+        return arguments.getClass().getSimpleName();
+    }
+
+    private String payloadShape(Object payload) {
+        if (payload == null) {
+            return "null";
+        }
+        if (payload instanceof Map<?, ?> map) {
+            return "map(keys=" + map.keySet() + ")";
+        }
+        if (payload instanceof List<?> list) {
+            return "list(size=" + list.size() + ")";
+        }
+        return payload.getClass().getSimpleName();
     }
 }

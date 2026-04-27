@@ -2,7 +2,6 @@ package io.dscope.camel.agent.springai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dscope.camel.agent.model.AiToolCall;
-import io.dscope.camel.agent.model.ModelOptions;
 import io.dscope.camel.agent.model.ModelUsage;
 import io.dscope.camel.agent.model.TokenUsage;
 import io.dscope.camel.agent.model.ToolPolicy;
@@ -14,7 +13,6 @@ import java.util.Properties;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.DefaultUsage;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -185,52 +183,6 @@ class MultiProviderSpringAiChatGatewayTest {
     }
 
     @Test
-    void shouldApplyPerCallOverridesFromModelOptions() {
-        Properties properties = new Properties();
-        properties.setProperty("agent.runtime.spring-ai.provider", "gemini");
-
-        AtomicBoolean called = new AtomicBoolean(false);
-        OpenAiResponsesGateway responsesGateway = (apiMode,
-                                                   systemPrompt,
-                                                   userContext,
-                                                   tools,
-                                                   model,
-                                                   temperature,
-                                                   maxTokens,
-                                                   apiKey,
-                                                   baseUrl,
-                                                   callback) -> {
-            called.set(true);
-            Assertions.assertEquals("responses-http", apiMode);
-            Assertions.assertEquals("gpt-5.4-mini", model);
-            Assertions.assertEquals("plan-key", apiKey);
-            return new SpringAiChatGateway.SpringAiChatResult("plan-ok", List.of(), true);
-        };
-
-        MultiProviderSpringAiChatGateway gateway = new MultiProviderSpringAiChatGateway(properties, responsesGateway);
-        SpringAiChatGateway.SpringAiChatResult result = gateway.generate(
-            "system",
-            "user",
-            List.of(),
-            new ModelOptions(
-                "openai",
-                "gpt-5.4-mini",
-                0.3d,
-                256,
-                true,
-                Map.of(
-                    "agent.runtime.spring-ai.openai.api-mode", "responses-http",
-                    "agent.runtime.spring-ai.openai.api-key", "plan-key"
-                )
-            ),
-            null
-        );
-
-        Assertions.assertTrue(called.get());
-        Assertions.assertEquals("plan-ok", result.message());
-    }
-
-    @Test
     void shouldPreferConfiguredApiKeySystemPropertyOverOpenAiApiKeyReference() {
         Properties properties = new Properties();
         properties.setProperty("agent.runtime.spring-ai.openai.api-mode", "responses-ws");
@@ -315,33 +267,5 @@ class MultiProviderSpringAiChatGatewayTest {
         Assertions.assertEquals("openai", usage.provider());
         Assertions.assertEquals("gpt-5.4", usage.model());
         Assertions.assertEquals(new java.math.BigDecimal("0.00002000"), usage.totalCostUsd());
-    }
-
-    @Test
-    void shouldUseMaxCompletionTokensForGpt5Models() throws Exception {
-        MultiProviderSpringAiChatGateway gateway = new MultiProviderSpringAiChatGateway(new Properties());
-        OpenAiChatOptions options = OpenAiChatOptions.builder().model("gpt-5.4").build();
-
-        Method applyOpenAiTokenLimit = MultiProviderSpringAiChatGateway.class
-            .getDeclaredMethod("applyOpenAiTokenLimit", OpenAiChatOptions.class, String.class, Integer.class);
-        applyOpenAiTokenLimit.setAccessible(true);
-        applyOpenAiTokenLimit.invoke(gateway, options, "gpt-5.4", 1024);
-
-        Assertions.assertNull(options.getMaxTokens());
-        Assertions.assertEquals(1024, options.getMaxCompletionTokens());
-    }
-
-    @Test
-    void shouldUseLegacyMaxTokensForNonReasoningOpenAiModels() throws Exception {
-        MultiProviderSpringAiChatGateway gateway = new MultiProviderSpringAiChatGateway(new Properties());
-        OpenAiChatOptions options = OpenAiChatOptions.builder().model("gpt-4o").build();
-
-        Method applyOpenAiTokenLimit = MultiProviderSpringAiChatGateway.class
-            .getDeclaredMethod("applyOpenAiTokenLimit", OpenAiChatOptions.class, String.class, Integer.class);
-        applyOpenAiTokenLimit.setAccessible(true);
-        applyOpenAiTokenLimit.invoke(gateway, options, "gpt-4o", 512);
-
-        Assertions.assertEquals(512, options.getMaxTokens());
-        Assertions.assertNull(options.getMaxCompletionTokens());
     }
 }

@@ -27,4 +27,5 @@ samples/agent-support-service/smoke-relay-managed.out
 samples/agent-support-service/smoke-latest.out
 .gitignore
 .LCKpom.xml~
+**/.LCK*
 camel-agent-twilio/src/main/java/io/dscope/camel/agent/twilio/.LCKTwilioCallStartEnvelopeProcessor.java~

@@ -9,7 +9,6 @@ import io.dscope.camel.mcp.McpClient;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import org.apache.camel.ProducerTemplate;
 import org.slf4j.Logger;
@@ -36,17 +35,10 @@ public final class McpToolDiscoveryResolver {
             }
 
             try {
-                JsonNode resultNode = McpCallSupport.invoke(
-                    LOGGER,
-                    producerTemplate.getCamelContext(),
-                    "discovery",
-                    toolSpec.endpointUri(),
+                LOGGER.debug("MCP discovery started: serviceTool={}, endpoint={}",
                     toolSpec.name(),
-                    null,
-                    null,
-                    Map.of("method", "tools/list"),
-                    () -> McpClient.toolsListResultJson(producerTemplate, toolSpec.endpointUri())
-                );
+                    toolSpec.endpointUri());
+                JsonNode resultNode = McpClient.toolsListResultJson(producerTemplate, toolSpec.endpointUri());
                 catalogs.add(mapper.createObjectNode()
                     .put("serviceTool", toolSpec.name())
                     .put("endpointUri", toolSpec.endpointUri())
@@ -76,7 +68,10 @@ public final class McpToolDiscoveryResolver {
                     .put("serviceTool", toolSpec.name())
                     .put("endpointUri", toolSpec.endpointUri())
                     .put("error", e.getMessage()));
-                Throwable root = McpCallSupport.findRootCause(e);
+                Throwable root = e;
+                while (root.getCause() != null && root.getCause() != root) {
+                    root = root.getCause();
+                }
                 String rootMessage = root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
                 LOGGER.warn("MCP discovery failed: serviceTool={}, endpoint={}, reason={}",
                     toolSpec.name(),
@@ -126,17 +121,6 @@ public final class McpToolDiscoveryResolver {
             JsonNode outputSchema = toolNode.path("outputSchema");
             if (outputSchema.isMissingNode()) {
                 outputSchema = null;
-            }
-            if (name.equals(sourceTool.name())) {
-                if (sourceTool.inputSchema() != null && !sourceTool.inputSchema().isNull() && !sourceTool.inputSchema().isMissingNode()) {
-                    inputSchema = sourceTool.inputSchema();
-                }
-                if (sourceTool.outputSchema() != null && !sourceTool.outputSchema().isNull() && !sourceTool.outputSchema().isMissingNode()) {
-                    outputSchema = sourceTool.outputSchema();
-                }
-                if (sourceTool.description() != null && !sourceTool.description().isBlank()) {
-                    description = sourceTool.description();
-                }
             }
             ToolPolicy policy = sourceTool.policy() != null ? sourceTool.policy() : new ToolPolicy(false, 0, 1000);
             discovered.add(new ToolSpec(
