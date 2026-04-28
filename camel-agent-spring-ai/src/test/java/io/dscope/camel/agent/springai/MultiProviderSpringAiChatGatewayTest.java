@@ -18,6 +18,7 @@ import org.springframework.ai.chat.metadata.DefaultUsage;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.openai.OpenAiChatOptions;
 
 class MultiProviderSpringAiChatGatewayTest {
 
@@ -142,6 +143,26 @@ class MultiProviderSpringAiChatGatewayTest {
 
         Assertions.assertEquals("ok", result.message());
         Assertions.assertTrue(result.terminal());
+    }
+
+    @Test
+    void shouldUseMaxCompletionTokensForGpt5ChatModels() {
+        OpenAiChatOptions options = MultiProviderSpringAiChatGateway
+            .applyOpenAiMaxTokenOption(OpenAiChatOptions.builder(), "gpt-5.4", 900)
+            .build();
+
+        Assertions.assertNull(options.getMaxTokens());
+        Assertions.assertEquals(900, options.getMaxCompletionTokens());
+    }
+
+    @Test
+    void shouldUseLegacyMaxTokensForOlderChatModels() {
+        OpenAiChatOptions options = MultiProviderSpringAiChatGateway
+            .applyOpenAiMaxTokenOption(OpenAiChatOptions.builder(), "gpt-4o", 700)
+            .build();
+
+        Assertions.assertEquals(700, options.getMaxTokens());
+        Assertions.assertNull(options.getMaxCompletionTokens());
     }
 
     @Test

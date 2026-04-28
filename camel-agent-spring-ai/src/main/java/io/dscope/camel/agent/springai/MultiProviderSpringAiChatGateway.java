@@ -149,14 +149,14 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
 
         ToolCallbacksForOpenAi openAiTools = toolCallbacksForOpenAi(tools);
 
-        OpenAiChatOptions options = OpenAiChatOptions.builder()
+        OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
             .model(selectedModel)
             .temperature(selectedTemperature)
-            .maxTokens(selectedMaxTokens)
             .toolCallbacks(openAiTools.callbacks())
             .internalToolExecutionEnabled(false)
-            .toolChoice("auto")
-            .build();
+            .toolChoice("auto");
+        applyOpenAiMaxTokenOption(optionsBuilder, selectedModel, selectedMaxTokens);
+        OpenAiChatOptions options = optionsBuilder.build();
 
         OpenAiChatModel chatModel = OpenAiChatModel.builder()
             .openAiApi(openAiApi)
@@ -354,6 +354,30 @@ public final class MultiProviderSpringAiChatGateway implements SpringAiChatGatew
     }
 
     private record ToolCallbacksForOpenAi(List<ToolCallback> callbacks, Map<String, String> aliases) {
+    }
+
+    static OpenAiChatOptions.Builder applyOpenAiMaxTokenOption(OpenAiChatOptions.Builder builder,
+                                                               String model,
+                                                               Integer maxTokens) {
+        if (builder == null || maxTokens == null) {
+            return builder;
+        }
+        if (usesMaxCompletionTokensForOpenAiChatModel(model)) {
+            return builder.maxCompletionTokens(maxTokens);
+        }
+        return builder.maxTokens(maxTokens);
+    }
+
+    static boolean usesMaxCompletionTokensForOpenAiChatModel(String model) {
+        if (model == null || model.isBlank()) {
+            return false;
+        }
+        String normalized = model.trim().toLowerCase().replace('_', '-');
+        return normalized.startsWith("gpt-5")
+            || normalized.startsWith("o1")
+            || normalized.startsWith("o3")
+            || normalized.startsWith("o4")
+            || normalized.contains("reasoning");
     }
 
     private List<AiToolCall> parseAssistantToolCalls(AssistantMessage assistantMessage) {

@@ -123,7 +123,7 @@ public final class McpToolDiscoveryResolver {
                 outputSchema = null;
             }
             ToolPolicy policy = sourceTool.policy() != null ? sourceTool.policy() : new ToolPolicy(false, 0, 1000);
-            discovered.add(new ToolSpec(
+            ToolSpec discoveredTool = new ToolSpec(
                 name,
                 description,
                 null,
@@ -131,9 +131,30 @@ public final class McpToolDiscoveryResolver {
                 inputSchema,
                 outputSchema,
                 policy
-            ));
+            );
+            discovered.add(mergeLocalSchemaOverride(sourceTool, discoveredTool));
         }
         return discovered;
+    }
+
+    static ToolSpec mergeLocalSchemaOverride(ToolSpec sourceTool, ToolSpec discoveredTool) {
+        if (sourceTool == null || discoveredTool == null || !sourceTool.name().equals(discoveredTool.name())) {
+            return discoveredTool;
+        }
+        JsonNode inputSchema = sourceTool.inputSchema() == null ? discoveredTool.inputSchema() : sourceTool.inputSchema();
+        JsonNode outputSchema = sourceTool.outputSchema() == null ? discoveredTool.outputSchema() : sourceTool.outputSchema();
+        if (inputSchema == discoveredTool.inputSchema() && outputSchema == discoveredTool.outputSchema()) {
+            return discoveredTool;
+        }
+        return new ToolSpec(
+            discoveredTool.name(),
+            discoveredTool.description(),
+            discoveredTool.routeId(),
+            discoveredTool.endpointUri(),
+            inputSchema,
+            outputSchema,
+            discoveredTool.policy()
+        );
     }
 
     private static String text(JsonNode node, String fieldName) {
