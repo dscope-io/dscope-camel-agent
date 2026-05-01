@@ -1,14 +1,20 @@
 package io.dscope.camel.agent.starter;
 
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
+@Validated
 @ConfigurationProperties(prefix = "agent")
 public class AgentStarterProperties {
 
+    @NotBlank
     private String blueprint = "classpath:agents/agent.md";
     private String agentsConfig;
     private String persistenceMode = "redis_jdbc";
     private boolean strictSchema = true;
+    @Min(1)
     private long timeoutMs = 30_000L;
     private boolean streaming = true;
     private String auditGranularity = "info";
@@ -18,8 +24,10 @@ public class AgentStarterProperties {
     private String auditJdbcPassword;
     private String auditJdbcDriverClassName;
     private boolean chatMemoryEnabled = true;
+    @Min(1)
     private int chatMemoryWindow = 100;
     private String taskClaimOwnerId;
+    @Min(1)
     private int taskClaimLeaseSeconds = 120;
 
     public String getBlueprint() {

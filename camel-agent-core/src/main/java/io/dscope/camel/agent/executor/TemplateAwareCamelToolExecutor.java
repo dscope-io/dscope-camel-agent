@@ -30,6 +30,15 @@ public class TemplateAwareCamelToolExecutor implements ToolExecutor {
 
     private static final Set<String> DISALLOWED_DSL_KEYS = Set.of("process", "script", "groovy");
 
+    /**
+     * Only these URI schemes are permitted in generated JSON DSL {@code to} / {@code toD} steps.
+     * Blocking schemes such as {@code file:}, {@code exec:}, {@code ftp:}, and bare {@code http:}
+     * prevents LLM-controlled route templates from reaching local filesystems or internal services.
+     */
+    private static final Set<String> ALLOWED_TO_URI_SCHEMES = Set.of(
+            "direct:", "bean:", "log:", "mock:", "seda:", "vm:", "timer:", "stub:", "dataset:"
+    );
+
     private final CamelToolExecutor delegate;
     private final CamelContext camelContext;
     private final ProducerTemplate producerTemplate;
@@ -233,6 +242,7 @@ public class TemplateAwareCamelToolExecutor implements ToolExecutor {
                         if (uri == null || uri.isBlank()) {
                             throw new IllegalArgumentException("to step missing uri");
                         }
+                        validateToUri(uri);
                         yield current.to(uri);
                     }
                     case "toD" -> {
@@ -240,6 +250,7 @@ public class TemplateAwareCamelToolExecutor implements ToolExecutor {
                         if (uri == null || uri.isBlank()) {
                             throw new IllegalArgumentException("toD step missing uri");
                         }
+                        validateToUri(uri);
                         yield current.toD(uri);
                     }
                     case "log" -> {
@@ -272,6 +283,22 @@ public class TemplateAwareCamelToolExecutor implements ToolExecutor {
             for (JsonNode item : node) {
                 validateDisallowedKeys(item);
             }
+        }
+    }
+
+    /**
+     * Validates that a URI used in a generated {@code to} or {@code toD} step belongs to an
+     * explicitly allowed scheme. This prevents LLM-influenced route templates from routing
+     * messages to local files, OS processes, or arbitrary HTTP endpoints (SSRF).
+     */
+    private static void validateToUri(String uri) {
+        String lower = uri.toLowerCase(java.util.Locale.ROOT);
+        boolean allowed = ALLOWED_TO_URI_SCHEMES.stream().anyMatch(lower::startsWith);
+        if (!allowed) {
+            String scheme = lower.contains(":") ? lower.substring(0, lower.indexOf(':') + 1) : lower;
+            throw new IllegalArgumentException(
+                "Generated JSON DSL 'to'/'toD' URI uses a disallowed scheme '" + scheme
+                + "'. Permitted schemes: " + ALLOWED_TO_URI_SCHEMES);
         }
     }
 

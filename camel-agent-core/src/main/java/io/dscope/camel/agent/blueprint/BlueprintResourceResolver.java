@@ -3,6 +3,7 @@ package io.dscope.camel.agent.blueprint;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
@@ -67,7 +68,9 @@ final class BlueprintResourceResolver {
                 }
             }
             if (uri.startsWith("http://") || uri.startsWith("https://")) {
-                URLConnection connection = URI.create(uri).toURL().openConnection();
+                URI parsed = URI.create(uri);
+                ensureNotPrivateHost(parsed, uri);
+                URLConnection connection = parsed.toURL().openConnection();
                 connection.setConnectTimeout(10_000);
                 connection.setReadTimeout(30_000);
                 if (connection instanceof HttpURLConnection http) {
@@ -100,6 +103,29 @@ final class BlueprintResourceResolver {
     private void ensureWithinLimit(String uri, long sizeBytes, long maxBytes) {
         if (maxBytes > 0 && sizeBytes > maxBytes) {
             throw new IllegalArgumentException("Blueprint resource exceeds maxBytes: " + uri + " (" + sizeBytes + ">" + maxBytes + ")");
+        }
+    }
+
+    /**
+     * Guards against SSRF by rejecting URIs that resolve to private, loopback, or link-local
+     * addresses. This prevents blueprint resources from fetching cloud metadata endpoints
+     * (e.g., {@code 169.254.169.254}) or internal network services.
+     */
+    private static void ensureNotPrivateHost(URI uri, String originalUri) {
+        String host = uri.getHost();
+        if (host == null || host.isBlank()) {
+            return;
+        }
+        try {
+            InetAddress address = InetAddress.getByName(host);
+            if (address.isLoopbackAddress() || address.isSiteLocalAddress()
+                    || address.isLinkLocalAddress() || address.isAnyLocalAddress()
+                    || address.isMulticastAddress()) {
+                throw new IllegalArgumentException(
+                    "Blueprint resource URI resolves to a private/internal address and is not allowed: " + originalUri);
+            }
+        } catch (java.net.UnknownHostException ignored) {
+            // If DNS resolution fails here, let the actual connection attempt surface the error.
         }
     }
 
