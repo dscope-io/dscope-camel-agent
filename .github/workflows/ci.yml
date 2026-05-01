@@ -10,6 +10,8 @@ jobs:
   build:
     name: Build & Test (Java 21)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
