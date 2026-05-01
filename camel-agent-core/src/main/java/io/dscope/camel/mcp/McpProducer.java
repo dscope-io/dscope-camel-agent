@@ -43,11 +43,15 @@ public class McpProducer extends DefaultProducer {
 
     @Override
     protected void doStop() throws Exception {
-        if (producerTemplate != null) {
-            producerTemplate.stop();
+        ProducerTemplate template = producerTemplate;
+        try {
+            if (template != null) {
+                template.stop();
+            }
+        } finally {
             producerTemplate = null;
+            super.doStop();
         }
-        super.doStop();
     }
 
     @Override
