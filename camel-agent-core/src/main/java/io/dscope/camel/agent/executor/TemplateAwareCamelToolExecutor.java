@@ -85,6 +85,10 @@ public class TemplateAwareCamelToolExecutor implements ToolExecutor {
         validateJsonDsl(renderedRoute);
 
         String routeId = ensureRouteId(renderedRoute, template.id());
+        String invokeUri = resolveInvokeUri(template, renderedRoute, args);
+        if (invokeUri != null && !invokeUri.isBlank()) {
+            validateToUri(invokeUri);
+        }
         String routeInstanceId = UUID.randomUUID().toString();
         try {
             synchronized (camelContext) {
@@ -94,10 +98,8 @@ public class TemplateAwareCamelToolExecutor implements ToolExecutor {
             throw new IllegalArgumentException("Failed to load generated JSON route for template: " + template.id(), e);
         }
 
-        String invokeUri = resolveInvokeUri(template, renderedRoute, args);
         JsonNode executionResult = objectMapper.nullNode();
         if (invokeUri != null && !invokeUri.isBlank()) {
-            validateToUri(invokeUri);
             Map<String, Object> headers = new HashMap<>();
             headers.put(AgentHeaders.CONVERSATION_ID, context.conversationId());
             headers.put(AgentHeaders.TASK_ID, context.taskId());

@@ -35,12 +35,14 @@ Recent additions:
 
 ## Compatibility Matrix
 
+- Camel Agent: `0.7.0`
 - Java: `21`
 - Camel: `4.15.0`
 - Jackson: `2.20.0`
 - JUnit: `5.10.2`
-- DScope persistence: `1.1.0`
-- DScope AGUI: `1.1.0`
+- DScope persistence: `1.2.0`
+- DScope A2A: `1.1.0`
+- DScope AGUI: `1.2.0`
 
 ## Release Notes
 
@@ -48,6 +50,10 @@ Recent additions:
 - Product guide: `docs/PRODUCT_GUIDE.md`
 - Architecture: `docs/architecture.md`
 - Development guide: `docs/DEVELOPMENT_GUIDE.md`
+
+## License
+
+This project is licensed under the Apache License, Version 2.0. See `LICENSE`.
 
 ## Build
 

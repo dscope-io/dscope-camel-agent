@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-05-01
+
+### Release 0.7.0
+
+- Promoted root, reactor modules, sample service, and standalone AGUI adapter to `0.7.0`.
+- Updated DScope dependency baselines to `camel-persistence` `1.2.0`, `camel-a2a-component` `1.1.0`, and `camel-ag-ui-component` `1.2.0`.
+- Regenerated Camel component metadata so the `agent` component descriptor reports `0.7.0`.
+- Installed `0.7.0` artifacts to the local Maven repository after a clean rebuild and full test run.
+
+### Validation updates
+
+- Completed `mvn clean install -DskipTests=false` successfully for the root reactor.
+- Completed `mvn -f camel-agent-agui/pom.xml clean install -Pdscope-local -DskipTests=false` successfully for the standalone AGUI adapter.
+- Tightened JSON route template invoke URI validation so disallowed invoke schemes are rejected before dynamic route registration.
+- Aligned blueprint resource tests with the current SSRF guard that rejects private and loopback HTTP resource targets.
+
 ## 2026-04-19
 
 ### OpenAI Responses strict schema compatibility

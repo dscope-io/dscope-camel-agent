@@ -192,7 +192,7 @@ class MarkdownBlueprintLoaderTest {
     }
 
     @Test
-    void shouldResolveHttpResource() throws Exception {
+    void shouldRejectPrivateHttpResource() throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/resource.md", new StaticHandler("# Remote Resource\n\nEscalate after confirming identity."));
         server.start();
@@ -234,10 +234,11 @@ class MarkdownBlueprintLoaderTest {
                 """.formatted(server.getAddress().getPort()), StandardCharsets.UTF_8);
 
             MarkdownBlueprintLoader loader = new MarkdownBlueprintLoader();
-            var blueprint = loader.load("file:" + blueprintFile);
-
-            Assertions.assertEquals(1, blueprint.resources().size());
-            Assertions.assertTrue(blueprint.resources().getFirst().text().contains("confirming identity"));
+            IllegalArgumentException ex = Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> loader.load("file:" + blueprintFile)
+            );
+            Assertions.assertTrue(ex.getMessage().contains("private/internal address"));
         } finally {
             server.stop(0);
         }

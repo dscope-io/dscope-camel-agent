@@ -295,8 +295,7 @@ class TemplateAwareCamelToolExecutorSecurityTest {
 
     @Test
     void shouldPermitAllowedSchemesInToStep() throws Exception {
-        // direct: is in the allowlist; route loading itself may fail at runtime
-        // because there is no consumer, but the validation must NOT throw.
+        // log: is in the allowlist and can execute without requiring a consumer.
         String routeJson = """
             {
               "route": {
@@ -304,7 +303,7 @@ class TemplateAwareCamelToolExecutorSecurityTest {
                 "from": {
                   "uri": "direct:sec-allow-from",
                   "steps": [
-                    { "to": { "uri": "direct:sec-allow-to-target" } }
+                    { "to": { "uri": "log:sec-allow-to-target" } }
                   ]
                 }
               }
@@ -329,14 +328,13 @@ class TemplateAwareCamelToolExecutorSecurityTest {
                 A2AToolContext.EMPTY
             );
 
-            // Execute with no invokeUri so the call just loads the route and returns.
             // The important assertion is no IllegalArgumentException about "disallowed scheme".
             try {
                 executor.execute(toolSpecFor(spec), MAPPER.createObjectNode(), CTX);
             } catch (IllegalArgumentException e) {
                 Assertions.assertFalse(
                     e.getMessage().contains("disallowed scheme"),
-                    "Allowed scheme 'direct:' must not be rejected. Error: " + e.getMessage()
+                    "Allowed scheme 'log:' must not be rejected. Error: " + e.getMessage()
                 );
             }
         }

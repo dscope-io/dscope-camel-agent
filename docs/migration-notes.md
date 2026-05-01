@@ -1,5 +1,33 @@
 # Migration Notes
 
+## 0.7.0
+
+Release promotion highlights:
+
+- Project modules, sample service, and standalone AGUI adapter now build as `0.7.0`.
+- Clean rebuild and full test run completed before local Maven install.
+- Artifacts installed to local Maven for downstream projects.
+
+Dependency import baseline for consumers:
+
+- `io.dscope.camel:camel-agent-starter:0.7.0` (recommended)
+- `io.dscope.camel:camel-agent-core:0.7.0` (runtime/core)
+- `io.dscope.camel:camel-agent-persistence-dscope:0.7.0` (optional persistence adapter)
+- `io.dscope.camel:camel-agent-agui:0.7.0` (optional standalone AGUI adapter)
+
+DScope component baselines:
+
+- `io.dscope.camel:camel-persistence-core:1.2.0`
+- `io.dscope.camel:camel-persistence-redis:1.2.0`
+- `io.dscope.camel:camel-persistence-jdbc:1.2.0`
+- `io.dscope.camel:camel-a2a-component:1.1.0`
+- `io.dscope.camel:camel-ag-ui-component:1.2.0`
+
+Behavioral notes:
+
+- JSON route template invoke URI validation now runs before dynamic route registration.
+- Blueprint HTTP resource resolution continues to reject private, loopback, link-local, wildcard, and multicast targets.
+
 ## 0.5.0
 
 Release promotion highlights:

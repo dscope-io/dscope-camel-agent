@@ -1240,7 +1240,7 @@ At minimum, add the Camel Agent starter and your normal Spring Boot and Camel de
   <dependency>
     <groupId>io.dscope.camel</groupId>
     <artifactId>camel-agent-starter</artifactId>
-    <version>0.5.0</version>
+    <version>0.7.0</version>
   </dependency>
 </dependencies>
 ```
