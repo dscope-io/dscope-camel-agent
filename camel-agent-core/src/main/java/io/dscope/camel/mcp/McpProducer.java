@@ -27,10 +27,31 @@ public class McpProducer extends DefaultProducer {
 
     private final McpEndpoint endpoint;
     private final ObjectMapper mapper = new ObjectMapper();
+    private ProducerTemplate producerTemplate;
 
     public McpProducer(McpEndpoint endpoint) {
         super(endpoint);
         this.endpoint = endpoint;
+    }
+
+    @Override
+    protected void doStart() throws Exception {
+        super.doStart();
+        this.producerTemplate = endpoint.getCamelContext().createProducerTemplate();
+        this.producerTemplate.start();
+    }
+
+    @Override
+    protected void doStop() throws Exception {
+        ProducerTemplate template = producerTemplate;
+        try {
+            if (template != null) {
+                template.stop();
+            }
+        } finally {
+            producerTemplate = null;
+            super.doStop();
+        }
     }
 
     @Override
@@ -50,16 +71,13 @@ public class McpProducer extends DefaultProducer {
     private McpResponse dispatchByUriStructure(String targetUri, McpRequest req) throws Exception {
         if (targetUri != null && targetUri.startsWith(LOCAL_URI_PREFIX)) {
             String localUri = targetUri.substring(LOCAL_URI_PREFIX.length());
-            Object localResponse = endpoint.getCamelContext()
-                .createProducerTemplate()
-                .requestBody(localUri, req, Object.class);
+            Object localResponse = producerTemplate.requestBody(localUri, req, Object.class);
             return toMcpResponse(localResponse, req.getId());
         }
 
         String json = mapper.writeValueAsString(req);
         Map<String, Object> transportHeaders = buildRemoteTransportHeaders();
-        ProducerTemplate template = endpoint.getCamelContext().createProducerTemplate();
-        Object rawResponse = template.requestBodyAndHeaders(targetUri, json, transportHeaders, Object.class);
+        Object rawResponse = producerTemplate.requestBodyAndHeaders(targetUri, json, transportHeaders, Object.class);
         return toMcpResponse(rawResponse, req.getId());
     }
 

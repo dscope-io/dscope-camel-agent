@@ -29,3 +29,16 @@ samples/agent-support-service/smoke-latest.out
 .LCKpom.xml~
 **/.LCK*
 camel-agent-twilio/src/main/java/io/dscope/camel/agent/twilio/.LCKTwilioCallStartEnvelopeProcessor.java~
+
+# Large binary assets committed to the repo root — should live elsewhere
+/*.pdf
+/*.png
+
+# OS / IDE
+.DS_Store
+*.swp
+*.swo
+
+# LLM prompt drafts mixed into docs (ephemeral dev artifacts)
+docs/prompts/
+docs/**/*.prompt.md

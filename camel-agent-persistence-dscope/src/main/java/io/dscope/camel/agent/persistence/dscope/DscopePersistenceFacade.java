@@ -133,7 +133,11 @@ public class DscopePersistenceFacade implements PersistenceFacade {
 
     @Override
     public Optional<TaskState> loadTask(String taskId) {
-        JsonNode snapshot = flowStateStore.rehydrate(FLOW_TASK, taskId).envelope().snapshot();
+        var rehydrated = flowStateStore.rehydrate(FLOW_TASK, taskId);
+        if (rehydrated.envelope() == null) {
+            return Optional.empty();
+        }
+        JsonNode snapshot = rehydrated.envelope().snapshot();
         if (snapshot == null || snapshot.isMissingNode() || snapshot.isNull() || snapshot.isEmpty()) {
             return Optional.empty();
         }
@@ -169,7 +173,11 @@ public class DscopePersistenceFacade implements PersistenceFacade {
 
     @Override
     public Optional<DynamicRouteState> loadDynamicRoute(String routeInstanceId) {
-        JsonNode snapshot = flowStateStore.rehydrate(FLOW_DYNAMIC_ROUTE, routeInstanceId).envelope().snapshot();
+        var rehydrated = flowStateStore.rehydrate(FLOW_DYNAMIC_ROUTE, routeInstanceId);
+        if (rehydrated.envelope() == null) {
+            return Optional.empty();
+        }
+        JsonNode snapshot = rehydrated.envelope().snapshot();
         if (snapshot == null || snapshot.isMissingNode() || snapshot.isNull() || snapshot.isEmpty()) {
             return Optional.empty();
         }
