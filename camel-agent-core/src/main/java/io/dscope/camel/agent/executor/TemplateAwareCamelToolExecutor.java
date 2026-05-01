@@ -97,6 +97,7 @@ public class TemplateAwareCamelToolExecutor implements ToolExecutor {
         String invokeUri = resolveInvokeUri(template, renderedRoute, args);
         JsonNode executionResult = objectMapper.nullNode();
         if (invokeUri != null && !invokeUri.isBlank()) {
+            validateToUri(invokeUri);
             Map<String, Object> headers = new HashMap<>();
             headers.put(AgentHeaders.CONVERSATION_ID, context.conversationId());
             headers.put(AgentHeaders.TASK_ID, context.taskId());
@@ -202,6 +203,7 @@ public class TemplateAwareCamelToolExecutor implements ToolExecutor {
                 if (fromUri == null || fromUri.isBlank()) {
                     throw new IllegalArgumentException("Generated route is missing from.uri");
                 }
+                validateToUri(fromUri);
                 String routeId = routeNode.path("id").asText();
                 RouteDefinition route = from(fromUri).routeId(routeId);
 
@@ -287,9 +289,10 @@ public class TemplateAwareCamelToolExecutor implements ToolExecutor {
     }
 
     /**
-     * Validates that a URI used in a generated {@code to} or {@code toD} step belongs to an
-     * explicitly allowed scheme. This prevents LLM-influenced route templates from routing
-     * messages to local files, OS processes, or arbitrary HTTP endpoints (SSRF).
+     * Validates that a URI used in a generated {@code from}, {@code to}, or {@code toD} step
+     * belongs to an explicitly allowed scheme. This prevents LLM-influenced route templates from
+     * routing messages to local files, OS processes, or arbitrary HTTP endpoints (SSRF).
+     * It is also applied to the resolved {@code invokeUri} used to trigger the route after loading.
      */
     private static void validateToUri(String uri) {
         String lower = uri.toLowerCase(java.util.Locale.ROOT);
