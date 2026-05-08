@@ -12,6 +12,7 @@ import io.dscope.camel.agent.model.TaskStatus;
 import io.dscope.camel.agent.config.CorrelationKeys;
 import io.dscope.camel.agent.registry.CorrelationRegistry;
 import io.dscope.camel.persistence.core.FlowStateStore;
+import io.dscope.camel.persistence.core.IdGenerator;
 import io.dscope.camel.persistence.core.PersistedEvent;
 import io.dscope.camel.persistence.core.exception.OptimisticConflictException;
 import java.time.Instant;
@@ -20,7 +21,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class DscopePersistenceFacade implements PersistenceFacade {
 
@@ -35,6 +38,8 @@ public class DscopePersistenceFacade implements PersistenceFacade {
     private final FlowStateStore auditFlowStateStore;
     private final ObjectMapper objectMapper;
     private final AuditGranularity auditGranularity;
+    private final ConcurrentMap<String, Long> conversationVersions = new ConcurrentHashMap<>();
+    private final AtomicLong conversationIndexVersion = new AtomicLong(-1L);
 
     public DscopePersistenceFacade(FlowStateStore flowStateStore, ObjectMapper objectMapper) {
         this(flowStateStore, flowStateStore, objectMapper, AuditGranularity.INFO);
@@ -61,9 +66,9 @@ public class DscopePersistenceFacade implements PersistenceFacade {
         }
         final int maxAttempts = 3;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            long expectedVersion = resolveConversationVersion(event.conversationId());
+            long expectedVersion = resolveConversationVersionCached(event.conversationId());
             PersistedEvent persistedEvent = new PersistedEvent(
-                UUID.randomUUID().toString(),
+                IdGenerator.newUlid(),
                 FLOW_CONVERSATION,
                 event.conversationId(),
                 expectedVersion + 1,
@@ -74,9 +79,11 @@ public class DscopePersistenceFacade implements PersistenceFacade {
             );
             try {
                 auditFlowStateStore.appendEvents(FLOW_CONVERSATION, event.conversationId(), expectedVersion, List.of(persistedEvent), idempotencyKey);
+                conversationVersions.put(event.conversationId(), expectedVersion + 1);
                 appendConversationIndex(event);
                 return;
             } catch (OptimisticConflictException ex) {
+                conversationVersions.remove(event.conversationId());
                 if (attempt == maxAttempts) {
                     throw ex;
                 }
@@ -218,7 +225,7 @@ public class DscopePersistenceFacade implements PersistenceFacade {
             .put("leaseUntil", leaseUntil.toString())
             .put("claimedAt", now.toString());
         PersistedEvent claim = new PersistedEvent(
-            UUID.randomUUID().toString(),
+            IdGenerator.newUuid(),
             FLOW_TASK_LOCK,
             taskId,
             expectedVersion + 1,
@@ -247,7 +254,7 @@ public class DscopePersistenceFacade implements PersistenceFacade {
             .put("ownerId", ownerId)
             .put("releasedAt", Instant.now().toString());
         PersistedEvent release = new PersistedEvent(
-            UUID.randomUUID().toString(),
+            IdGenerator.newUuid(),
             FLOW_TASK_LOCK,
             taskId,
             expectedVersion + 1,
@@ -424,16 +431,23 @@ public class DscopePersistenceFacade implements PersistenceFacade {
         return Math.max(envelopeVersion, eventVersion);
     }
 
+    private long resolveConversationVersionCached(String conversationId) {
+        if (conversationId == null || conversationId.isBlank()) {
+            return 0L;
+        }
+        return conversationVersions.computeIfAbsent(conversationId, this::resolveConversationVersion);
+    }
+
     private void appendConversationIndex(AgentEvent event) {
-        final int maxAttempts = 3;
+        final int maxAttempts = 10;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            long expectedVersion = resolveConversationIndexVersion();
+            long expectedVersion = resolveConversationIndexVersionCached();
             ObjectNode payload = objectMapper.createObjectNode()
                 .put("conversationId", event.conversationId())
                 .put("timestamp", event.timestamp() == null ? Instant.now().toString() : event.timestamp().toString())
                 .put("type", event.type());
             PersistedEvent persistedEvent = new PersistedEvent(
-                UUID.randomUUID().toString(),
+                IdGenerator.newUuid(),
                 FLOW_CONVERSATION_INDEX,
                 CONVERSATION_INDEX_STREAM,
                 expectedVersion + 1,
@@ -450,8 +464,10 @@ public class DscopePersistenceFacade implements PersistenceFacade {
                     List.of(persistedEvent),
                     persistedEvent.idempotencyKey()
                 );
+                conversationIndexVersion.updateAndGet(current -> Math.max(current, expectedVersion + 1));
                 return;
             } catch (OptimisticConflictException ex) {
+                conversationIndexVersion.compareAndSet(expectedVersion, -1L);
                 if (attempt == maxAttempts) {
                     return;
                 }
@@ -464,6 +480,16 @@ public class DscopePersistenceFacade implements PersistenceFacade {
         long envelopeVersion = rehydrated.envelope() == null ? 0L : rehydrated.envelope().version();
         long eventVersion = auditFlowStateStore.readEvents(FLOW_CONVERSATION_INDEX, CONVERSATION_INDEX_STREAM, 0L, 10_000).size();
         return Math.max(envelopeVersion, eventVersion);
+    }
+
+    private long resolveConversationIndexVersionCached() {
+        long cached = conversationIndexVersion.get();
+        if (cached >= 0L) {
+            return cached;
+        }
+        long resolved = resolveConversationIndexVersion();
+        conversationIndexVersion.compareAndSet(-1L, resolved);
+        return conversationIndexVersion.get();
     }
 
     private record TaskLockState(String ownerId, Instant leaseUntil) {

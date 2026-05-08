@@ -34,6 +34,11 @@
       <version>${persistence.version}</version>
     </dependency>
     <dependency>
+      <groupId>io.dscope.camel</groupId>
+      <artifactId>camel-persistence-ic4j</artifactId>
+      <version>${persistence.version}</version>
+    </dependency>
+    <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
     </dependency>

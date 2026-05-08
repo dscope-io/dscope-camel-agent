@@ -24,9 +24,9 @@ For SIP and Twilio realtime ingress, caller identity is promoted into the agent 
 ## Version Baseline
 
 - Camel Agent sample version: `0.7.0`
-- DScope persistence components: `1.2.0`
-- DScope A2A component: `1.1.0`
-- DScope AGUI component: `1.2.0`
+- DScope persistence components: `1.3.0`
+- DScope A2A component: `1.2.0`
+- DScope AGUI component: `1.3.0`
 
 ## Prerequisites
 

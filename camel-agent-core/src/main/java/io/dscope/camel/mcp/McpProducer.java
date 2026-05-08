@@ -2,7 +2,6 @@ package io.dscope.camel.mcp;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.UUID;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.ProducerTemplate;
@@ -12,6 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.dscope.camel.mcp.model.McpRequest;
+import io.dscope.camel.persistence.core.IdGenerator;
 import io.dscope.camel.mcp.model.McpResponse;
 import io.dscope.camel.mcp.processor.McpHttpValidatorProcessor;
 
@@ -60,7 +60,7 @@ public class McpProducer extends DefaultProducer {
 
         McpRequest req = new McpRequest();
         req.setJsonrpc("2.0");
-        req.setId(UUID.randomUUID().toString());
+        req.setId(IdGenerator.newUlid());
         req.setMethod(resolveMethod(exchange, cfg));
         req.setParams(resolveParams(exchange));
 

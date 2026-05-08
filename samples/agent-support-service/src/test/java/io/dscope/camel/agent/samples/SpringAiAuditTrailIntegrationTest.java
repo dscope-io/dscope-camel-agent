@@ -3,7 +3,6 @@ package io.dscope.camel.agent.samples;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -18,6 +17,7 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -246,13 +246,23 @@ class SpringAiAuditTrailIntegrationTest {
                                            Double temperature,
                                            Integer maxTokens,
                                            java.util.function.Consumer<String> streamingTokenCallback) {
+            if (tools == null || tools.isEmpty()) {
+                String assistantText = userContext != null && userContext.contains("Support ticket created successfully")
+                    ? "Support ticket created successfully"
+                    : "";
+                if (streamingTokenCallback != null && assistantText != null && !assistantText.isBlank()) {
+                    streamingTokenCallback.accept(assistantText);
+                }
+                return new SpringAiChatResult(assistantText, List.of(), true);
+            }
+
             String userText = extractLastUserMessage(userContext);
             List<AiToolCall> toolCalls = selectTools(userText, userContext);
             String assistantText = "";
 
             List<Message> existing = new ArrayList<>(chatMemoryRepository.findByConversationId(conversationId));
             existing.add(UserMessage.builder().text(userText).build());
-            existing.add(new AssistantMessage(assistantText, Map.of(), List.of()));
+            existing.add(new AssistantMessage(assistantText));
             chatMemoryRepository.saveAll(conversationId, existing);
 
             if (streamingTokenCallback != null) {
@@ -320,7 +330,7 @@ class SpringAiAuditTrailIntegrationTest {
             try {
                 JsonNode node = objectMapper.readTree(trimmed);
                 return node.isTextual() ? node.asText() : trimmed;
-            } catch (Exception ignored) {
+            } catch (JsonProcessingException ignored) {
                 return trimmed;
             }
         }

@@ -1,6 +1,13 @@
 package io.dscope.camel.agent;
 
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import io.dscope.camel.agent.api.ToolExecutor;
 import io.dscope.camel.agent.kernel.DefaultAgentKernel;
 import io.dscope.camel.agent.kernel.InMemoryPersistenceFacade;
@@ -8,17 +15,13 @@ import io.dscope.camel.agent.kernel.StaticAiModelClient;
 import io.dscope.camel.agent.model.AgentBlueprint;
 import io.dscope.camel.agent.model.AiToolCall;
 import io.dscope.camel.agent.model.ModelResponse;
-import io.dscope.camel.agent.model.TokenUsage;
 import io.dscope.camel.agent.model.TaskStatus;
+import io.dscope.camel.agent.model.TokenUsage;
 import io.dscope.camel.agent.model.ToolPolicy;
 import io.dscope.camel.agent.model.ToolResult;
 import io.dscope.camel.agent.model.ToolSpec;
 import io.dscope.camel.agent.registry.DefaultToolRegistry;
 import io.dscope.camel.agent.validation.SchemaValidator;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Test;
 
 class DefaultAgentKernelTest {
 
@@ -303,7 +306,7 @@ class DefaultAgentKernelTest {
     }
 
     @Test
-    void shouldFallbackAssistantMessageToToolResultWhenModelMessageBlank() {
+    void shouldSynthesizeAssistantMessageAfterToolCallWhenModelMessageBlank() {
         ObjectMapper mapper = new ObjectMapper();
         ToolSpec toolSpec = new ToolSpec("support.ticket.open", "ticket", null, null, null, null, new ToolPolicy(false, 0, 1000));
         AgentBlueprint blueprint = blueprint(toolSpec);
@@ -314,24 +317,106 @@ class DefaultAgentKernelTest {
             return new ToolResult("", data, List.of());
         };
         InMemoryPersistenceFacade persistence = new InMemoryPersistenceFacade();
+        AtomicInteger modelCalls = new AtomicInteger();
 
         DefaultAgentKernel kernel = new DefaultAgentKernel(
             blueprint,
             new DefaultToolRegistry(blueprint.tools()),
             toolExecutor,
-            (systemPrompt, history, tools, options, callback) -> new ModelResponse(
-                "",
-                List.of(new AiToolCall("support.ticket.open", mapper.createObjectNode())),
-                true
-            ),
+            (systemPrompt, history, tools, options, callback) -> {
+                if (modelCalls.incrementAndGet() == 1) {
+                    return new ModelResponse(
+                        "",
+                        List.of(new AiToolCall("support.ticket.open", mapper.createObjectNode())),
+                        true
+                    );
+                }
+                Assertions.assertTrue(tools.isEmpty());
+                Assertions.assertTrue(systemPrompt.contains("Never invent placeholder values"));
+                Assertions.assertTrue(systemPrompt.contains("valid JSON without comments"));
+                Assertions.assertTrue(history.stream().anyMatch(event -> "tool.result".equals(event.type())));
+                return new ModelResponse("Ticket TCK-123 is open.", List.of(), true);
+            },
             persistence,
             new SchemaValidator(),
             mapper
         );
 
-        var response = kernel.handleUserMessage("c-tool-fallback", "open ticket");
-        Assertions.assertFalse(response.message().isBlank());
-        Assertions.assertTrue(response.message().contains("ticketId"));
+        var response = kernel.handleUserMessage("c-tool-synthesis", "open ticket");
+        Assertions.assertEquals(2, modelCalls.get());
+        Assertions.assertEquals("Ticket TCK-123 is open.", response.message());
+        Assertions.assertFalse(response.message().contains("ticketId"));
+    }
+
+    @Test
+    void shouldSummarizeToolResultWithoutRawJsonWhenSynthesisIsBlank() {
+        ObjectMapper mapper = new ObjectMapper();
+        ToolSpec toolSpec = new ToolSpec("calendar.listAvailability", "availability", null, null, null, null, new ToolPolicy(false, 0, 1000));
+        AgentBlueprint blueprint = blueprint(toolSpec);
+        var data = mapper.createObjectNode();
+        data.putArray("content").add(mapper.createObjectNode().put("type", "text").put("text", "calendar.listAvailability returned 1 row(s)"));
+        var structuredContent = mapper.createObjectNode().put("status", "ok").put("method", "calendar.listAvailability");
+        data.set("structuredContent", structuredContent);
+        ToolExecutor toolExecutor = (tool, args, ctx) -> new ToolResult(data.toPrettyString(), data, List.of());
+        AtomicInteger modelCalls = new AtomicInteger();
+
+        DefaultAgentKernel kernel = new DefaultAgentKernel(
+            blueprint,
+            new DefaultToolRegistry(blueprint.tools()),
+            toolExecutor,
+            (systemPrompt, history, tools, options, callback) -> {
+                if (modelCalls.incrementAndGet() == 1) {
+                    return new ModelResponse(
+                        "",
+                        List.of(new AiToolCall("calendar.listAvailability", mapper.createObjectNode())),
+                        true
+                    );
+                }
+                return new ModelResponse("", List.of(), true);
+            },
+            new InMemoryPersistenceFacade(),
+            new SchemaValidator(),
+            mapper
+        );
+
+        var response = kernel.handleUserMessage("c-tool-summary", "find availability");
+        Assertions.assertEquals("calendar.listAvailability returned 1 row(s)", response.message());
+        Assertions.assertFalse(response.message().contains("structuredContent"));
+        Assertions.assertFalse(response.message().contains("isError"));
+    }
+
+    @Test
+    void shouldSummarizeToolResultWhenSynthesisFails() {
+        ObjectMapper mapper = new ObjectMapper();
+        ToolSpec toolSpec = new ToolSpec("customerLookup", "customer lookup", null, null, null, null, new ToolPolicy(false, 0, 1000));
+        AgentBlueprint blueprint = blueprint(toolSpec);
+        var data = mapper.createObjectNode();
+        data.putArray("content").add(mapper.createObjectNode().put("type", "text").put("text", "customerLookup returned 1 row(s)"));
+        ToolExecutor toolExecutor = (tool, args, ctx) -> new ToolResult(data.toPrettyString(), data, List.of());
+        AtomicInteger modelCalls = new AtomicInteger();
+
+        DefaultAgentKernel kernel = new DefaultAgentKernel(
+            blueprint,
+            new DefaultToolRegistry(blueprint.tools()),
+            toolExecutor,
+            (systemPrompt, history, tools, options, callback) -> {
+                if (modelCalls.incrementAndGet() == 1) {
+                    return new ModelResponse(
+                        "",
+                        List.of(new AiToolCall("customerLookup", mapper.createObjectNode())),
+                        true
+                    );
+                }
+                throw new RuntimeException("model unavailable");
+            },
+            new InMemoryPersistenceFacade(),
+            new SchemaValidator(),
+            mapper
+        );
+
+        var response = kernel.handleUserMessage("c-tool-synthesis-fail", "find customer");
+        Assertions.assertEquals("customerLookup returned 1 row(s)", response.message());
+        Assertions.assertEquals(2, modelCalls.get());
     }
 
     @Test

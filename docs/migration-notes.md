@@ -5,6 +5,7 @@
 Release promotion highlights:
 
 - Project modules, sample service, and standalone AGUI adapter now build as `0.7.0`.
+- Runtime dependencies align with Camel `4.20.0`, Spring Boot `4.0.5`, Spring Framework `7.0.7`, and Spring AI `1.1.4`.
 - Clean rebuild and full test run completed before local Maven install.
 - Artifacts installed to local Maven for downstream projects.
 
@@ -17,16 +18,23 @@ Dependency import baseline for consumers:
 
 DScope component baselines:
 
-- `io.dscope.camel:camel-persistence-core:1.2.0`
-- `io.dscope.camel:camel-persistence-redis:1.2.0`
-- `io.dscope.camel:camel-persistence-jdbc:1.2.0`
-- `io.dscope.camel:camel-a2a-component:1.1.0`
-- `io.dscope.camel:camel-ag-ui-component:1.2.0`
+- `io.dscope.camel:camel-persistence-core:1.3.0`
+- `io.dscope.camel:camel-persistence-redis:1.3.0`
+- `io.dscope.camel:camel-persistence-jdbc:1.3.0`
+- `io.dscope.camel:camel-persistence-ic4j:1.3.0`
+- `io.dscope.camel:camel-a2a-component:1.2.0`
+- `io.dscope.camel:camel-ag-ui-component:1.3.0`
 
 Behavioral notes:
 
 - JSON route template invoke URI validation now runs before dynamic route registration.
 - Blueprint HTTP resource resolution continues to reject private, loopback, link-local, wildcard, and multicast targets.
+
+Persistence adapter notes:
+
+- `DscopePersistenceFactory` now delegates flow-state store creation to Camel Persistence `FlowStateStoreFactory` for both primary and optional audit stores.
+- Dedicated audit override settings are normalized into `camel.persistence.*` keys before store creation.
+- The legacy agent-side `ScriptedJdbcFlowStateStore` helper was removed as unused after store selection moved to Camel Persistence.
 
 ## 0.5.0
 

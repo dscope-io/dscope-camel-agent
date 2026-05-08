@@ -159,9 +159,9 @@ Plan rule for this mode:
 - Do not introduce relay-specific finalize/commit orchestration into the WebRTC baseline flow.
 - If both relay and WebRTC are in scope, treat WebRTC as a separate transport path with independent stop/finalize behavior.
 
-- JDBC persistence bootstrap supports scripted vendor DDL selection and overrides:
+- Persistence bootstrap delegates backend selection to Camel Persistence and supports audit override mapping:
   - `camel-agent-persistence-dscope/src/main/java/io/dscope/camel/agent/persistence/dscope/DscopePersistenceFactory.java`
-  - `camel-agent-persistence-dscope/src/main/java/io/dscope/camel/agent/persistence/dscope/ScriptedJdbcFlowStateStore.java`
+  - `camel-persistence-core` `FlowStateStoreFactory`
   - `camel-agent-persistence-dscope/src/main/resources/db/persistence/postgres-flow-state.sql`
   - `camel-agent-persistence-dscope/src/main/resources/db/persistence/snowflake-flow-state.sql`
 

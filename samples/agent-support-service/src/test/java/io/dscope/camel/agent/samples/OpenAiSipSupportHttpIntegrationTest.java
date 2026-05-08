@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import io.dscope.camel.agent.kernel.InMemoryPersistenceFacade;
 import io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient;
 import io.dscope.camel.agent.realtime.openai.HttpOpenAiRealtimeCallControlClient;
 import io.dscope.camel.agent.realtime.openai.OpenAiRealtimeCallControlRequestFactory;
@@ -72,6 +73,7 @@ class OpenAiSipSupportHttpIntegrationTest {
         main.bind("supportCallRegistry", callRegistry);
         main.bind("openAiRealtimeCallSessionRegistry", sessionRegistry);
         main.bind("openAiRealtimeCallControlRequestFactory", new OpenAiRealtimeCallControlRequestFactory());
+        main.bind("persistenceFacade", new InMemoryPersistenceFacade());
         main.bind("supportOpenAiSipWebhookProcessor", new SupportOpenAiSipWebhookProcessor(
             MAPPER,
             callRegistry,

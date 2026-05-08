@@ -37,6 +37,7 @@ class RealtimeTokenHttpTtlIntegrationTest {
         System.setProperty("agent.runtime.test-port", Integer.toString(port));
 
         Main main = new Main();
+        main.bind("supportRealtimeSessionInitProcessor", new MockInitProcessor());
         if (useMockedTokenProcessor) {
             main.bind("supportRealtimeTokenProcessor", new MockTokenProcessor());
         }
@@ -167,6 +168,31 @@ class RealtimeTokenHttpTtlIntegrationTest {
             body.put("conversationId", conversationId);
             body.put("value", "mock-token");
             exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, 200);
+            exchange.getMessage().setBody(body.toString());
+        }
+    }
+
+    private static final class MockInitProcessor implements Processor {
+
+        @Override
+        public void process(Exchange exchange) {
+            String conversationId = exchange.getMessage().getHeader("conversationId", String.class);
+            RealtimeBrowserSessionRegistry registry = exchange.getContext().getRegistry()
+                .lookupByNameAndType("supportRealtimeSessionRegistry", RealtimeBrowserSessionRegistry.class);
+
+            ObjectNode session = MAPPER.createObjectNode();
+            session.put("type", "realtime");
+            session.put("model", "gpt-realtime");
+            if (registry != null && conversationId != null && !conversationId.isBlank()) {
+                registry.putSession(conversationId, session);
+            }
+
+            ObjectNode body = MAPPER.createObjectNode();
+            body.put("initialized", true);
+            body.put("conversationId", conversationId == null ? "" : conversationId);
+            body.set("session", session);
+            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, 200);
+            exchange.getMessage().setHeader(Exchange.CONTENT_TYPE, "application/json");
             exchange.getMessage().setBody(body.toString());
         }
     }

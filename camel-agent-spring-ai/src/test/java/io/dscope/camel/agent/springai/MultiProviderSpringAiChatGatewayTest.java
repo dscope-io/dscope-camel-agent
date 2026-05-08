@@ -152,7 +152,7 @@ class MultiProviderSpringAiChatGatewayTest {
             .build();
 
         Assertions.assertNull(options.getMaxTokens());
-        Assertions.assertEquals(900, options.getMaxCompletionTokens());
+        Assertions.assertEquals(900, options.getMaxCompletionTokens().intValue());
     }
 
     @Test
@@ -161,7 +161,7 @@ class MultiProviderSpringAiChatGatewayTest {
             .applyOpenAiMaxTokenOption(OpenAiChatOptions.builder(), "gpt-4o", 700)
             .build();
 
-        Assertions.assertEquals(700, options.getMaxTokens());
+        Assertions.assertEquals(700, options.getMaxTokens().intValue());
         Assertions.assertNull(options.getMaxCompletionTokens());
     }
 

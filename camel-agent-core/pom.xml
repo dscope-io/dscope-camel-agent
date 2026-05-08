@@ -61,6 +61,11 @@
     </dependency>
     <dependency>
       <groupId>io.dscope.camel</groupId>
+      <artifactId>camel-persistence-core</artifactId>
+      <version>${persistence.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.dscope.camel</groupId>
       <artifactId>camel-mcp</artifactId>
       <version>${camel.mcp.version}</version>
     </dependency>

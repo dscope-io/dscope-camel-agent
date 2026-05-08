@@ -177,6 +177,12 @@ class AgUiPlaywrightAuditTrailIntegrationTest {
                                            Double temperature,
                                            Integer maxTokens,
                                            java.util.function.Consumer<String> streamingTokenCallback) {
+            if (tools == null || tools.isEmpty()) {
+                String assistantText = userContext != null && userContext.contains("Support ticket created successfully")
+                    ? "Support ticket created successfully"
+                    : "I completed the requested action.";
+                return new SpringAiChatResult(assistantText, List.of(), true);
+            }
             String query = userContext == null ? "" : userContext;
             AiToolCall call = new AiToolCall("support.ticket.manage", mapper.createObjectNode().put("query", query));
             return new SpringAiChatResult("", List.of(call), true);

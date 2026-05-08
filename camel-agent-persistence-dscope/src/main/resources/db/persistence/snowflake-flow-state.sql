@@ -1,39 +1,34 @@
--- DScope JDBC flow-state schema for Snowflake
-CREATE TABLE IF NOT EXISTS camel_flow_snapshot (
-    flow_type       STRING NOT NULL,
-    flow_id         STRING NOT NULL,
-    version         NUMBER(38,0) NOT NULL,
-    snapshot_json   STRING NOT NULL,
-    metadata_json   STRING NOT NULL,
-    last_updated_at STRING NOT NULL,
-    PRIMARY KEY (flow_type, flow_id)
+-- DScope JDBC flow-state schema for Snowflake.
+-- Creates the dedicated audit-trail schema used by agent persistence.
+CREATE SCHEMA IF NOT EXISTS AUDIT_TRAIL;
+USE SCHEMA AUDIT_TRAIL;
+
+CREATE TABLE IF NOT EXISTS CAMEL_FLOW_SNAPSHOT (
+    FLOW_TYPE       VARCHAR(128) NOT NULL,
+    FLOW_ID         VARCHAR(256) NOT NULL,
+    VERSION         NUMBER(38,0) NOT NULL,
+    SNAPSHOT_JSON   VARCHAR NOT NULL,
+    METADATA_JSON   VARCHAR NOT NULL,
+    LAST_UPDATED_AT VARCHAR(64) NOT NULL,
+    CONSTRAINT PK_CAMEL_FLOW_SNAPSHOT PRIMARY KEY (FLOW_TYPE, FLOW_ID)
 );
 
-CREATE TABLE IF NOT EXISTS camel_flow_event (
-    flow_type        STRING NOT NULL,
-    flow_id          STRING NOT NULL,
-    sequence         NUMBER(38,0) NOT NULL,
-    event_id         STRING NOT NULL,
-    event_type       STRING NOT NULL,
-    payload_json     STRING NOT NULL,
-    occurred_at      STRING NOT NULL,
-    idempotency_key  STRING,
-    PRIMARY KEY (flow_type, flow_id, sequence)
+CREATE TABLE IF NOT EXISTS CAMEL_FLOW_EVENT (
+    FLOW_TYPE        VARCHAR(128) NOT NULL,
+    FLOW_ID          VARCHAR(256) NOT NULL,
+    SEQUENCE         NUMBER(38,0) NOT NULL,
+    EVENT_ID         VARCHAR(128) NOT NULL,
+    EVENT_TYPE       VARCHAR(128) NOT NULL,
+    PAYLOAD_JSON     VARCHAR NOT NULL,
+    OCCURRED_AT      VARCHAR(64) NOT NULL,
+    IDEMPOTENCY_KEY  VARCHAR(256),
+    CONSTRAINT PK_CAMEL_FLOW_EVENT PRIMARY KEY (FLOW_TYPE, FLOW_ID, SEQUENCE)
 );
 
-CREATE TABLE IF NOT EXISTS camel_flow_idempotency (
-    flow_type       STRING NOT NULL,
-    flow_id         STRING NOT NULL,
-    idempotency_key STRING NOT NULL,
-    applied_version NUMBER(38,0) NOT NULL,
-    PRIMARY KEY (flow_type, flow_id, idempotency_key)
+CREATE TABLE IF NOT EXISTS CAMEL_FLOW_IDEMPOTENCY (
+    FLOW_TYPE       VARCHAR(128) NOT NULL,
+    FLOW_ID         VARCHAR(256) NOT NULL,
+    IDEMPOTENCY_KEY VARCHAR(256) NOT NULL,
+    APPLIED_VERSION NUMBER(38,0) NOT NULL,
+    CONSTRAINT PK_CAMEL_FLOW_IDEMPOTENCY PRIMARY KEY (FLOW_TYPE, FLOW_ID, IDEMPOTENCY_KEY)
 );
-
-CREATE INDEX IF NOT EXISTS idx_camel_flow_event_type_time
-    ON camel_flow_event (event_type, occurred_at);
-
-CREATE INDEX IF NOT EXISTS idx_camel_flow_event_flow
-    ON camel_flow_event (flow_type, flow_id);
-
-CREATE INDEX IF NOT EXISTS idx_camel_flow_snapshot_flow
-    ON camel_flow_snapshot (flow_type, flow_id);

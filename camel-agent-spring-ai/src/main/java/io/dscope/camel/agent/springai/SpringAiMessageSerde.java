@@ -1,5 +1,6 @@
 package io.dscope.camel.agent.springai;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -15,6 +16,9 @@ import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 
 public class SpringAiMessageSerde {
+
+    private static final TypeReference<Map<String, Object>> METADATA_TYPE = new TypeReference<>() {
+    };
 
     private final ObjectMapper objectMapper;
 
@@ -69,7 +73,7 @@ public class SpringAiMessageSerde {
             String typeText = node.path("type").asText(MessageType.USER.name());
             MessageType type = parseType(typeText);
             String text = node.path("text").asText("");
-            Map<String, Object> metadata = objectMapper.convertValue(node.path("metadata"), Map.class);
+            Map<String, Object> metadata = objectMapper.convertValue(node.path("metadata"), METADATA_TYPE);
 
             switch (type) {
                 case USER -> messages.add(UserMessage.builder().text(text).metadata(metadata).build());
@@ -87,7 +91,11 @@ public class SpringAiMessageSerde {
                             ));
                         }
                     }
-                    messages.add(new AssistantMessage(text, metadata, toolCalls));
+                    messages.add(AssistantMessage.builder()
+                        .content(text)
+                        .properties(metadata)
+                        .toolCalls(toolCalls)
+                        .build());
                 }
                 case TOOL -> {
                     List<ToolResponseMessage.ToolResponse> responses = new ArrayList<>();
@@ -101,7 +109,10 @@ public class SpringAiMessageSerde {
                             ));
                         }
                     }
-                    messages.add(new ToolResponseMessage(responses, metadata));
+                    messages.add(ToolResponseMessage.builder()
+                        .responses(responses)
+                        .metadata(metadata)
+                        .build());
                 }
                 default -> messages.add(UserMessage.builder().text(text).metadata(metadata).build());
             }

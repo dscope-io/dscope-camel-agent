@@ -7,37 +7,6 @@ import org.junit.jupiter.api.Test;
 class DscopePersistenceFactoryTest {
 
     @Test
-    void shouldResolvePostgresDefaultDdlResource() {
-        String resource = DscopePersistenceFactory.resolveSchemaDdlResource(new Properties(), "jdbc:postgresql://localhost:5432/agent");
-
-        Assertions.assertEquals(DscopePersistenceFactory.DEFAULT_POSTGRES_DDL_RESOURCE, resource);
-    }
-
-    @Test
-    void shouldResolveSnowflakeDefaultDdlResource() {
-        String resource = DscopePersistenceFactory.resolveSchemaDdlResource(new Properties(), "jdbc:snowflake://acme.snowflakecomputing.com");
-
-        Assertions.assertEquals(DscopePersistenceFactory.DEFAULT_SNOWFLAKE_DDL_RESOURCE, resource);
-    }
-
-    @Test
-    void shouldUseOverrideDdlResourceWhenConfigured() {
-        Properties properties = new Properties();
-        properties.setProperty(DscopePersistenceFactory.SCHEMA_DDL_RESOURCE_PROPERTY, "classpath:db/custom-ddl.sql");
-
-        String resource = DscopePersistenceFactory.resolveSchemaDdlResource(properties, "jdbc:postgresql://localhost:5432/agent");
-
-        Assertions.assertEquals("classpath:db/custom-ddl.sql", resource);
-    }
-
-    @Test
-    void shouldReturnNullDdlResourceForUnknownJdbcVendorWithoutOverride() {
-        String resource = DscopePersistenceFactory.resolveSchemaDdlResource(new Properties(), "jdbc:oracle:thin:@localhost:1521/ORCLCDB");
-
-        Assertions.assertNull(resource);
-    }
-
-    @Test
     void shouldReturnNullWhenNoAuditPersistenceOverrideConfigured() {
         Properties properties = new Properties();
         properties.setProperty("camel.persistence.backend", "redis_jdbc");
@@ -51,15 +20,24 @@ class DscopePersistenceFactoryTest {
     @Test
     void shouldBuildAuditJdbcPropertiesWhenAuditJdbcUrlProvided() {
         Properties properties = new Properties();
-        properties.setProperty("camel.persistence.backend", "redis_jdbc");
         properties.setProperty("agent.audit.jdbc.url", "jdbc:postgresql://audit-db/audit");
 
         Properties audit = DscopePersistenceFactory.buildAuditPersistenceProperties(properties);
 
         Assertions.assertNotNull(audit);
         Assertions.assertEquals("true", audit.getProperty("camel.persistence.enabled"));
-        Assertions.assertEquals("jdbc", audit.getProperty("camel.persistence.backend"));
         Assertions.assertEquals("jdbc:postgresql://audit-db/audit", audit.getProperty("camel.persistence.jdbc.url"));
+    }
+
+    @Test
+    void shouldPreserveNamespacedAuditBackend() {
+        Properties properties = new Properties();
+        properties.setProperty("agent.audit.backend", "redis_jdbc");
+
+        Properties audit = DscopePersistenceFactory.buildAuditPersistenceProperties(properties);
+
+        Assertions.assertNotNull(audit);
+        Assertions.assertEquals("redis_jdbc", audit.getProperty("camel.persistence.backend"));
     }
 
     @Test

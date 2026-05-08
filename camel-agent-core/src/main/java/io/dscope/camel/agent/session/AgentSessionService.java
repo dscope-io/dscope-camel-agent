@@ -13,10 +13,10 @@ import io.dscope.camel.agent.registry.CorrelationRegistry;
 import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 import io.dscope.camel.agent.runtime.ResolvedAgentPlan;
 import io.dscope.camel.agent.runtime.RuntimePlaceholderResolver;
+import io.dscope.camel.persistence.core.IdGenerator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import org.apache.camel.Exchange;
 
 public class AgentSessionService {
@@ -46,7 +46,7 @@ public class AgentSessionService {
         AgentComponent component = (AgentComponent) endpoint.getComponent();
         String requestedConversationId = requestedConversationId(exchange, effectiveRequest);
         boolean created = requestedConversationId.isBlank();
-        String conversationId = created ? UUID.randomUUID().toString() : requestedConversationId;
+        String conversationId = created ? IdGenerator.newUlid() : requestedConversationId;
         String prompt = firstNonBlank(effectiveRequest.prompt(), exchange.getMessage().getBody(String.class), "");
 
         applyRequestMetadata(exchange, effectiveRequest, conversationId);
@@ -150,7 +150,7 @@ public class AgentSessionService {
         }
         persistenceFacade.appendEvent(
             resolver.selectionEvent(conversationId, resolvedPlan),
-            UUID.randomUUID().toString()
+            IdGenerator.newUlid()
         );
     }
 

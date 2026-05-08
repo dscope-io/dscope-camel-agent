@@ -44,6 +44,8 @@ class AgentSessionServiceTest {
             );
 
             Assertions.assertFalse(response.conversationId().isBlank());
+            Assertions.assertEquals(26, response.conversationId().length());
+            Assertions.assertTrue(response.conversationId().matches("^[0-7][0-9A-HJKMNP-TV-Z]{25}$"));
             Assertions.assertEquals(response.conversationId(), response.sessionId());
             Assertions.assertTrue(response.created());
             Assertions.assertTrue(response.message().startsWith("reply:"));

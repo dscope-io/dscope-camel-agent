@@ -49,8 +49,8 @@ The realtime voice path waits for audit persistence because the browser calls th
   - appends conversation archive events inline.
 - `camel-agent-persistence-dscope/.../DscopePersistenceFacade.java`
   - `appendEvent(...)` is synchronous and also updates the conversation index inline.
-- `camel-agent-persistence-dscope/.../ScriptedJdbcFlowStateStore.java`
-  - uses direct JDBC connections, transactions, inserts, and commit in the calling thread.
+- `camel-agent-persistence-dscope/.../DscopePersistenceFactory.java`
+  - delegates backend store creation to Camel Persistence `FlowStateStoreFactory`; blocking behavior depends on the configured backend implementation.
 
 ## Scaling Concerns
 

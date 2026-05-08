@@ -1,6 +1,16 @@
 package io.dscope.camel.agent.kernel;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+
 import io.dscope.camel.agent.api.AgentKernel;
 import io.dscope.camel.agent.api.AiModelClient;
 import io.dscope.camel.agent.api.PersistenceFacade;
@@ -12,22 +22,15 @@ import io.dscope.camel.agent.model.AgentResponse;
 import io.dscope.camel.agent.model.AiToolCall;
 import io.dscope.camel.agent.model.DynamicRouteState;
 import io.dscope.camel.agent.model.ExecutionContext;
-import io.dscope.camel.agent.model.ModelUsage;
 import io.dscope.camel.agent.model.ModelOptions;
 import io.dscope.camel.agent.model.ModelResponse;
+import io.dscope.camel.agent.model.ModelUsage;
 import io.dscope.camel.agent.model.TaskState;
 import io.dscope.camel.agent.model.TaskStatus;
 import io.dscope.camel.agent.model.TokenUsage;
 import io.dscope.camel.agent.model.ToolResult;
 import io.dscope.camel.agent.model.ToolSpec;
 import io.dscope.camel.agent.validation.SchemaValidator;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class DefaultAgentKernel implements AgentKernel {
 
@@ -158,7 +161,7 @@ public class DefaultAgentKernel implements AgentKernel {
         List<AgentEvent> history = new ArrayList<>(conversationStore.loadConversation(conversationId, 20));
         emitMcpToolsDiscoveredIfNeeded(conversationId, history, emitted);
         StringBuilder streamed = new StringBuilder();
-        String lastToolResultFallback = "";
+        List<ToolResult> completedToolResults = new ArrayList<>();
 
         ModelResponse modelResponse = aiModelClient.generate(
             blueprint.systemInstruction(),
@@ -231,27 +234,19 @@ public class DefaultAgentKernel implements AgentKernel {
             AgentEvent resultEvent = event(conversationId, null, "tool.result", objectMapper.valueToTree(toolResult));
             persist(resultEvent);
             emitted.add(resultEvent);
-
-            String toolFallback = toolResult.content();
-            if ((toolFallback == null || toolFallback.isBlank()) && toolResult.data() != null && !toolResult.data().isNull()) {
-                toolFallback = toolResult.data().toString();
-            }
-            if (toolFallback != null && !toolFallback.isBlank()) {
-                lastToolResultFallback = toolFallback;
-                LOGGER.debug("Kernel tool fallback captured: conversationId={}, tool={}, chars={}",
-                    conversationId,
-                    toolCall.name(),
-                    toolFallback.length());
-            }
+            completedToolResults.add(toolResult);
         }
 
         String finalMessage = modelResponse.assistantMessage();
         if (finalMessage == null || finalMessage.isBlank()) {
             finalMessage = streamed.toString().trim();
         }
-        if ((finalMessage == null || finalMessage.isBlank()) && !lastToolResultFallback.isBlank()) {
-            finalMessage = lastToolResultFallback;
-            LOGGER.debug("Kernel assistant fallback used from tool result: conversationId={}, chars={}",
+        if ((finalMessage == null || finalMessage.isBlank()) && !completedToolResults.isEmpty()) {
+            finalMessage = synthesizeToolResults(conversationId, emitted);
+        }
+        if ((finalMessage == null || finalMessage.isBlank()) && !completedToolResults.isEmpty()) {
+            finalMessage = summarizeToolResults(completedToolResults);
+            LOGGER.debug("Kernel assistant fallback summarized tool results: conversationId={}, chars={}",
                 conversationId,
                 finalMessage.length());
         }
@@ -284,6 +279,114 @@ public class DefaultAgentKernel implements AgentKernel {
             emitted.size());
 
         return new AgentResponse(conversationId, finalMessage, emitted, taskState);
+    }
+
+    private String synthesizeToolResults(String conversationId, List<AgentEvent> emitted) {
+        StringBuilder synthesisStream = new StringBuilder();
+        ModelResponse synthesisResponse;
+        try {
+            synthesisResponse = aiModelClient.generate(
+                blueprint.systemInstruction() + "\n\nUse the completed tool results in the conversation history to answer the user. Return a concise final user-facing response. Do not call another tool. If you return structured JSON, it must be valid JSON without comments or markdown fences. Copy identifiers, status values, dates, times, and other business fields exactly from the tool result. Never invent placeholder values such as [eventId], your_event_id_here, TODO, or replace-with-actual-value.",
+                new ArrayList<>(conversationStore.loadConversation(conversationId, 50)),
+                List.of(),
+                defaultModelOptions.withStreaming(true),
+                token -> {
+                    synthesisStream.append(token);
+                    AgentEvent delta = event(conversationId, null, "assistant.delta", objectMapper.valueToTree(token));
+                    persist(delta);
+                    emitted.add(delta);
+                }
+            );
+        } catch (RuntimeException failure) {
+            Throwable root = failure;
+            while (root.getCause() != null && root.getCause() != root) {
+                root = root.getCause();
+            }
+            String rootMessage = root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
+            LOGGER.warn("Kernel tool-result synthesis failed; using structured summary fallback: conversationId={}, reason={}",
+                conversationId,
+                rootMessage);
+            LOGGER.debug("Kernel tool-result synthesis failure details", failure);
+            return synthesisStream.toString().trim();
+        }
+        LOGGER.debug("Kernel tool-result synthesis response received: conversationId={}, assistantMessageChars={}, streamedChars={}, tokenUsage={}, modelUsage={}",
+            conversationId,
+            synthesisResponse.assistantMessage() == null ? 0 : synthesisResponse.assistantMessage().length(),
+            synthesisStream.length(),
+            synthesisResponse.tokenUsage(),
+            synthesisResponse.modelUsage());
+
+        TokenUsage tokenUsage = synthesisResponse.tokenUsage();
+        ModelUsage modelUsage = synthesisResponse.modelUsage();
+        if ((modelUsage != null && modelUsage.isReported()) || (tokenUsage != null && tokenUsage.isReported())) {
+            Object usagePayload = modelUsage != null && modelUsage.isReported() ? modelUsage : tokenUsage;
+            AgentEvent usageEvent = event(conversationId, null, "model.usage", objectMapper.valueToTree(usagePayload));
+            persist(usageEvent);
+            emitted.add(usageEvent);
+        }
+
+        String finalMessage = synthesisResponse.assistantMessage();
+        if (finalMessage == null || finalMessage.isBlank()) {
+            finalMessage = synthesisStream.toString().trim();
+        }
+        return finalMessage == null ? "" : finalMessage.trim();
+    }
+
+    private String summarizeToolResults(List<ToolResult> toolResults) {
+        List<String> summaries = new ArrayList<>();
+        for (ToolResult toolResult : toolResults) {
+            String summary = summarizeToolResult(toolResult);
+            if (!summary.isBlank()) {
+                summaries.add(summary);
+            }
+        }
+        if (summaries.isEmpty()) {
+            return "I completed the requested action.";
+        }
+        return String.join("\n", summaries);
+    }
+
+    private String summarizeToolResult(ToolResult toolResult) {
+        if (toolResult == null) {
+            return "";
+        }
+        String dataSummary = summarizeToolData(toolResult.data());
+        if (!dataSummary.isBlank()) {
+            return dataSummary;
+        }
+        String content = toolResult.content() == null ? "" : toolResult.content().trim();
+        if (content.isBlank()) {
+            return "";
+        }
+        if (content.startsWith("{") || content.startsWith("[")) {
+            return "I completed the requested action.";
+        }
+        return content;
+    }
+
+    private String summarizeToolData(com.fasterxml.jackson.databind.JsonNode data) {
+        if (data == null || data.isNull() || data.isMissingNode()) {
+            return "";
+        }
+        com.fasterxml.jackson.databind.JsonNode content = data.path("content");
+        if (content.isArray()) {
+            List<String> lines = new ArrayList<>();
+            for (com.fasterxml.jackson.databind.JsonNode entry : content) {
+                String text = entry.path("text").asText("").trim();
+                if (!text.isBlank()) {
+                    lines.add(text);
+                }
+            }
+            if (!lines.isEmpty()) {
+                return String.join("\n", lines);
+            }
+        }
+        String status = data.path("structuredContent").path("status").asText("").trim();
+        String method = data.path("structuredContent").path("method").asText("").trim();
+        if (!method.isBlank()) {
+            return method + (status.isBlank() ? " completed." : " completed with status " + status + ".");
+        }
+        return "";
     }
 
     @Override

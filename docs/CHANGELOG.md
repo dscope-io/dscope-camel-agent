@@ -1,17 +1,28 @@
 # Changelog
 
+## 2026-05-08
+
+### Documentation and persistence cleanup notes
+
+- Documented that `camel-agent-persistence-dscope` now resolves flow-state stores through Camel Persistence `FlowStateStoreFactory`.
+- Removed stale documentation references to the deleted `ScriptedJdbcFlowStateStore` helper.
+- Clarified that audit persistence overrides are mapped into `camel.persistence.*` properties and resolved through the same factory delegation path.
+
 ## 2026-05-01
 
 ### Release 0.7.0
 
 - Promoted root, reactor modules, sample service, and standalone AGUI adapter to `0.7.0`.
-- Updated DScope dependency baselines to `camel-persistence` `1.2.0`, `camel-a2a-component` `1.1.0`, and `camel-ag-ui-component` `1.2.0`.
+- Updated platform baselines to Camel `4.20.0`, Spring Boot `4.0.5`, Spring Framework `7.0.7`, and Spring AI `1.1.4`.
+- Updated DScope dependency baselines to `camel-persistence` `1.3.0`, `camel-a2a-component` `1.2.0`, and `camel-ag-ui-component` `1.3.0`.
+- Added the `camel-persistence-ic4j` persistence adapter dependency at the shared `camel-persistence` baseline.
 - Regenerated Camel component metadata so the `agent` component descriptor reports `0.7.0`.
 - Installed `0.7.0` artifacts to the local Maven repository after a clean rebuild and full test run.
 
 ### Validation updates
 
 - Completed `mvn clean install -DskipTests=false` successfully for the root reactor.
+- Completed sample clean test verification successfully against locally installed `0.7.0` artifacts.
 - Completed `mvn -f camel-agent-agui/pom.xml clean install -Pdscope-local -DskipTests=false` successfully for the standalone AGUI adapter.
 - Tightened JSON route template invoke URI validation so disallowed invoke schemes are rejected before dynamic route registration.
 - Aligned blueprint resource tests with the current SSRF guard that rejects private and loopback HTTP resource targets.

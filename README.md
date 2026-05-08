@@ -37,12 +37,15 @@ Recent additions:
 
 - Camel Agent: `0.7.0`
 - Java: `21`
-- Camel: `4.15.0`
+- Camel: `4.20.0`
+- Spring Boot: `4.0.5`
+- Spring Framework: `7.0.7`
+- Spring AI: `1.1.4`
 - Jackson: `2.20.0`
 - JUnit: `5.10.2`
-- DScope persistence: `1.2.0`
-- DScope A2A: `1.1.0`
-- DScope AGUI: `1.2.0`
+- DScope persistence: `1.3.0`
+- DScope A2A: `1.2.0`
+- DScope AGUI: `1.3.0`
 
 ## Release Notes
 
@@ -361,13 +364,13 @@ Spring Framework dependency remediation was applied for known `spring-core` vuln
 
 What was changed:
 
-- centralized Spring Framework version management via `spring.framework.version`
-- pinned `org.springframework:spring-core` in root `dependencyManagement`
+- centralized Spring Framework version management via `spring-framework-bom`
+- aligned the Spring stack with Camel `4.20.0` expectations: Spring Boot `4.0.5`, Spring Framework `7.0.7`, and Spring AI `1.1.4`
 - updated `camel-agent-spring-ai` to consume managed Spring version
 
 Current resolved baseline:
 
-- `org.springframework:spring-core:6.1.21`
+- `org.springframework:spring-core:7.0.7`
 
 Verification commands:
 

@@ -29,7 +29,7 @@
 ## 2. Assumptions
 
 - the sample should demonstrate the canonical Spring Boot embedding path documented in `docs/PRODUCT_GUIDE.md`
-- Java 21, Camel 4.15.0, Spring Boot 3.5.11, and Spring AI 1.0.3 remain the current aligned baseline
+- Java 21, Camel 4.20.0, Spring Boot 4.0.5, Spring Framework 7.0.7, and Spring AI 1.1.4 remain the current aligned baseline
 - provider defaults follow the current sample baseline unless overridden: `agent.runtime.spring-ai.provider=openai`, `agent.runtime.spring-ai.model=gpt-5.4`, `agent.runtime.spring-ai.openai.api-mode=chat`
 - local development can use Derby or H2-style in-memory JDBC persistence, while CI can override to Postgres if needed
 - operators still want audit visibility even for a backend-only Spring deployment, so audit trail remains enabled

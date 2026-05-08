@@ -12,13 +12,13 @@ import io.dscope.camel.agent.model.ExecutionContext;
 import io.dscope.camel.agent.model.JsonRouteTemplateSpec;
 import io.dscope.camel.agent.model.ToolResult;
 import io.dscope.camel.agent.model.ToolSpec;
+import io.dscope.camel.persistence.core.IdGenerator;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import org.apache.camel.CamelContext;
 import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.Builder;
@@ -89,7 +89,7 @@ public class TemplateAwareCamelToolExecutor implements ToolExecutor {
         if (invokeUri != null && !invokeUri.isBlank()) {
             validateToUri(invokeUri);
         }
-        String routeInstanceId = UUID.randomUUID().toString();
+        String routeInstanceId = IdGenerator.newUlid();
         try {
             synchronized (camelContext) {
                 camelContext.addRoutes(routeBuilderFromJson(renderedRoute));
@@ -170,7 +170,7 @@ public class TemplateAwareCamelToolExecutor implements ToolExecutor {
         if (id.isTextual() && !id.asText().isBlank()) {
             return id.asText();
         }
-        String generated = "agent.dynamic." + templateId.replace(' ', '.') + "." + UUID.randomUUID().toString().substring(0, 8);
+        String generated = "agent.dynamic." + templateId.replace(' ', '.') + "." + IdGenerator.newUlid().substring(0, 8);
         ((ObjectNode) route).put("id", generated);
         return generated;
     }

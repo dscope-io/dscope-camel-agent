@@ -21,7 +21,7 @@ This guide covers:
 | Module | Purpose |
 | --- | --- |
 | `camel-agent-core` | `agent:` Camel component, blueprint loader, kernel, tool registry, schema validation, runtime helpers |
-| `camel-agent-persistence-dscope` | Persistence facade backed by DScope camel persistence with `redis`, `jdbc`, and `redis_jdbc` modes |
+| `camel-agent-persistence-dscope` | Persistence facade backed by Camel Persistence `FlowStateStore` implementations selected via `FlowStateStoreFactory` (for example `redis`, `jdbc`, `redis_jdbc`) |
 | `camel-agent-spring-ai` | Spring AI model gateway, multi-provider routing, OpenAI/Gemini/Claude support, chat memory serialization |
 | `camel-agent-twilio` | Twilio telephony adapter built on provider-neutral outbound SIP and call-correlation contracts |
 | `camel-agent-starter` | Spring Boot auto-configuration for `AgentKernel`, persistence, blueprint loader, and optional chat memory |
@@ -243,6 +243,11 @@ These are the `agent.*` properties bound by `camel-agent-starter`.
 | `agent.chat-memory-window` | `100` | Maximum message window for `MessageWindowChatMemory`. |
 | `agent.task-claim-owner-id` | generated node id | Optional node identifier for distributed task lease claims. |
 | `agent.task-claim-lease-seconds` | `120` | Lease duration for distributed task ownership. |
+
+Persistence adapter note:
+
+- `DscopePersistenceFactory` now delegates store creation to `FlowStateStoreFactory` from Camel Persistence.
+- Dedicated audit store settings are translated into `camel.persistence.*` properties and resolved by the same factory path.
 
 Important integration note:
 
@@ -1234,7 +1239,7 @@ At minimum, add the Camel Agent starter and your normal Spring Boot and Camel de
   <dependency>
     <groupId>org.apache.camel.springboot</groupId>
     <artifactId>camel-spring-boot-starter</artifactId>
-    <version>4.15.0</version>
+    <version>4.20.0</version>
   </dependency>
 
   <dependency>

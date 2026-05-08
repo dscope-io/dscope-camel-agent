@@ -5,8 +5,8 @@ import io.dscope.camel.agent.telephony.OutboundSipCallRequest;
 import io.dscope.camel.agent.telephony.OutboundSipCallResult;
 import io.dscope.camel.agent.telephony.SipProviderClient;
 import io.dscope.camel.agent.telephony.SipProviderMetadata;
+import io.dscope.camel.persistence.core.IdGenerator;
 import java.util.Objects;
-import java.util.UUID;
 
 public final class TwilioSipProviderClient implements SipProviderClient {
 
@@ -31,7 +31,7 @@ public final class TwilioSipProviderClient implements SipProviderClient {
     public OutboundSipCallResult placeOutboundCall(OutboundSipCallRequest request) throws Exception {
         TwilioCallPlacement placement = callGateway.placeCall(request);
         SipProviderMetadata providerMetadata = metadataMapper.map(placement);
-        String requestId = UUID.randomUUID().toString();
+        String requestId = IdGenerator.newUlid();
         return new OutboundSipCallResult(
             providerName(),
             requestId,

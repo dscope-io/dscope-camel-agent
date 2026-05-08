@@ -17,12 +17,15 @@ class SpringAiMessageSerdeTest {
         SpringAiMessageSerde serde = new SpringAiMessageSerde(new ObjectMapper());
 
         Message user = UserMessage.builder().text("hello").metadata(Map.of("lang", "en")).build();
-        Message assistant = new AssistantMessage("hi", Map.of("m", "1"), List.of(
-            new AssistantMessage.ToolCall("1", "function", "kb.search", "{\"q\":\"x\"}")
-        ));
-        Message tool = new ToolResponseMessage(List.of(
-            new ToolResponseMessage.ToolResponse("1", "kb.search", "{\"answer\":\"ok\"}")
-        ), Map.of("source", "tool"));
+        Message assistant = AssistantMessage.builder()
+            .content("hi")
+            .properties(Map.of("m", "1"))
+            .toolCalls(List.of(new AssistantMessage.ToolCall("1", "function", "kb.search", "{\"q\":\"x\"}")))
+            .build();
+        Message tool = ToolResponseMessage.builder()
+            .responses(List.of(new ToolResponseMessage.ToolResponse("1", "kb.search", "{\"answer\":\"ok\"}")))
+            .metadata(Map.of("source", "tool"))
+            .build();
 
         var json = serde.serialize(List.of(user, assistant, tool));
         var roundTrip = serde.deserialize(json);
