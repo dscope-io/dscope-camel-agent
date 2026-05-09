@@ -47,6 +47,7 @@ public class DefaultAgentKernel implements AgentKernel {
     private final ModelOptions defaultModelOptions;
     private final String nodeOwnerId;
     private final int taskClaimLeaseSeconds;
+    private final boolean rehydrateHistoryFromPersistence;
 
     public DefaultAgentKernel(AgentBlueprint blueprint,
                               ToolRegistry toolRegistry,
@@ -56,7 +57,7 @@ public class DefaultAgentKernel implements AgentKernel {
                               SchemaValidator schemaValidator,
                               ObjectMapper objectMapper) {
         this(blueprint, toolRegistry, toolExecutor, aiModelClient, persistenceFacade, schemaValidator, objectMapper,
-            ModelOptions.defaults(), "node-" + UUID.randomUUID(), 120);
+            ModelOptions.defaults(), "node-" + UUID.randomUUID(), 120, true);
     }
 
     public DefaultAgentKernel(AgentBlueprint blueprint,
@@ -69,7 +70,21 @@ public class DefaultAgentKernel implements AgentKernel {
                               String nodeOwnerId,
                               int taskClaimLeaseSeconds) {
         this(blueprint, toolRegistry, toolExecutor, aiModelClient, persistenceFacade, schemaValidator, objectMapper,
-            ModelOptions.defaults(), nodeOwnerId, taskClaimLeaseSeconds);
+            ModelOptions.defaults(), nodeOwnerId, taskClaimLeaseSeconds, true);
+    }
+
+    public DefaultAgentKernel(AgentBlueprint blueprint,
+                              ToolRegistry toolRegistry,
+                              ToolExecutor toolExecutor,
+                              AiModelClient aiModelClient,
+                              PersistenceFacade persistenceFacade,
+                              SchemaValidator schemaValidator,
+                              ObjectMapper objectMapper,
+                              String nodeOwnerId,
+                              int taskClaimLeaseSeconds,
+                              boolean rehydrateHistoryFromPersistence) {
+        this(blueprint, toolRegistry, toolExecutor, aiModelClient, persistenceFacade, schemaValidator, objectMapper,
+            ModelOptions.defaults(), nodeOwnerId, taskClaimLeaseSeconds, rehydrateHistoryFromPersistence);
     }
 
     public DefaultAgentKernel(AgentBlueprint blueprint,
@@ -82,6 +97,21 @@ public class DefaultAgentKernel implements AgentKernel {
                               ModelOptions defaultModelOptions,
                               String nodeOwnerId,
                               int taskClaimLeaseSeconds) {
+        this(blueprint, toolRegistry, toolExecutor, aiModelClient, persistenceFacade, schemaValidator, objectMapper,
+            defaultModelOptions, nodeOwnerId, taskClaimLeaseSeconds, true);
+        }
+
+        public DefaultAgentKernel(AgentBlueprint blueprint,
+                      ToolRegistry toolRegistry,
+                      ToolExecutor toolExecutor,
+                      AiModelClient aiModelClient,
+                      PersistenceFacade persistenceFacade,
+                      SchemaValidator schemaValidator,
+                      ObjectMapper objectMapper,
+                      ModelOptions defaultModelOptions,
+                      String nodeOwnerId,
+                      int taskClaimLeaseSeconds,
+                      boolean rehydrateHistoryFromPersistence) {
         this.blueprint = blueprint;
         this.toolRegistry = toolRegistry;
         this.toolExecutor = toolExecutor;
@@ -93,6 +123,7 @@ public class DefaultAgentKernel implements AgentKernel {
         this.defaultModelOptions = defaultModelOptions == null ? ModelOptions.defaults() : defaultModelOptions;
         this.nodeOwnerId = nodeOwnerId == null || nodeOwnerId.isBlank() ? "node-" + UUID.randomUUID() : nodeOwnerId;
         this.taskClaimLeaseSeconds = Math.max(1, taskClaimLeaseSeconds);
+        this.rehydrateHistoryFromPersistence = rehydrateHistoryFromPersistence;
     }
 
     @Override
@@ -158,7 +189,7 @@ public class DefaultAgentKernel implements AgentKernel {
             return new AgentResponse(conversationId, "Dynamic route started: " + routeId, emitted, finished);
         }
 
-        List<AgentEvent> history = new ArrayList<>(conversationStore.loadConversation(conversationId, 20));
+        List<AgentEvent> history = loadConversationHistory(conversationId, 20);
         emitMcpToolsDiscoveredIfNeeded(conversationId, history, emitted);
         StringBuilder streamed = new StringBuilder();
         List<ToolResult> completedToolResults = new ArrayList<>();
@@ -287,7 +318,7 @@ public class DefaultAgentKernel implements AgentKernel {
         try {
             synthesisResponse = aiModelClient.generate(
                 blueprint.systemInstruction() + "\n\nUse the completed tool results in the conversation history to answer the user. Return a concise final user-facing response. Do not call another tool. If you return structured JSON, it must be valid JSON without comments or markdown fences. Copy identifiers, status values, dates, times, and other business fields exactly from the tool result. Never invent placeholder values such as [eventId], your_event_id_here, TODO, or replace-with-actual-value.",
-                new ArrayList<>(conversationStore.loadConversation(conversationId, 50)),
+                loadConversationHistory(conversationId, 50),
                 List.of(),
                 defaultModelOptions.withStreaming(true),
                 token -> {
@@ -505,6 +536,32 @@ public class DefaultAgentKernel implements AgentKernel {
                 rootMessage);
             LOGGER.debug("Kernel event persistence failure details", failure);
         }
+    }
+
+    private List<AgentEvent> loadConversationHistory(String conversationId, int limit) {
+        int boundedLimit = Math.max(1, limit);
+        List<AgentEvent> inMemory = new ArrayList<>(conversationStore.loadConversation(conversationId, boundedLimit));
+        if (!rehydrateHistoryFromPersistence || persistenceFacade == null) {
+            return inMemory;
+        }
+        // If this process already has multi-turn history, prefer local canonical payloads.
+        if (inMemory.size() > 1) {
+            return inMemory;
+        }
+        try {
+            List<AgentEvent> persisted = persistenceFacade.loadConversation(conversationId, boundedLimit);
+            if (persisted != null && !persisted.isEmpty()) {
+                // Prefer persisted history only when it likely contains prior turns from before this process.
+                if (inMemory.isEmpty() || persisted.size() > inMemory.size()) {
+                    return new ArrayList<>(persisted);
+                }
+            }
+        } catch (RuntimeException failure) {
+            LOGGER.warn("Kernel persisted history load failed; falling back to in-memory history: conversationId={}, reason={}",
+                conversationId,
+                failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage());
+        }
+        return inMemory;
     }
 
     private com.fasterxml.jackson.databind.JsonNode taskPayload(TaskState taskState) {

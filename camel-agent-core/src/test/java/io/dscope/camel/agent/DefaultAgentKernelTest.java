@@ -2,6 +2,7 @@ package io.dscope.camel.agent;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -86,6 +87,44 @@ class DefaultAgentKernelTest {
         Assertions.assertEquals(1, toolCalls.get());
         Assertions.assertFalse(response.message().isBlank());
         Assertions.assertEquals(TaskStatus.FINISHED, response.taskState().status());
+    }
+
+    @Test
+    void shouldLoadHistoryFromPersistenceWhenEnabled() {
+        ToolSpec toolSpec = new ToolSpec("echo", "echo", "echo", null, null, null, new ToolPolicy(false, 0, 1000));
+        AgentBlueprint blueprint = blueprint(toolSpec);
+        ObjectMapper mapper = new ObjectMapper();
+        InMemoryPersistenceFacade sharedPersistence = new InMemoryPersistenceFacade();
+
+        // Seed durable history as if it came from a prior process instance.
+        sharedPersistence.appendEvent(
+            new io.dscope.camel.agent.model.AgentEvent("c-rehydrate", null, "user.message", mapper.valueToTree("previous turn"), java.time.Instant.now()),
+            "seed-1"
+        );
+
+        AtomicReference<List<io.dscope.camel.agent.model.AgentEvent>> seenHistory = new AtomicReference<>(List.of());
+        DefaultAgentKernel kernel = new DefaultAgentKernel(
+            blueprint,
+            new DefaultToolRegistry(blueprint.tools()),
+            (tool, args, ctx) -> new ToolResult("ok", mapper.createObjectNode(), List.of()),
+            (systemPrompt, history, tools, options, callback) -> {
+                seenHistory.set(history);
+                return new ModelResponse("ok", List.of(), true);
+            },
+            sharedPersistence,
+            new SchemaValidator(),
+            mapper,
+            "node-test",
+            120,
+            true
+        );
+
+        kernel.handleUserMessage("c-rehydrate", "hello after restart");
+
+        Assertions.assertTrue(
+            seenHistory.get().stream().anyMatch(e -> "previous turn".equals(e.payload().asText())),
+            "Expected persisted prior turn to be present in model history"
+        );
     }
 
     @Test

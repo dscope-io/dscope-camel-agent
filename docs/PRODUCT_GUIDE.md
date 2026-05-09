@@ -54,6 +54,7 @@ At a high level, one request flows like this:
 6. Persistence stores conversation events, task state, dynamic route metadata, and optionally separate conversation archive events.
 
 For lower-level event flow details, see `docs/architecture.md`.
+For persistence choices and rehydration behavior by scenario, see `docs/AGENT_PERSISTENCE_SCENARIOS.md`.
 
 ## Main Scenarios
 
@@ -241,6 +242,7 @@ These are the `agent.*` properties bound by `camel-agent-starter`.
 | `agent.audit-jdbc-driver-class-name` | unset | Optional dedicated audit JDBC driver class. |
 | `agent.chat-memory-enabled` | `true` | Enables Spring AI chat memory repository auto-configuration when Spring AI chat memory classes are present. |
 | `agent.chat-memory-window` | `100` | Maximum message window for `MessageWindowChatMemory`. |
+| `agent.history-rehydrate-from-persistence` | `true` | When enabled, `DefaultAgentKernel` loads model history from `PersistenceFacade` first (with in-memory fallback). |
 | `agent.task-claim-owner-id` | generated node id | Optional node identifier for distributed task lease claims. |
 | `agent.task-claim-lease-seconds` | `120` | Lease duration for distributed task ownership. |
 

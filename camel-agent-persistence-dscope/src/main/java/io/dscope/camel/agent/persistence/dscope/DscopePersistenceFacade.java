@@ -1,20 +1,5 @@
 package io.dscope.camel.agent.persistence.dscope;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.dscope.camel.agent.api.PersistenceFacade;
-import io.dscope.camel.agent.model.AgentEvent;
-import io.dscope.camel.agent.model.AuditGranularity;
-import io.dscope.camel.agent.model.DynamicRouteState;
-import io.dscope.camel.agent.model.TaskState;
-import io.dscope.camel.agent.model.TaskStatus;
-import io.dscope.camel.agent.config.CorrelationKeys;
-import io.dscope.camel.agent.registry.CorrelationRegistry;
-import io.dscope.camel.persistence.core.FlowStateStore;
-import io.dscope.camel.persistence.core.IdGenerator;
-import io.dscope.camel.persistence.core.PersistedEvent;
-import io.dscope.camel.persistence.core.exception.OptimisticConflictException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -25,7 +10,29 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import io.dscope.camel.agent.api.PersistenceFacade;
+import io.dscope.camel.agent.config.CorrelationKeys;
+import io.dscope.camel.agent.model.AgentEvent;
+import io.dscope.camel.agent.model.AuditGranularity;
+import io.dscope.camel.agent.model.DynamicRouteState;
+import io.dscope.camel.agent.model.TaskState;
+import io.dscope.camel.agent.model.TaskStatus;
+import io.dscope.camel.agent.registry.CorrelationRegistry;
+import io.dscope.camel.persistence.core.FlowStateStore;
+import io.dscope.camel.persistence.core.IdGenerator;
+import io.dscope.camel.persistence.core.PersistedEvent;
+import io.dscope.camel.persistence.core.exception.OptimisticConflictException;
+
 public class DscopePersistenceFacade implements PersistenceFacade {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(DscopePersistenceFacade.class);
 
     public static final String FLOW_CONVERSATION = "agent.conversation";
     public static final String FLOW_TASK = "agent.task";
@@ -93,13 +100,41 @@ public class DscopePersistenceFacade implements PersistenceFacade {
 
     @Override
     public List<AgentEvent> loadConversation(String conversationId, int limit) {
-        List<PersistedEvent> events = auditFlowStateStore.readEvents(FLOW_CONVERSATION, conversationId, 0L, limit);
+        List<PersistedEvent> events;
+        try {
+            events = auditFlowStateStore.readEvents(FLOW_CONVERSATION, conversationId, 0L, limit);
+        } catch (RuntimeException exception) {
+            if (isRecoverableConversationReadFailure(exception)) {
+                LOGGER.warn(
+                    "Falling back to empty conversation history after persisted read failure: conversationId={}, reason={}",
+                    conversationId,
+                    exception.getMessage());
+                return List.of();
+            }
+            throw exception;
+        }
         List<AgentEvent> result = new ArrayList<>();
         for (PersistedEvent event : events) {
             JsonNode payload = unwrapPayload(event.payload());
             result.add(new AgentEvent(conversationId, null, event.eventType(), payload, Instant.parse(event.occurredAt())));
         }
         return result;
+    }
+
+    private boolean isRecoverableConversationReadFailure(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null) {
+                String normalized = message.toLowerCase();
+                if (normalized.contains("failed to decode jdbc events")
+                    || normalized.contains("column chunk longer than expected")) {
+                    return true;
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     @Override

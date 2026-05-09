@@ -125,6 +125,11 @@ public class AgentComponent extends DefaultComponent {
         AiModelClient aiModelClient = findRegistry(AiModelClient.class).orElseGet(StaticAiModelClient::new);
         PersistenceFacade persistenceFacade = persistenceFacade();
         ToolExecutor toolExecutor = createToolExecutor(producerTemplate, mapper, blueprint, persistenceFacade, resolvedPlan);
+        boolean rehydrateHistoryFromPersistence = booleanRuntimeProperty(true,
+            "agent.runtime.history.rehydrate-from-persistence",
+            "agent.runtime.history.rehydrateFromPersistence",
+            "agent.history.rehydrate-from-persistence",
+            "agent.history.rehydrateFromPersistence");
 
         return new DefaultAgentKernel(
             blueprint,
@@ -136,7 +141,8 @@ public class AgentComponent extends DefaultComponent {
             mapper,
             resolvedPlan == null ? ModelOptions.defaults() : resolvedPlan.ai().toModelOptions(false, ModelOptions.defaults()),
             "node-" + java.util.UUID.randomUUID(),
-            120
+            120,
+            rehydrateHistoryFromPersistence
         );
     }
 
@@ -213,6 +219,16 @@ public class AgentComponent extends DefaultComponent {
                 } catch (NumberFormatException ignored) {
                     return defaultValue;
                 }
+            }
+        }
+        return defaultValue;
+    }
+
+    private boolean booleanRuntimeProperty(boolean defaultValue, String... keys) {
+        for (String key : keys) {
+            String value = runtimeProperty(key);
+            if (value != null && !value.isBlank()) {
+                return Boolean.parseBoolean(value.trim());
             }
         }
         return defaultValue;

@@ -1,7 +1,18 @@
 package io.dscope.camel.agent.persistence.dscope;
 
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.dscope.camel.agent.audit.AuditTrailService;
 import io.dscope.camel.agent.config.CorrelationKeys;
 import io.dscope.camel.agent.model.AgentEvent;
 import io.dscope.camel.agent.model.AuditGranularity;
@@ -9,20 +20,12 @@ import io.dscope.camel.agent.model.DynamicRouteState;
 import io.dscope.camel.agent.model.TaskState;
 import io.dscope.camel.agent.model.TaskStatus;
 import io.dscope.camel.agent.registry.CorrelationRegistry;
-import io.dscope.camel.agent.audit.AuditTrailService;
 import io.dscope.camel.persistence.core.AppendResult;
 import io.dscope.camel.persistence.core.FlowStateStore;
 import io.dscope.camel.persistence.core.PersistedEvent;
 import io.dscope.camel.persistence.core.RehydratedState;
 import io.dscope.camel.persistence.core.StateEnvelope;
 import io.dscope.camel.persistence.core.exception.OptimisticConflictException;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Test;
 
 class DscopePersistenceFacadeTest {
 
@@ -37,6 +40,16 @@ class DscopePersistenceFacadeTest {
         List<AgentEvent> events = facade.loadConversation("c1", 10);
         Assertions.assertEquals(1, events.size());
         Assertions.assertEquals("user.message", events.getFirst().type());
+    }
+
+    @Test
+    void shouldReturnEmptyConversationWhenJdbcDecodeFails() {
+        DecodeFailureFlowStateStore store = new DecodeFailureFlowStateStore();
+        DscopePersistenceFacade facade = new DscopePersistenceFacade(store, new ObjectMapper());
+
+        List<AgentEvent> events = facade.loadConversation("broken-conversation", 10);
+
+        Assertions.assertTrue(events.isEmpty());
     }
 
     @Test
@@ -272,6 +285,18 @@ class DscopePersistenceFacadeTest {
 
         List<PersistedEvent> eventsFor(String flowType, String flowId) {
             return events.getOrDefault(flowType + ":" + flowId, List.of());
+        }
+    }
+
+    private static final class DecodeFailureFlowStateStore extends TestFlowStateStore {
+        @Override
+        public List<PersistedEvent> readEvents(String flowType, String flowId, long afterVersion, int limit) {
+            if (DscopePersistenceFacade.FLOW_CONVERSATION.equals(flowType) && "broken-conversation".equals(flowId)) {
+                throw new IllegalStateException(
+                    "JDBC read events failed",
+                    new IllegalArgumentException("Failed to decode JDBC events: column chunk longer than expected"));
+            }
+            return super.readEvents(flowType, flowId, afterVersion, limit);
         }
     }
 

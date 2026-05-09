@@ -153,7 +153,8 @@ public class AgentAutoConfiguration {
             new SchemaValidator(),
             objectMapper,
             properties.getTaskClaimOwnerId(),
-            properties.getTaskClaimLeaseSeconds()
+            properties.getTaskClaimLeaseSeconds(),
+            properties.isHistoryRehydrateFromPersistence()
         );
     }
 

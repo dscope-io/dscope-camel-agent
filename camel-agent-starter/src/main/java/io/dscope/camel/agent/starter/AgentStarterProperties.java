@@ -26,6 +26,7 @@ public class AgentStarterProperties {
     private boolean chatMemoryEnabled = true;
     @Min(1)
     private int chatMemoryWindow = 100;
+    private boolean historyRehydrateFromPersistence = true;
     private String taskClaimOwnerId;
     @Min(1)
     private int taskClaimLeaseSeconds = 120;
@@ -140,6 +141,14 @@ public class AgentStarterProperties {
 
     public void setChatMemoryWindow(int chatMemoryWindow) {
         this.chatMemoryWindow = chatMemoryWindow;
+    }
+
+    public boolean isHistoryRehydrateFromPersistence() {
+        return historyRehydrateFromPersistence;
+    }
+
+    public void setHistoryRehydrateFromPersistence(boolean historyRehydrateFromPersistence) {
+        this.historyRehydrateFromPersistence = historyRehydrateFromPersistence;
     }
 
     public String getTaskClaimOwnerId() {
