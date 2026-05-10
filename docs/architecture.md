@@ -206,9 +206,10 @@ Implementation note:
 
 ## Non-Blocking Audit Path
 
-Runtime can move audit writes off the request thread:
+Runtime keeps audit writes off the request thread by default:
 
-- config flag: `agent.audit.async.enabled=true`
+- default flag: `agent.audit.async.enabled=true`
+- opt-out flag: `agent.audit.async.enabled=false`
 - wrapper: `AsyncEventPersistenceFacade`
 - applied to:
   - primary audit/event persistence facade

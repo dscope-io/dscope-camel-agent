@@ -2,7 +2,7 @@
 
 Date: 2026-03-07
 
-Status update: historical analysis. As of 2026-03-08 the runtime also supports optional non-blocking audit persistence through `AsyncEventPersistenceFacade` when `agent.audit.async.enabled=true`.
+Status update: historical analysis. The runtime now defaults to non-blocking audit persistence through `AsyncEventPersistenceFacade`; set `agent.audit.async.enabled=false` to restore the historical synchronous behavior.
 
 ## Conclusion
 
@@ -80,12 +80,12 @@ The kernel generally continues if persistence fails, so audit storage problems d
 
 ## Recommendation
 
-This recommendation has now been implemented as an optional runtime mode.
+This recommendation has now been implemented as the default runtime mode.
 
 Implemented direction:
 
 1. `AsyncEventPersistenceFacade` decorates `PersistenceFacade`.
-2. `AgentRuntimeBootstrap` enables it with `agent.audit.async.enabled=true`.
+2. `AgentRuntimeBootstrap` and `camel-agent-starter` enable it by default; set `agent.audit.async.enabled=false` to disable it.
 3. The same async wrapper is applied to optional conversation archive persistence.
 4. Reads merge queued events with persisted history so audit projections remain coherent.
 5. Queue saturation is bounded and reported through metrics/warnings.
