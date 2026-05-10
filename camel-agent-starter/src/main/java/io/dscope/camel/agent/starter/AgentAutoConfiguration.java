@@ -16,6 +16,7 @@ import io.dscope.camel.agent.model.AgentBlueprint;
 import io.dscope.camel.agent.persistence.dscope.DscopePersistenceFactory;
 import io.dscope.camel.agent.registry.DefaultToolRegistry;
 import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
+import io.dscope.camel.agent.runtime.AsyncEventPersistenceFacade;
 import io.dscope.camel.agent.runtime.ResolvedAgentPlan;
 import io.dscope.camel.agent.springai.DscopeChatMemoryRepositoryFactory;
 import io.dscope.camel.agent.springai.NoopSpringAiChatGateway;
@@ -92,7 +93,18 @@ public class AgentAutoConfiguration {
         copyIfPresent(config, "agent.audit.jdbc.username", properties.getAuditJdbcUsername());
         copyIfPresent(config, "agent.audit.jdbc.password", properties.getAuditJdbcPassword());
         copyIfPresent(config, "agent.audit.jdbc.driver-class-name", properties.getAuditJdbcDriverClassName());
-        return DscopePersistenceFactory.create(config, objectMapper);
+        PersistenceFacade persistenceFacade = DscopePersistenceFactory.create(config, objectMapper);
+        if (!properties.isAuditAsyncEnabled()) {
+            return persistenceFacade;
+        }
+        return new AsyncEventPersistenceFacade(
+            persistenceFacade,
+            "starter-main",
+            properties.getAuditAsyncQueueCapacity(),
+            properties.getAuditAsyncRetryDelayMs(),
+            properties.getAuditAsyncShutdownTimeoutMs(),
+            properties.getAuditAsyncMetricsLogIntervalMs()
+        );
     }
 
     @Bean

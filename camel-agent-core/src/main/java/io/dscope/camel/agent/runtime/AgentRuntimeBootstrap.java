@@ -351,7 +351,7 @@ public final class AgentRuntimeBootstrap {
         if (persistenceFacade == null || persistenceFacade instanceof AsyncEventPersistenceFacade) {
             return persistenceFacade;
         }
-        boolean enabled = Boolean.parseBoolean(properties.getProperty("agent.audit.async.enabled", "false"));
+        boolean enabled = Boolean.parseBoolean(properties.getProperty("agent.audit.async.enabled", "true"));
         if (!enabled) {
             return persistenceFacade;
         }

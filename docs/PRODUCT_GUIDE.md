@@ -369,7 +369,7 @@ OpenAI Responses strict schema note:
 | `agent.audit.jdbc.username` | unset | Optional dedicated audit JDBC username. |
 | `agent.audit.jdbc.password` | unset | Optional dedicated audit JDBC password. |
 | `agent.audit.jdbc.driver-class-name` | unset | Optional dedicated audit JDBC driver class. |
-| `agent.audit.async.enabled` | `false` | Enables async audit and archive persistence wrapper. |
+| `agent.audit.async.enabled` | `true` | Enables async audit and archive persistence wrapper. Set to `false` to force synchronous writes. |
 | `agent.audit.async.queue-capacity` | `4096` | Async audit queue size. |
 | `agent.audit.async.retry-delay-ms` | `250` | Retry delay for async audit persistence. |
 | `agent.audit.async.shutdown-timeout-ms` | `5000` | Shutdown wait for async audit flush. |

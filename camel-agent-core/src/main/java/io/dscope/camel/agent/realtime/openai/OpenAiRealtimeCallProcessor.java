@@ -2,6 +2,7 @@ package io.dscope.camel.agent.realtime.openai;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -9,7 +10,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.UUID;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
@@ -48,25 +48,21 @@ public final class OpenAiRealtimeCallProcessor implements Processor {
         }
 
         Map<String, Object> request = readRequest(exchange);
-        String sdp = stringValue(request.get("sdp")).trim();
+        String sdp = stringValue(request.get("sdp"));
         if (sdp.isBlank()) {
             writeError(exchange, 400, "Missing browser SDP offer");
             return;
         }
 
-        Map<String, Object> session = copyMap(request.get("session"));
-        session.putIfAbsent("type", "realtime");
-        session.putIfAbsent("model", defaultModel);
+        String model = resolveModel(request);
+        URI endpointWithModel = endpointWithModel(callsEndpoint, model);
 
-        String boundary = "----camel-agent-realtime-" + UUID.randomUUID();
-        byte[] body = multipartBody(boundary, sdp, objectMapper.writeValueAsString(session));
-
-        HttpRequest openAiRequest = HttpRequest.newBuilder(callsEndpoint)
+        HttpRequest openAiRequest = HttpRequest.newBuilder(endpointWithModel)
             .timeout(Duration.ofSeconds(45))
             .header("Authorization", "Bearer " + apiKey)
             .header("Accept", "application/sdp")
-            .header("Content-Type", "multipart/form-data; boundary=" + boundary)
-            .POST(HttpRequest.BodyPublishers.ofByteArray(body))
+            .header("Content-Type", "application/sdp")
+            .POST(HttpRequest.BodyPublishers.ofString(sdp, StandardCharsets.UTF_8))
             .build();
 
         HttpResponse<String> response;
@@ -102,29 +98,35 @@ public final class OpenAiRealtimeCallProcessor implements Processor {
         return objectMapper.readValue(text, MAP_TYPE);
     }
 
-    private Map<String, Object> copyMap(Object value) {
-        if (!(value instanceof Map<?, ?> map)) {
-            return new LinkedHashMap<>();
-        }
+    private Map<String, Object> copyMap(Map<?, ?> map) {
         Map<String, Object> copy = new LinkedHashMap<>();
         map.forEach((key, item) -> copy.put(String.valueOf(key), item));
         return copy;
     }
 
-    private byte[] multipartBody(String boundary, String sdp, String sessionJson) {
-        String lineBreak = "\r\n";
-        String body = "--" + boundary + lineBreak
-            + "Content-Disposition: form-data; name=\"sdp\"" + lineBreak
-            + "Content-Type: application/sdp" + lineBreak
-            + lineBreak
-            + sdp + lineBreak
-            + "--" + boundary + lineBreak
-            + "Content-Disposition: form-data; name=\"session\"" + lineBreak
-            + "Content-Type: application/json" + lineBreak
-            + lineBreak
-            + sessionJson + lineBreak
-            + "--" + boundary + "--" + lineBreak;
-        return body.getBytes(StandardCharsets.UTF_8);
+    private String resolveModel(Map<String, Object> request) {
+        String model = stringValue(request.get("model")).trim();
+        if (!model.isBlank()) {
+            return model;
+        }
+        Object sessionObject = request.get("session");
+        if (sessionObject instanceof Map<?, ?> sessionMap) {
+            model = stringValue(sessionMap.get("model")).trim();
+            if (!model.isBlank()) {
+                return model;
+            }
+        }
+        return defaultModel;
+    }
+
+    private URI endpointWithModel(URI baseEndpoint, String model) {
+        String endpoint = baseEndpoint.toString();
+        if (endpoint.contains("model=")) {
+            return baseEndpoint;
+        }
+        String separator = endpoint.contains("?") ? "&" : "?";
+        String encodedModel = URLEncoder.encode(model, StandardCharsets.UTF_8);
+        return URI.create(endpoint + separator + "model=" + encodedModel);
     }
 
     private void writeError(Exchange exchange, int statusCode, String message) {

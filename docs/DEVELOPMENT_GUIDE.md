@@ -821,6 +821,18 @@ Sample-focused local install when downstream module artifacts may be stale:
 mvn install -DskipTests
 ```
 
+Performance smoke tests and debug artifact capture:
+
+```bash
+mvn -pl camel-agent-core compiler:testCompile surefire:test -Dtest=DefaultAgentKernelPerformanceSmokeTest
+mvn -pl camel-agent-core compiler:testCompile surefire:test -Dtest=AsyncEventPersistenceFacadePerformanceSmokeTest
+mvn -pl samples/agent-support-service -am compiler:testCompile surefire:test -Dtest=AgentSessionHttpPerformanceSmokeTest -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+Debug and performance artifacts are written per module under `target/test-debug-artifacts/<TestClass>/<scenario>/`.
+Use that directory for generated JSON reports, captured logs, copied screenshots, and any profiler or response artifacts that should be referenced in a debug-mode report.
+For log-heavy debug slices, prefer writing filtered excerpts to the artifact bundle instead of relying on raw console output alone.
+
 ### What To Validate By Area
 
 - blueprint or tool changes: schema validation, route execution, and agent turn behavior

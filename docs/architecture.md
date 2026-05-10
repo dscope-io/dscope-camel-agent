@@ -41,7 +41,7 @@ Runtime bootstrap also binds mutable operational controls and optional archive s
 
 - `RuntimeControlState` for live audit granularity updates
 - `ConversationArchiveService` for optional transcript-focused persistence (`conversation.*`)
-- optional `AsyncEventPersistenceFacade` wrapper when `agent.audit.async.enabled=true`
+- `AsyncEventPersistenceFacade` wrapper by default; set `agent.audit.async.enabled=false` to force synchronous audit/archive writes
 
 ## Plan Catalog
 

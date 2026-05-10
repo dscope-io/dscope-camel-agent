@@ -79,7 +79,7 @@ public class SpringAiModelClient implements AiModelClient {
         return new ModelResponse(result.message(), result.toolCalls(), result.terminal(), tokenUsage, modelUsage);
     }
 
-    private static final int MAX_PAYLOAD_LENGTH = 400;
+    private static final int MAX_PAYLOAD_LENGTH = 10000;
 
     private String buildContext(List<AgentEvent> history) {
         if (history == null || history.isEmpty()) {

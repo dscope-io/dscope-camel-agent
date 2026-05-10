@@ -23,6 +23,15 @@ public class AgentStarterProperties {
     private String auditJdbcUsername;
     private String auditJdbcPassword;
     private String auditJdbcDriverClassName;
+    private boolean auditAsyncEnabled = true;
+    @Min(1)
+    private int auditAsyncQueueCapacity = 4096;
+    @Min(10)
+    private long auditAsyncRetryDelayMs = 250L;
+    @Min(100)
+    private long auditAsyncShutdownTimeoutMs = 5000L;
+    @Min(1000)
+    private long auditAsyncMetricsLogIntervalMs = 30000L;
     private boolean chatMemoryEnabled = true;
     @Min(1)
     private int chatMemoryWindow = 100;
@@ -125,6 +134,46 @@ public class AgentStarterProperties {
 
     public void setAuditJdbcDriverClassName(String auditJdbcDriverClassName) {
         this.auditJdbcDriverClassName = auditJdbcDriverClassName;
+    }
+
+    public boolean isAuditAsyncEnabled() {
+        return auditAsyncEnabled;
+    }
+
+    public void setAuditAsyncEnabled(boolean auditAsyncEnabled) {
+        this.auditAsyncEnabled = auditAsyncEnabled;
+    }
+
+    public int getAuditAsyncQueueCapacity() {
+        return auditAsyncQueueCapacity;
+    }
+
+    public void setAuditAsyncQueueCapacity(int auditAsyncQueueCapacity) {
+        this.auditAsyncQueueCapacity = auditAsyncQueueCapacity;
+    }
+
+    public long getAuditAsyncRetryDelayMs() {
+        return auditAsyncRetryDelayMs;
+    }
+
+    public void setAuditAsyncRetryDelayMs(long auditAsyncRetryDelayMs) {
+        this.auditAsyncRetryDelayMs = auditAsyncRetryDelayMs;
+    }
+
+    public long getAuditAsyncShutdownTimeoutMs() {
+        return auditAsyncShutdownTimeoutMs;
+    }
+
+    public void setAuditAsyncShutdownTimeoutMs(long auditAsyncShutdownTimeoutMs) {
+        this.auditAsyncShutdownTimeoutMs = auditAsyncShutdownTimeoutMs;
+    }
+
+    public long getAuditAsyncMetricsLogIntervalMs() {
+        return auditAsyncMetricsLogIntervalMs;
+    }
+
+    public void setAuditAsyncMetricsLogIntervalMs(long auditAsyncMetricsLogIntervalMs) {
+        this.auditAsyncMetricsLogIntervalMs = auditAsyncMetricsLogIntervalMs;
     }
 
     public boolean isChatMemoryEnabled() {

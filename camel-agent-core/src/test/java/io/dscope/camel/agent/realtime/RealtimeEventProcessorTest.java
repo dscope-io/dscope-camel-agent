@@ -17,7 +17,6 @@ import org.apache.camel.support.DefaultExchange;
 import org.apache.camel.support.SimpleRegistry;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
-import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,13 +24,12 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import ch.qos.logback.classic.Level;
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import io.dscope.camel.agent.config.AgentHeaders;
 import io.dscope.camel.agent.kernel.InMemoryPersistenceFacade;
 import io.dscope.camel.agent.model.AgentEvent;
 import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
+import io.dscope.camel.agent.testing.TestArtifactSupport;
+import io.dscope.camel.agent.testing.TestLogCaptureSupport;
 
 class RealtimeEventProcessorTest {
 
@@ -823,14 +821,7 @@ class RealtimeEventProcessorTest {
             }
         });
 
-        Logger logger = (Logger) LoggerFactory.getLogger(RealtimeEventProcessor.class);
-        ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        logger.addAppender(appender);
-        Level previous = logger.getLevel();
-        logger.setLevel(Level.DEBUG);
-
-        try {
+        try (TestLogCaptureSupport logs = TestLogCaptureSupport.capture(RealtimeEventProcessor.class, Level.DEBUG)) {
             String conversationId = "conv-log-order";
             sessionRegistry.putSession(conversationId, MAPPER.createObjectNode());
             relayClient.forceConnected(conversationId);
@@ -841,19 +832,36 @@ class RealtimeEventProcessorTest {
 
             processor.process(exchange);
 
-            List<String> messages = appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
+            List<String> messages = logs.messages();
             int composedIndex = indexOf(messages, "Realtime context update composed: conversationId=conv-log-order");
             int appliedIndex = indexOf(messages, "Realtime route session update applied: conversationId=conv-log-order");
             int applyResultIndex = indexOf(messages, "Realtime context update apply result: conversationId=conv-log-order, updated=true");
             int branchStartedIndex = indexOf(messages, "Realtime voice branch started from backend: conversationId=conv-log-order");
+
+            TestArtifactSupport.ArtifactBundle artifacts = TestArtifactSupport.bundle(getClass(), "realtime-log-order");
+            logs.writeMessageGroup(
+                artifacts,
+                "realtime-checkpoints",
+                "Realtime checkpoint log order excerpt",
+                "Realtime context update composed",
+                "Realtime route session update applied",
+                "Realtime context update apply result",
+                "Realtime voice branch started from backend"
+            );
+            artifacts.writeJson("realtime-checkpoints-summary.json", java.util.Map.of(
+                "conversationId", conversationId,
+                "composedIndex", composedIndex,
+                "appliedIndex", appliedIndex,
+                "applyResultIndex", applyResultIndex,
+                "branchStartedIndex", branchStartedIndex
+            ));
+            artifacts.writeIndex("Realtime checkpoint debug artifacts");
 
             Assertions.assertTrue(composedIndex >= 0, "missing composed log checkpoint");
             Assertions.assertTrue(appliedIndex > composedIndex, "session update applied should be after compose");
             Assertions.assertTrue(applyResultIndex > appliedIndex, "apply result should be after update applied");
             Assertions.assertTrue(branchStartedIndex > applyResultIndex, "voice branch start should be after successful context update");
         } finally {
-            logger.setLevel(previous);
-            logger.detachAppender(appender);
             context.stop();
         }
     }
@@ -872,14 +880,7 @@ class RealtimeEventProcessorTest {
             }
         });
 
-        Logger logger = (Logger) LoggerFactory.getLogger(RealtimeEventProcessor.class);
-        ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        logger.addAppender(appender);
-        Level previous = logger.getLevel();
-        logger.setLevel(Level.DEBUG);
-
-        try {
+        try (TestLogCaptureSupport logs = TestLogCaptureSupport.capture(RealtimeEventProcessor.class, Level.DEBUG)) {
             String conversationId = "conv-log-no-branch";
             relayClient.forceConnected(conversationId);
 
@@ -889,17 +890,32 @@ class RealtimeEventProcessorTest {
 
             processor.process(exchange);
 
-            List<String> messages = appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
+            List<String> messages = logs.messages();
             int applyFalseIndex = indexOf(messages, "Realtime context update apply result: conversationId=conv-log-no-branch, updated=false");
             int skippedIndex = indexOf(messages, "Realtime voice branch skipped because session context update was not applied: conversationId=conv-log-no-branch");
             int branchStartedIndex = indexOf(messages, "Realtime voice branch started from backend: conversationId=conv-log-no-branch");
+
+            TestArtifactSupport.ArtifactBundle artifacts = TestArtifactSupport.bundle(getClass(), "realtime-log-no-branch");
+            logs.writeMessageGroup(
+                artifacts,
+                "realtime-no-branch-checkpoints",
+                "Realtime checkpoint excerpt when session update is not applied",
+                "Realtime context update apply result",
+                "Realtime voice branch skipped because session context update was not applied",
+                "Realtime voice branch started from backend"
+            );
+            artifacts.writeJson("realtime-no-branch-summary.json", java.util.Map.of(
+                "conversationId", conversationId,
+                "applyFalseIndex", applyFalseIndex,
+                "skippedIndex", skippedIndex,
+                "branchStartedIndex", branchStartedIndex
+            ));
+            artifacts.writeIndex("Realtime no-branch debug artifacts");
 
             Assertions.assertTrue(applyFalseIndex >= 0, "missing update=false checkpoint");
             Assertions.assertTrue(skippedIndex > applyFalseIndex, "skip checkpoint should follow update=false checkpoint");
             Assertions.assertEquals(-1, branchStartedIndex, "voice branch start log should not be present when update fails");
         } finally {
-            logger.setLevel(previous);
-            logger.detachAppender(appender);
             context.stop();
         }
     }

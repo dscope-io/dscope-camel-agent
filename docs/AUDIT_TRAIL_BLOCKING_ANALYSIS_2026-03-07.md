@@ -10,8 +10,8 @@ Audit trail writes are blocking in the baseline synchronous design.
 
 Current runtime status:
 
-- if `agent.audit.async.enabled=false` or unset, the analysis below still applies
-- if `agent.audit.async.enabled=true`, audit and conversation-archive writes are moved off the request thread behind a bounded async queue and background writer
+- by default, audit and conversation-archive writes are moved off the request thread behind a bounded async queue and background writer
+- if `agent.audit.async.enabled=false`, the historical synchronous analysis below still applies
 
 The realtime voice path waits for audit persistence because the browser calls the realtime endpoint synchronously, the Camel route invokes the realtime processor directly, the realtime processor calls the agent route synchronously, and the kernel persists events inline through the persistence facade.
 
