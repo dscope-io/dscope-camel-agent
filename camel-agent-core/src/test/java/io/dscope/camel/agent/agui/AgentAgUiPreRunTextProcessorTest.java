@@ -104,6 +104,39 @@ class AgentAgUiPreRunTextProcessorTest {
     }
 
     @Test
+    void shouldRequireExplicitFallbackRouteConfiguration() throws Exception {
+        CamelContext context = new DefaultCamelContext();
+        Properties initial = new Properties();
+        initial.setProperty("agent.runtime.agui.pre-run.agent-endpoint-uri", "direct:agent-llm");
+        context.getPropertiesComponent().setInitialProperties(initial);
+
+        context.addRoutes(new RouteBuilder() {
+            @Override
+            public void configure() {
+                from("direct:agent-llm").setBody(constant("OpenAI API key is missing"));
+            }
+        });
+
+        context.start();
+        try {
+            AgentAgUiPreRunTextProcessor processor = new AgentAgUiPreRunTextProcessor();
+            var exchange = new DefaultExchange(context);
+            Map<String, Object> params = new HashMap<>();
+            params.put("text", "please open a support ticket for login issue");
+            exchange.setProperty(AgentAgUiExchangeProperties.PARAMS, params);
+
+            IllegalStateException error = Assertions.assertThrows(IllegalStateException.class, () -> processor.process(exchange));
+            Assertions.assertEquals(
+                "AGUI deterministic ticket fallback was selected, but no fallback route is configured. "
+                    + "Set aguiPreRun.fallback.ticketUri, aguiPreRun.fallback.ticketToolName, or agent.runtime.agui.pre-run.fallback.ticket-uri.",
+                error.getMessage()
+            );
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void shouldAttachWidgetAndA2UiPayloadForTicketJsonResponses() throws Exception {
         CamelContext context = new DefaultCamelContext();

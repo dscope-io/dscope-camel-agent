@@ -181,8 +181,7 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             propertyOrNull(exchange, "agent.runtime.agui.pre-run.fallback.kbUri"),
             propertyOrNull(exchange, "agent.agui.pre-run.fallback.kb-uri"),
             propertyOrNull(exchange, "agent.agui.pre-run.fallback.kbUri"),
-            resolveToolInvokeUri(exchange, blueprint, kbToolName),
-            "direct:kb-search"
+            resolveToolInvokeUri(exchange, blueprint, kbToolName)
         );
         String ticketFallbackUri = firstNonBlank(
             agUiPreRunSpec == null ? null : agUiPreRunSpec.ticketUri(),
@@ -190,8 +189,7 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             propertyOrNull(exchange, "agent.runtime.agui.pre-run.fallback.ticketUri"),
             propertyOrNull(exchange, "agent.agui.pre-run.fallback.ticket-uri"),
             propertyOrNull(exchange, "agent.agui.pre-run.fallback.ticketUri"),
-            resolveToolInvokeUri(exchange, blueprint, ticketToolName),
-            "direct:support-ticket-manage"
+            resolveToolInvokeUri(exchange, blueprint, ticketToolName)
         );
         String agentEndpointUri = firstNonBlank(
             agUiPreRunSpec == null ? null : agUiPreRunSpec.agentEndpointUri(),
@@ -286,11 +284,35 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
         Map<String, Object> payload = new HashMap<>();
         payload.put("query", prompt);
         if (isTicketPrompt(prompt, runtimeConfig.ticketKeywords())) {
-            LOGGER.info("AGUI pre-run deterministic fallback route=ticket: uri={}", runtimeConfig.ticketFallbackUri());
-            return template.requestBody(runtimeConfig.ticketFallbackUri(), payload, String.class);
+            String ticketUri = requireFallbackUri(
+                runtimeConfig.ticketFallbackUri(),
+                "ticket",
+                "aguiPreRun.fallback.ticketUri",
+                "aguiPreRun.fallback.ticketToolName",
+                "agent.runtime.agui.pre-run.fallback.ticket-uri"
+            );
+            LOGGER.info("AGUI pre-run deterministic fallback route=ticket: uri={}", ticketUri);
+            return template.requestBody(ticketUri, payload, String.class);
         }
-        LOGGER.info("AGUI pre-run deterministic fallback route=kb: uri={}", runtimeConfig.kbFallbackUri());
-        return template.requestBody(runtimeConfig.kbFallbackUri(), payload, String.class);
+        String kbUri = requireFallbackUri(
+            runtimeConfig.kbFallbackUri(),
+            "knowledge",
+            "aguiPreRun.fallback.kbUri",
+            "aguiPreRun.fallback.kbToolName",
+            "agent.runtime.agui.pre-run.fallback.kb-uri"
+        );
+        LOGGER.info("AGUI pre-run deterministic fallback route=kb: uri={}", kbUri);
+        return template.requestBody(kbUri, payload, String.class);
+    }
+
+    private String requireFallbackUri(String uri, String fallbackType, String blueprintUriField, String blueprintToolField, String runtimeProperty) {
+        if (uri == null || uri.isBlank()) {
+            throw new IllegalStateException(
+                "AGUI deterministic " + fallbackType + " fallback was selected, but no fallback route is configured. "
+                    + "Set " + blueprintUriField + ", " + blueprintToolField + ", or " + runtimeProperty + "."
+            );
+        }
+        return uri;
     }
 
     private boolean isTicketPrompt(String prompt, List<String> keywords) {
