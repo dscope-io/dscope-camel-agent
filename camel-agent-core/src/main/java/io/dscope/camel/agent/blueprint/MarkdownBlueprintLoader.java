@@ -1,23 +1,5 @@
 package io.dscope.camel.agent.blueprint;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import io.dscope.camel.agent.api.BlueprintLoader;
-import io.dscope.camel.agent.model.AgUiPreRunSpec;
-import io.dscope.camel.agent.model.A2UiSpec;
-import io.dscope.camel.agent.model.A2UiSurfaceSpec;
-import io.dscope.camel.agent.model.AgentBlueprint;
-import io.dscope.camel.agent.model.BlueprintResourceSpec;
-import io.dscope.camel.agent.model.ExceptionAction;
-import io.dscope.camel.agent.model.ExceptionCategory;
-import io.dscope.camel.agent.model.ExceptionPolicySpec;
-import io.dscope.camel.agent.model.JsonRouteTemplateSpec;
-import io.dscope.camel.agent.model.RealtimeSpec;
-import io.dscope.camel.agent.model.ResolvedBlueprintResource;
-import io.dscope.camel.agent.model.RetryPolicySpec;
-import io.dscope.camel.agent.model.ToolPolicy;
-import io.dscope.camel.agent.model.ToolSpec;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -31,6 +13,26 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+
+import io.dscope.camel.agent.api.BlueprintLoader;
+import io.dscope.camel.agent.model.A2UiSpec;
+import io.dscope.camel.agent.model.A2UiSurfaceSpec;
+import io.dscope.camel.agent.model.AgUiPreRunSpec;
+import io.dscope.camel.agent.model.AgentBlueprint;
+import io.dscope.camel.agent.model.BlueprintResourceSpec;
+import io.dscope.camel.agent.model.ExceptionAction;
+import io.dscope.camel.agent.model.ExceptionCategory;
+import io.dscope.camel.agent.model.ExceptionPolicySpec;
+import io.dscope.camel.agent.model.JsonRouteTemplateSpec;
+import io.dscope.camel.agent.model.RealtimeSpec;
+import io.dscope.camel.agent.model.ResolvedBlueprintResource;
+import io.dscope.camel.agent.model.RetryPolicySpec;
+import io.dscope.camel.agent.model.ToolPolicy;
+import io.dscope.camel.agent.model.ToolSpec;
 
 public class MarkdownBlueprintLoader implements BlueprintLoader {
 

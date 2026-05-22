@@ -1,22 +1,25 @@
 package io.dscope.camel.agent.executor;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.dscope.camel.agent.a2a.A2AToolContext;
-import io.dscope.camel.agent.model.ExecutionContext;
-import io.dscope.camel.agent.model.ExceptionAction;
-import io.dscope.camel.agent.model.ExceptionCategory;
-import io.dscope.camel.agent.model.ExceptionPolicySpec;
-import io.dscope.camel.agent.model.RetryPolicySpec;
-import io.dscope.camel.agent.model.ToolPolicy;
-import io.dscope.camel.agent.model.ToolResult;
-import io.dscope.camel.agent.model.ToolSpec;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
+
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.impl.DefaultCamelContext;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.dscope.camel.agent.a2a.A2AToolContext;
+import io.dscope.camel.agent.model.ExceptionAction;
+import io.dscope.camel.agent.model.ExceptionCategory;
+import io.dscope.camel.agent.model.ExceptionPolicySpec;
+import io.dscope.camel.agent.model.ExecutionContext;
+import io.dscope.camel.agent.model.RetryPolicySpec;
+import io.dscope.camel.agent.model.ToolPolicy;
+import io.dscope.camel.agent.model.ToolResult;
+import io.dscope.camel.agent.model.ToolSpec;
 
 class CamelToolExecutorTest {
 

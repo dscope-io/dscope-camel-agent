@@ -1,7 +1,8 @@
 package io.dscope.camel.agent.model;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
+
+import com.fasterxml.jackson.databind.JsonNode;
 
 public record AgentBlueprint(
     String name,

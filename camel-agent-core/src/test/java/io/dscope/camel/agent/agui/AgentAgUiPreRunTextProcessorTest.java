@@ -1,18 +1,21 @@
 package io.dscope.camel.agent.agui;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.dscope.camel.agent.kernel.InMemoryPersistenceFacade;
-import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
+
 import org.apache.camel.CamelContext;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.impl.DefaultCamelContext;
 import org.apache.camel.support.DefaultExchange;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.dscope.camel.agent.kernel.InMemoryPersistenceFacade;
+import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 
 class AgentAgUiPreRunTextProcessorTest {
 

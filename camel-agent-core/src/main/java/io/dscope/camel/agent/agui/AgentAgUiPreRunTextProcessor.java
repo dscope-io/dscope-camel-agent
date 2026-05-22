@@ -1,8 +1,26 @@
 package io.dscope.camel.agent.agui;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.camel.Exchange;
+import org.apache.camel.Processor;
+import org.apache.camel.ProducerTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+
 import io.dscope.camel.agent.blueprint.MarkdownBlueprintLoader;
 import io.dscope.camel.agent.config.AgentHeaders;
 import io.dscope.camel.agent.model.AgUiPreRunSpec;
@@ -17,21 +35,6 @@ import io.dscope.camel.agent.runtime.ConversationArchiveService;
 import io.dscope.camel.agent.runtime.ResolvedAgentPlan;
 import io.dscope.camel.agent.runtime.RuntimePlaceholderResolver;
 import io.dscope.camel.agent.util.A2UiPayloadSupport;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.io.IOException;
-import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import org.apache.camel.Exchange;
-import org.apache.camel.Processor;
-import org.apache.camel.ProducerTemplate;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class AgentAgUiPreRunTextProcessor implements Processor {
 

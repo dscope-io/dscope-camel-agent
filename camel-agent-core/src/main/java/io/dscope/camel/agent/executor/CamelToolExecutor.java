@@ -1,21 +1,5 @@
 package io.dscope.camel.agent.executor;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.dscope.camel.agent.api.ToolExecutor;
-import io.dscope.camel.agent.a2a.A2AToolClient;
-import io.dscope.camel.agent.a2a.A2AToolContext;
-import io.dscope.camel.agent.api.PersistenceFacade;
-import io.dscope.camel.agent.config.AgentHeaders;
-import io.dscope.camel.agent.model.ExecutionContext;
-import io.dscope.camel.agent.model.ExceptionAction;
-import io.dscope.camel.agent.model.ExceptionCategory;
-import io.dscope.camel.agent.model.ExceptionPolicySpec;
-import io.dscope.camel.agent.model.RetryPolicySpec;
-import io.dscope.camel.agent.model.ToolResult;
-import io.dscope.camel.agent.model.ToolSpec;
-import io.dscope.camel.agent.runtime.RuntimePlaceholderResolver;
-import io.dscope.camel.mcp.McpClient;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,10 +7,29 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.apache.camel.CamelContext;
 import org.apache.camel.ProducerTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.dscope.camel.agent.a2a.A2AToolClient;
+import io.dscope.camel.agent.a2a.A2AToolContext;
+import io.dscope.camel.agent.api.PersistenceFacade;
+import io.dscope.camel.agent.api.ToolExecutor;
+import io.dscope.camel.agent.config.AgentHeaders;
+import io.dscope.camel.agent.model.ExceptionAction;
+import io.dscope.camel.agent.model.ExceptionCategory;
+import io.dscope.camel.agent.model.ExceptionPolicySpec;
+import io.dscope.camel.agent.model.ExecutionContext;
+import io.dscope.camel.agent.model.RetryPolicySpec;
+import io.dscope.camel.agent.model.ToolResult;
+import io.dscope.camel.agent.model.ToolSpec;
+import io.dscope.camel.agent.runtime.RuntimePlaceholderResolver;
+import io.dscope.camel.mcp.McpClient;
 
 public class CamelToolExecutor implements ToolExecutor {
 
