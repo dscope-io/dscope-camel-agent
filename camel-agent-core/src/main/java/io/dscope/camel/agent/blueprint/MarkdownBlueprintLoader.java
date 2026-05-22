@@ -9,9 +9,13 @@ import io.dscope.camel.agent.model.A2UiSpec;
 import io.dscope.camel.agent.model.A2UiSurfaceSpec;
 import io.dscope.camel.agent.model.AgentBlueprint;
 import io.dscope.camel.agent.model.BlueprintResourceSpec;
+import io.dscope.camel.agent.model.ExceptionAction;
+import io.dscope.camel.agent.model.ExceptionCategory;
+import io.dscope.camel.agent.model.ExceptionPolicySpec;
 import io.dscope.camel.agent.model.JsonRouteTemplateSpec;
 import io.dscope.camel.agent.model.RealtimeSpec;
 import io.dscope.camel.agent.model.ResolvedBlueprintResource;
+import io.dscope.camel.agent.model.RetryPolicySpec;
 import io.dscope.camel.agent.model.ToolPolicy;
 import io.dscope.camel.agent.model.ToolSpec;
 import java.io.IOException;
@@ -47,6 +51,7 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
         List<JsonRouteTemplateSpec> jsonRouteTemplates = parseJsonRouteTemplates(config);
         RealtimeSpec realtime = parseRealtime(config);
         AgUiPreRunSpec agUiPreRun = parseAgUiPreRun(config);
+        List<ExceptionPolicySpec> exceptionPolicies = parseExceptionPolicies(config);
         A2UiSpec a2ui = parseA2Ui(config);
         List<BlueprintResourceSpec> resourceSpecs = parseResources(config);
         List<ResolvedBlueprintResource> resources = resourceResolver.resolve(resourceSpecs);
@@ -61,11 +66,118 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
             systemInstruction == null ? "You are a helpful agent." : systemInstruction,
             tools,
             jsonRouteTemplates,
+            List.of(),
             realtime,
             agUiPreRun,
+            resources,
             a2ui,
-            resources
+            exceptionPolicies
         );
+    }
+
+    private List<ExceptionPolicySpec> parseExceptionPolicies(JsonNode root) {
+        List<ExceptionPolicySpec> merged = new ArrayList<>();
+        if (root == null || root.isMissingNode()) {
+            return merged;
+        }
+
+        merged.addAll(parseExceptionPolicyArray(root.path("exceptionPolicies")));
+
+        String externalRef = text(root,
+            "exceptionPoliciesRef",
+            "exception-policies-ref",
+            "exceptionPoliciesUri",
+            "exception-policies-uri");
+        if (externalRef != null && !externalRef.isBlank()) {
+            merged.addAll(parseExceptionPoliciesFromReference(externalRef));
+        }
+
+        return merged;
+    }
+
+    private List<ExceptionPolicySpec> parseExceptionPoliciesFromReference(String location) {
+        List<ExceptionPolicySpec> policies = new ArrayList<>();
+        String content = readResource(location);
+        JsonNode node;
+        try {
+            node = yamlMapper.readTree(content);
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Unable to parse exception policies from: " + location, e);
+        }
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return policies;
+        }
+        JsonNode policyNode = node;
+        if (node.isObject()) {
+            policyNode = node.path("exceptionPolicies");
+        }
+        policies.addAll(parseExceptionPolicyArray(policyNode));
+        return policies;
+    }
+
+    private List<ExceptionPolicySpec> parseExceptionPolicyArray(JsonNode node) {
+        List<ExceptionPolicySpec> policies = new ArrayList<>();
+        if (node == null || node.isMissingNode() || node.isNull() || !node.isArray()) {
+            return policies;
+        }
+
+        for (JsonNode entry : node) {
+            if (!entry.isObject()) {
+                continue;
+            }
+
+            ExceptionAction action = parseExceptionAction(text(entry, "action"));
+            if (action == null) {
+                throw new IllegalArgumentException("exceptionPolicies entry must define action: " + entry);
+            }
+
+            RetryPolicySpec retry = parseRetryPolicy(entry.path("retry"));
+            policies.add(new ExceptionPolicySpec(
+                text(entry, "name"),
+                text(entry, "scope"),
+                parseExceptionCategory(text(entry, "category")),
+                integers(entry, "httpStatusCodes", "http-status-codes", "statusCodes", "status-codes"),
+                action,
+                retry,
+                text(entry, "prompt")
+            ));
+        }
+        return policies;
+    }
+
+    private RetryPolicySpec parseRetryPolicy(JsonNode retryNode) {
+        if (retryNode == null || retryNode.isMissingNode() || retryNode.isNull() || !retryNode.isObject()) {
+            return null;
+        }
+        return new RetryPolicySpec(
+            integer(retryNode, "maxRetries", "max-retries"),
+            longValue(retryNode, "intervalMs", "interval-ms"),
+            bool(retryNode, "exponentialBackoff", "exponential-backoff"),
+            decimal(retryNode, "multiplier"),
+            longValue(retryNode, "maxIntervalMs", "max-interval-ms")
+        );
+    }
+
+    private ExceptionAction parseExceptionAction(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return ExceptionAction.valueOf(value.trim().toUpperCase());
+        } catch (IllegalArgumentException ignored) {
+            throw new IllegalArgumentException("Unsupported exception policy action: " + value);
+        }
+    }
+
+    private ExceptionCategory parseExceptionCategory(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return ExceptionCategory.valueOf(value.trim().toUpperCase());
+        } catch (IllegalArgumentException ignored) {
+            throw new IllegalArgumentException("Unsupported exception policy category: " + value);
+        }
     }
 
     private A2UiSpec parseA2Ui(JsonNode root) {
@@ -521,6 +633,84 @@ public class MarkdownBlueprintLoader implements BlueprintLoader {
             }
         }
         return null;
+    }
+
+    private Double decimal(JsonNode node, String... fields) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        for (String field : fields) {
+            JsonNode value = node.path(field);
+            if (!value.isMissingNode() && !value.isNull()) {
+                if (value.isDouble() || value.isFloat() || value.isInt() || value.isLong() || value.isBigDecimal()) {
+                    return value.doubleValue();
+                }
+                String text = value.asText(null);
+                if (text != null && !text.isBlank()) {
+                    try {
+                        return Double.parseDouble(text);
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private List<Integer> integers(JsonNode node, String... fields) {
+        List<Integer> values = new ArrayList<>();
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return values;
+        }
+        for (String field : fields) {
+            JsonNode value = node.path(field);
+            if (value.isArray()) {
+                for (JsonNode item : value) {
+                    Integer parsed = parseIntegerNode(item);
+                    if (parsed != null) {
+                        values.add(parsed);
+                    }
+                }
+                if (!values.isEmpty()) {
+                    return values;
+                }
+            } else if (!value.isMissingNode() && !value.isNull()) {
+                String text = value.asText("").trim();
+                if (!text.isBlank()) {
+                    for (String part : text.split(",")) {
+                        Integer parsed = parseIntegerText(part);
+                        if (parsed != null) {
+                            values.add(parsed);
+                        }
+                    }
+                    if (!values.isEmpty()) {
+                        return values;
+                    }
+                }
+            }
+        }
+        return values;
+    }
+
+    private Integer parseIntegerNode(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (node.isInt() || node.isLong()) {
+            return node.intValue();
+        }
+        return parseIntegerText(node.asText(null));
+    }
+
+    private Integer parseIntegerText(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private Long defaultLong(Long value, long fallback) {

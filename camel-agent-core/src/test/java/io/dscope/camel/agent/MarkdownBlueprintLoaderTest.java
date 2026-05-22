@@ -81,6 +81,22 @@ class MarkdownBlueprintLoaderTest {
         Assertions.assertTrue(blueprint.aguiPreRun().ticketKeywords().contains("escalate"));
         Assertions.assertEquals(1, blueprint.aguiPreRun().fallbackErrorMarkers().size());
         Assertions.assertEquals("api key is missing", blueprint.aguiPreRun().fallbackErrorMarkers().getFirst());
+        Assertions.assertEquals(3, blueprint.exceptionPolicies().size());
+        Assertions.assertEquals("agui-business-conflict", blueprint.exceptionPolicies().getFirst().name());
+        Assertions.assertEquals("agui.pre-run", blueprint.exceptionPolicies().getFirst().scope());
+        Assertions.assertEquals("agui-transient-upstream-exhausted", blueprint.exceptionPolicies().get(2).name());
+    }
+
+    @Test
+    void shouldParseAgUiResolvePolicyPrompt() {
+        MarkdownBlueprintLoader loader = new MarkdownBlueprintLoader();
+        var blueprint = loader.load("classpath:agents/valid-agent-with-agui-prerun-resolve.md");
+
+        Assertions.assertNotNull(blueprint.aguiPreRun());
+        Assertions.assertEquals(1, blueprint.exceptionPolicies().size());
+        Assertions.assertEquals("agui-business-resolve", blueprint.exceptionPolicies().getFirst().name());
+        Assertions.assertEquals("agui.pre-run", blueprint.exceptionPolicies().getFirst().scope());
+        Assertions.assertEquals("Use existing context and propose a user-safe workaround.", blueprint.exceptionPolicies().getFirst().prompt());
     }
 
     @Test

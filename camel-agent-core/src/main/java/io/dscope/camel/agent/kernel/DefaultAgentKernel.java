@@ -252,7 +252,7 @@ public class DefaultAgentKernel implements AgentKernel {
             ToolResult toolResult = toolExecutor.execute(
                 toolSpec,
                 toolCall.arguments(),
-                new ExecutionContext(conversationId, null, UUID.randomUUID().toString())
+                new ExecutionContext(conversationId, null, UUID.randomUUID().toString(), blueprint.exceptionPolicies())
             );
             LOGGER.info("Kernel tool execution completed: conversationId={}, tool={}, contentChars={}, hasData={}",
                 conversationId,

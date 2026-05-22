@@ -7,6 +7,10 @@ import io.dscope.camel.agent.blueprint.MarkdownBlueprintLoader;
 import io.dscope.camel.agent.config.AgentHeaders;
 import io.dscope.camel.agent.model.AgUiPreRunSpec;
 import io.dscope.camel.agent.model.AgentBlueprint;
+import io.dscope.camel.agent.model.ExceptionAction;
+import io.dscope.camel.agent.model.ExceptionCategory;
+import io.dscope.camel.agent.model.ExceptionPolicySpec;
+import io.dscope.camel.agent.model.RetryPolicySpec;
 import io.dscope.camel.agent.model.ToolSpec;
 import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 import io.dscope.camel.agent.runtime.ConversationArchiveService;
@@ -19,6 +23,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.io.IOException;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.ProducerTemplate;
@@ -31,6 +39,8 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
 
     private static final String DEFAULT_PROMPT = "Please help me.";
     private static final String DEFAULT_AGENT_ENDPOINT_URI = "agent:default?plansConfig={{agent.agents-config}}&blueprint={{agent.blueprint}}";
+    private static final Pattern HTTP_STATUS_PATTERN = Pattern.compile("\\b([1-5][0-9]{2})\\b");
+    private static final String EXCEPTION_POLICY_SCOPE_AGUI_PRE_RUN = "agui.pre-run";
 
     private final MarkdownBlueprintLoader markdownBlueprintLoader;
     private final ObjectMapper objectMapper;
@@ -83,20 +93,21 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
 
         ProducerTemplate template = exchange.getContext().createProducerTemplate();
         String outputText;
+        Map<String, Object> headers = new HashMap<>();
+        headers.put(AgentHeaders.CONVERSATION_ID, threadId);
+        headers.put(AgentHeaders.AGUI_SESSION_ID, sessionId);
+        headers.put(AgentHeaders.AGUI_RUN_ID, runId);
+        headers.put(AgentHeaders.AGUI_THREAD_ID, threadId);
+        headers.put(AgentHeaders.LOCALE, locale);
+        if (requestedPlanName != null && !requestedPlanName.isBlank()) {
+            headers.put(AgentHeaders.PLAN_NAME, requestedPlanName);
+        }
+        if (requestedPlanVersion != null && !requestedPlanVersion.isBlank()) {
+            headers.put(AgentHeaders.PLAN_VERSION, requestedPlanVersion);
+        }
+
         try {
-            Map<String, Object> headers = new HashMap<>();
-            headers.put(AgentHeaders.CONVERSATION_ID, threadId);
-            headers.put(AgentHeaders.AGUI_SESSION_ID, sessionId);
-            headers.put(AgentHeaders.AGUI_RUN_ID, runId);
-            headers.put(AgentHeaders.AGUI_THREAD_ID, threadId);
-            headers.put(AgentHeaders.LOCALE, locale);
-            if (requestedPlanName != null && !requestedPlanName.isBlank()) {
-                headers.put(AgentHeaders.PLAN_NAME, requestedPlanName);
-            }
-            if (requestedPlanVersion != null && !requestedPlanVersion.isBlank()) {
-                headers.put(AgentHeaders.PLAN_VERSION, requestedPlanVersion);
-            }
-            outputText = template.requestBodyAndHeaders(runtimeConfig.agentEndpointUri(), prompt, headers, String.class);
+            outputText = invokePrimaryAgentWithPolicies(template, runtimeConfig, prompt, headers, threadId);
             LOGGER.debug("AGUI pre-run primary agent response: threadId={}, outputChars={}",
                 threadId,
                 outputText == null ? 0 : outputText.length());
@@ -105,10 +116,26 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
                 outputText = runDeterministicFallback(template, prompt, runtimeConfig);
             }
         } catch (RuntimeException runtimeFailure) {
-            LOGGER.warn("AGUI pre-run primary agent failed, using fallback: threadId={}, error={}",
-                threadId,
-                runtimeFailure.getMessage() == null ? runtimeFailure.getClass().getSimpleName() : runtimeFailure.getMessage());
-            outputText = runDeterministicFallback(template, prompt, runtimeConfig);
+            ExceptionDecision decision = resolveExceptionDecision(runtimeFailure, runtimeConfig.exceptionPolicies());
+            if (runtimeFailure instanceof IllegalStateException terminated
+                && terminated.getMessage() != null
+                && terminated.getMessage().contains("terminated by chained exception policy")) {
+                throw runtimeFailure;
+            }
+            if (runtimeConfig.fallbackEnabled() && shouldFallbackForPrimaryFailure(decision)) {
+                LOGGER.warn("AGUI pre-run primary agent failed, using fallback: threadId={}, error={}",
+                    threadId,
+                    runtimeFailure.getMessage() == null ? runtimeFailure.getClass().getSimpleName() : runtimeFailure.getMessage());
+                outputText = runDeterministicFallback(template, prompt, runtimeConfig);
+            } else {
+                LOGGER.info("AGUI pre-run primary failure bypassed deterministic fallback: threadId={}, reason={}",
+                    threadId,
+                    fallbackBypassReason(decision));
+                if (decision.action() == ExceptionAction.TERMINATE) {
+                    throw new IllegalStateException("AGUI pre-run terminated by exception policy", runtimeFailure);
+                }
+                throw runtimeFailure;
+            }
         }
 
         params.put("text", outputText);
@@ -233,8 +260,26 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             RuntimePlaceholderResolver.resolveRequiredExecutionTarget(exchange.getContext(), ticketFallbackUri, "aguiPreRun.fallback.ticketUri"),
             fallbackEnabled,
             ticketKeywords,
-            fallbackErrorMarkers
+            fallbackErrorMarkers,
+            scopedExceptionPolicies(blueprint)
         );
+    }
+
+    private List<ExceptionPolicySpec> scopedExceptionPolicies(AgentBlueprint blueprint) {
+        if (blueprint == null || blueprint.exceptionPolicies() == null || blueprint.exceptionPolicies().isEmpty()) {
+            return List.of();
+        }
+        List<ExceptionPolicySpec> scoped = new ArrayList<>();
+        for (ExceptionPolicySpec policy : blueprint.exceptionPolicies()) {
+            if (policy == null) {
+                continue;
+            }
+            String scope = policy.scope();
+            if (scope == null || scope.isBlank() || EXCEPTION_POLICY_SCOPE_AGUI_PRE_RUN.equalsIgnoreCase(scope.trim())) {
+                scoped.add(policy);
+            }
+        }
+        return scoped;
     }
 
     private AgentBlueprint loadBlueprint(ResolvedAgentPlan resolvedPlan) {
@@ -278,6 +323,289 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
             }
         }
         return false;
+    }
+
+    private String invokePrimaryAgentWithPolicies(
+        ProducerTemplate template,
+        RuntimeConfig runtimeConfig,
+        String prompt,
+        Map<String, Object> headers,
+        String threadId
+    ) {
+        int attempt = 0;
+        while (true) {
+            try {
+                return template.requestBodyAndHeaders(runtimeConfig.agentEndpointUri(), prompt, headers, String.class);
+            } catch (RuntimeException failure) {
+                ExceptionDecision decision = resolveExceptionDecision(failure, runtimeConfig.exceptionPolicies());
+                int maxRetries = Math.max(decision.maxRetries(), 0);
+                if (decision.action() == ExceptionAction.RETRY && attempt < maxRetries) {
+                    long delayMs = computeRetryDelay(decision, attempt);
+                    LOGGER.warn(
+                        "AGUI pre-run primary attempt failed, retrying: threadId={}, attempt={}, maxRetries={}, statusCode={}, category={}, delayMs={}, policy={}",
+                        threadId,
+                        attempt + 1,
+                        maxRetries,
+                        decision.statusCode(),
+                        decision.category(),
+                        delayMs,
+                        decision.policyName());
+                    sleepRetry(delayMs);
+                    attempt++;
+                    continue;
+                }
+                if (decision.action() == ExceptionAction.RETRY && decision.onRetryExhaustedAction() == ExceptionAction.TERMINATE) {
+                    throw new IllegalStateException("AGUI pre-run primary endpoint terminated by chained exception policy", failure);
+                }
+                if (decision.action() == ExceptionAction.RETRY && decision.onRetryExhaustedAction() == ExceptionAction.RESOLVE) {
+                    return resolveExceptionWithLlm(template, runtimeConfig, prompt, headers, failure, decision.onRetryExhaustedPrompt());
+                }
+                if (decision.action() == ExceptionAction.RETRY && decision.onRetryExhaustedAction() == ExceptionAction.RETHROW) {
+                    throw failure;
+                }
+                if (decision.action() == ExceptionAction.RESOLVE) {
+                    return resolveExceptionWithLlm(template, runtimeConfig, prompt, headers, failure, decision.prompt());
+                }
+                throw failure;
+            }
+        }
+    }
+
+    private String resolveExceptionWithLlm(ProducerTemplate template,
+                                           RuntimeConfig runtimeConfig,
+                                           String originalPrompt,
+                                           Map<String, Object> headers,
+                                           Throwable failure,
+                                           String policyPrompt) {
+        String prompt = buildResolutionPrompt(originalPrompt, failure, policyPrompt);
+        LOGGER.info("AGUI pre-run exception resolution via LLM endpoint={}", runtimeConfig.agentEndpointUri());
+        return template.requestBodyAndHeaders(runtimeConfig.agentEndpointUri(), prompt, headers, String.class);
+    }
+
+    private String buildResolutionPrompt(String originalPrompt, Throwable failure, String policyPrompt) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("The previous AGUI pre-run request failed. Resolve it for the user using current conversation context and history. ");
+        prompt.append("Provide a direct actionable response and avoid unnecessary tool calls.\n\n");
+        prompt.append("Original user prompt: ").append(originalPrompt == null ? "" : originalPrompt).append("\n");
+        prompt.append("Error: ").append(rootCauseMessage(failure)).append("\n");
+        if (policyPrompt != null && !policyPrompt.isBlank()) {
+            prompt.append("\nAdditional instructions:\n").append(policyPrompt.trim()).append("\n");
+        }
+        return prompt.toString();
+    }
+
+    private String rootCauseMessage(Throwable failure) {
+        Throwable root = failure;
+        while (root != null && root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        if (root == null) {
+            return "unknown";
+        }
+        String message = root.getMessage();
+        return message == null || message.isBlank() ? root.getClass().getSimpleName() : message;
+    }
+
+    private boolean shouldFallbackForPrimaryFailure(ExceptionDecision decision) {
+        return decision.fallbackAllowed();
+    }
+
+    private String fallbackBypassReason(ExceptionDecision decision) {
+        if (decision.action() == ExceptionAction.TERMINATE) {
+            return "exception-policy-terminate";
+        }
+        if (decision.action() == ExceptionAction.RESOLVE) {
+            return "exception-policy-resolve";
+        }
+        if (decision.action() == ExceptionAction.RETHROW && decision.category() == ExceptionCategory.BUSINESS) {
+            return "business-exception-rethrow";
+        }
+        return "fallback-disabled-or-non-fallbackable";
+    }
+
+    private ExceptionDecision resolveExceptionDecision(Throwable failure, List<ExceptionPolicySpec> policies) {
+        Integer statusCode = extractHttpStatusCode(failure);
+        ExceptionCategory category = classifyFailure(statusCode);
+        ExceptionPolicySpec matched = matchPolicy(statusCode, category, policies);
+        if (matched == null) {
+            if (category == ExceptionCategory.BUSINESS) {
+                return new ExceptionDecision(ExceptionAction.RETHROW, ExceptionAction.RETHROW, category, statusCode, 0, 0L, false, 2.0d, 0L, "default-business", null, null);
+            }
+            return new ExceptionDecision(ExceptionAction.RETRY, ExceptionAction.RETHROW, category, statusCode, 0, 0L, true, 2.0d, 0L, "default-technical", null, null);
+        }
+
+        RetryPolicySpec retry = matched.retry();
+        int maxRetries = retry == null || retry.maxRetries() == null ? 0 : Math.max(retry.maxRetries(), 0);
+        long intervalMs = retry == null || retry.intervalMs() == null ? 0L : Math.max(retry.intervalMs(), 0L);
+        boolean fallbackAllowed = matched.action() == ExceptionAction.RETRY;
+        boolean exponentialBackoff = retry != null && Boolean.TRUE.equals(retry.exponentialBackoff());
+        Double configuredMultiplier = retry == null ? null : retry.multiplier();
+        double multiplier = configuredMultiplier == null || configuredMultiplier <= 1.0d ? 2.0d : configuredMultiplier;
+        long maxIntervalMs = retry == null || retry.maxIntervalMs() == null ? 0L : Math.max(retry.maxIntervalMs(), 0L);
+        ExceptionPolicySpec exhaustedPolicy = matched.action() == ExceptionAction.RETRY
+            ? chainedRetryExhaustedPolicy(statusCode, category, policies, matched)
+            : matched;
+        ExceptionAction exhaustedAction = exhaustedPolicy == null || exhaustedPolicy.action() == null
+            ? ExceptionAction.RETHROW
+            : exhaustedPolicy.action();
+        String exhaustedPrompt = exhaustedPolicy == null ? null : exhaustedPolicy.prompt();
+
+        return new ExceptionDecision(
+            matched.action(),
+            exhaustedAction,
+            category,
+            statusCode,
+            maxRetries,
+            intervalMs,
+            fallbackAllowed,
+            exponentialBackoff ? multiplier : 1.0d,
+            maxIntervalMs,
+            matched.name() == null || matched.name().isBlank() ? "configured-policy" : matched.name(),
+            matched.prompt(),
+            exhaustedPrompt
+        );
+    }
+
+    private ExceptionCategory classifyFailure(Integer statusCode) {
+        if (statusCode == null) {
+            return ExceptionCategory.TECHNICAL;
+        }
+        if (statusCode == 408 || statusCode == 425 || statusCode == 429 || statusCode >= 500) {
+            return ExceptionCategory.TECHNICAL;
+        }
+        if (statusCode >= 400 && statusCode < 500) {
+            return ExceptionCategory.BUSINESS;
+        }
+        return ExceptionCategory.TECHNICAL;
+    }
+
+    private ExceptionPolicySpec matchPolicy(Integer statusCode, ExceptionCategory category, List<ExceptionPolicySpec> policies) {
+        if (policies == null || policies.isEmpty()) {
+            return null;
+        }
+        for (ExceptionPolicySpec policy : policies) {
+            if (policy == null || policy.action() == null) {
+                continue;
+            }
+            if (policy.category() != null && policy.category() != category) {
+                continue;
+            }
+            if (policy.httpStatusCodes() != null && !policy.httpStatusCodes().isEmpty()) {
+                if (statusCode == null || !policy.httpStatusCodes().contains(statusCode)) {
+                    continue;
+                }
+            }
+            return policy;
+        }
+        return null;
+    }
+
+    private ExceptionPolicySpec chainedRetryExhaustedPolicy(Integer statusCode,
+                                                            ExceptionCategory category,
+                                                            List<ExceptionPolicySpec> policies,
+                                                            ExceptionPolicySpec matchedRetryPolicy) {
+        if (policies == null || policies.isEmpty() || matchedRetryPolicy == null) {
+            return null;
+        }
+        int startIndex = policies.indexOf(matchedRetryPolicy);
+        if (startIndex < 0) {
+            return null;
+        }
+        for (int i = startIndex + 1; i < policies.size(); i++) {
+            ExceptionPolicySpec candidate = policies.get(i);
+            if (!matchesPolicy(statusCode, category, candidate)) {
+                continue;
+            }
+            if (candidate.action() != null && candidate.action() != ExceptionAction.RETRY) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private boolean matchesPolicy(Integer statusCode, ExceptionCategory category, ExceptionPolicySpec policy) {
+        if (policy == null || policy.action() == null) {
+            return false;
+        }
+        if (policy.category() != null && policy.category() != category) {
+            return false;
+        }
+        if (policy.httpStatusCodes() != null && !policy.httpStatusCodes().isEmpty()) {
+            return statusCode != null && policy.httpStatusCodes().contains(statusCode);
+        }
+        return true;
+    }
+
+    private long computeRetryDelay(ExceptionDecision decision, int attempt) {
+        long initialDelay = Math.max(decision.intervalMs(), 0L);
+        if (initialDelay <= 0L) {
+            return 0L;
+        }
+        if (decision.multiplier() <= 1.0d) {
+            return initialDelay;
+        }
+        double computed = initialDelay * Math.pow(decision.multiplier(), Math.max(0, attempt));
+        long delay = computed > Long.MAX_VALUE ? Long.MAX_VALUE : (long) computed;
+        if (decision.maxIntervalMs() > 0L) {
+            delay = Math.min(delay, decision.maxIntervalMs());
+        }
+        return Math.max(delay, 0L);
+    }
+
+    private void sleepRetry(long delayMs) {
+        if (delayMs <= 0L) {
+            return;
+        }
+        try {
+            TimeUnit.MILLISECONDS.sleep(delayMs);
+        } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while waiting to retry AGUI pre-run primary endpoint", interruptedException);
+        }
+    }
+
+    private Integer extractHttpStatusCode(Throwable failure) {
+        Throwable cursor = failure;
+        while (cursor != null) {
+            Integer reflected = reflectedStatusCode(cursor);
+            if (reflected != null) {
+                return reflected;
+            }
+            Integer parsed = parsedStatusCode(cursor.getMessage());
+            if (parsed != null) {
+                return parsed;
+            }
+            cursor = cursor.getCause();
+        }
+        return null;
+    }
+
+    private Integer reflectedStatusCode(Throwable failure) {
+        try {
+            java.lang.reflect.Method method = failure.getClass().getMethod("getStatusCode");
+            Object status = method.invoke(failure);
+            if (status instanceof Number number) {
+                return number.intValue();
+            }
+        } catch (ReflectiveOperationException | SecurityException | IllegalArgumentException ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    private Integer parsedStatusCode(String message) {
+        if (message == null || message.isBlank()) {
+            return null;
+        }
+        Matcher matcher = HTTP_STATUS_PATTERN.matcher(message);
+        if (!matcher.find()) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(matcher.group(1));
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     private String runDeterministicFallback(ProducerTemplate template, String prompt, RuntimeConfig runtimeConfig) {
@@ -362,9 +690,7 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
         }
         try {
             return objectMapper.readTree(text);
-        } catch (RuntimeException parseFailure) {
-            return null;
-        } catch (Exception parseFailure) {
+        } catch (RuntimeException | IOException parseFailure) {
             return null;
         }
     }
@@ -446,7 +772,24 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
         String ticketFallbackUri,
         boolean fallbackEnabled,
         List<String> ticketKeywords,
-        List<String> fallbackErrorMarkers
+        List<String> fallbackErrorMarkers,
+        List<ExceptionPolicySpec> exceptionPolicies
+    ) {
+    }
+
+    private record ExceptionDecision(
+        ExceptionAction action,
+        ExceptionAction onRetryExhaustedAction,
+        ExceptionCategory category,
+        Integer statusCode,
+        int maxRetries,
+        long intervalMs,
+        boolean fallbackAllowed,
+        double multiplier,
+        long maxIntervalMs,
+        String policyName,
+        String prompt,
+        String onRetryExhaustedPrompt
     ) {
     }
 }

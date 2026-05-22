@@ -6,6 +6,7 @@ import io.dscope.camel.agent.runtime.AgentPlanSelectionResolver;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.camel.CamelContext;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.impl.DefaultCamelContext;
@@ -191,5 +192,213 @@ class AgentAgUiPreRunTextProcessorTest {
         } finally {
             context.stop();
         }
+    }
+
+    @Test
+    void shouldNotFallbackWhenPrimaryFailureIsToolLevelConflict409() throws Exception {
+        CamelContext context = new DefaultCamelContext();
+        Properties initial = new Properties();
+        initial.setProperty("agent.runtime.agui.pre-run.agent-endpoint-uri", "direct:agent-llm");
+        context.getPropertiesComponent().setInitialProperties(initial);
+
+        AtomicInteger fallbackCalls = new AtomicInteger();
+        context.addRoutes(new RouteBuilder() {
+            @Override
+            public void configure() {
+                from("direct:agent-llm")
+                    .process(exchange -> {
+                        throw new RuntimeException("MCP tool call failed with status 409 Conflict");
+                    });
+                from("direct:support-ticket-manage")
+                    .process(exchange -> fallbackCalls.incrementAndGet())
+                    .setBody(constant("ticket-fallback-ok"));
+                from("direct:kb-search")
+                    .setBody(constant("kb-fallback-ok"));
+            }
+        });
+
+        context.start();
+        try {
+            AgentAgUiPreRunTextProcessor processor = new AgentAgUiPreRunTextProcessor();
+            var exchange = new DefaultExchange(context);
+            Map<String, Object> params = new HashMap<>();
+            params.put("text", "please open a support ticket for login issue");
+            exchange.setProperty(AgentAgUiExchangeProperties.PARAMS, params);
+
+            RuntimeException error = Assertions.assertThrows(RuntimeException.class, () -> processor.process(exchange));
+            Assertions.assertTrue(containsTokenInCauseChain(error, "409"));
+            Assertions.assertEquals(0, fallbackCalls.get(), "Fallback route should not execute for tool-level 409 conflicts");
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldRetryPrimaryAgentForConfiguredTechnicalFailures() throws Exception {
+        CamelContext context = new DefaultCamelContext();
+        Properties initial = new Properties();
+        initial.setProperty("agent.blueprint", "classpath:agents/valid-agent-with-agui-prerun.md");
+        context.getPropertiesComponent().setInitialProperties(initial);
+
+        AtomicInteger primaryCalls = new AtomicInteger();
+        AtomicInteger fallbackCalls = new AtomicInteger();
+        context.addRoutes(new RouteBuilder() {
+            @Override
+            public void configure() {
+                from("direct:agent-llm-blueprint")
+                    .process(exchange -> {
+                        int call = primaryCalls.incrementAndGet();
+                        if (call < 3) {
+                            throw new RuntimeException("Upstream failure: 503 Service Unavailable");
+                        }
+                        exchange.getMessage().setBody("primary-success-after-retry");
+                    });
+                from("direct:ticket-custom")
+                    .process(exchange -> fallbackCalls.incrementAndGet())
+                    .setBody(constant("ticket-custom-fallback-ok"));
+                from("direct:kb-custom")
+                    .process(exchange -> fallbackCalls.incrementAndGet())
+                    .setBody(constant("kb-custom-fallback-ok"));
+            }
+        });
+
+        context.start();
+        try {
+            AgentAgUiPreRunTextProcessor processor = new AgentAgUiPreRunTextProcessor();
+            var exchange = new DefaultExchange(context);
+            Map<String, Object> params = new HashMap<>();
+            params.put("text", "check order status");
+            params.put("threadId", "thread-retry");
+            params.put("sessionId", "session-retry");
+            exchange.setProperty(AgentAgUiExchangeProperties.PARAMS, params);
+
+            processor.process(exchange);
+
+            Map<String, Object> out = exchange.getProperty(AgentAgUiExchangeProperties.PARAMS, Map.class);
+            Assertions.assertNotNull(out);
+            Assertions.assertEquals("primary-success-after-retry", out.get("text"));
+            Assertions.assertEquals(3, primaryCalls.get());
+            Assertions.assertEquals(0, fallbackCalls.get());
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Test
+    void shouldTerminateWhenAgUiRetryPolicyIsExhaustedAndChainedTerminateMatches() throws Exception {
+        CamelContext context = new DefaultCamelContext();
+        Properties initial = new Properties();
+        initial.setProperty("agent.blueprint", "classpath:agents/valid-agent-with-agui-prerun.md");
+        context.getPropertiesComponent().setInitialProperties(initial);
+
+        AtomicInteger primaryCalls = new AtomicInteger();
+        AtomicInteger fallbackCalls = new AtomicInteger();
+        context.addRoutes(new RouteBuilder() {
+            @Override
+            public void configure() {
+                from("direct:agent-llm-blueprint")
+                    .process(exchange -> {
+                        primaryCalls.incrementAndGet();
+                        throw new RuntimeException("Upstream failure: 503 Service Unavailable");
+                    });
+                from("direct:ticket-custom")
+                    .process(exchange -> fallbackCalls.incrementAndGet())
+                    .setBody(constant("ticket-custom-fallback-ok"));
+                from("direct:kb-custom")
+                    .process(exchange -> fallbackCalls.incrementAndGet())
+                    .setBody(constant("kb-custom-fallback-ok"));
+            }
+        });
+
+        context.start();
+        try {
+            AgentAgUiPreRunTextProcessor processor = new AgentAgUiPreRunTextProcessor();
+            var exchange = new DefaultExchange(context);
+            Map<String, Object> params = new HashMap<>();
+            params.put("text", "check order status");
+            params.put("threadId", "thread-term");
+            params.put("sessionId", "session-term");
+            exchange.setProperty(AgentAgUiExchangeProperties.PARAMS, params);
+
+            IllegalStateException failure = Assertions.assertThrows(IllegalStateException.class, () -> processor.process(exchange));
+            Assertions.assertTrue(containsTokenInCauseChain(failure, "503"));
+            Assertions.assertEquals(3, primaryCalls.get());
+            Assertions.assertEquals(0, fallbackCalls.get());
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldResolveAgUiExceptionWithLlmUsingPolicyPromptAndImplicitError() throws Exception {
+        CamelContext context = new DefaultCamelContext();
+        Properties initial = new Properties();
+        initial.setProperty("agent.blueprint", "classpath:agents/valid-agent-with-agui-prerun-resolve.md");
+        context.getPropertiesComponent().setInitialProperties(initial);
+
+        AtomicInteger primaryCalls = new AtomicInteger();
+        AtomicInteger fallbackCalls = new AtomicInteger();
+        context.addRoutes(new RouteBuilder() {
+            @Override
+            public void configure() {
+                from("direct:agent-llm-blueprint-resolve")
+                    .process(exchange -> {
+                        String body = exchange.getMessage().getBody(String.class);
+                        int calls = primaryCalls.incrementAndGet();
+                        if (body != null && body.contains("Additional instructions:")) {
+                            Assertions.assertTrue(body.contains("Error:"));
+                            Assertions.assertTrue(body.contains("409"));
+                            exchange.getMessage().setBody("resolved-by-agui-llm");
+                            return;
+                        }
+                        if (calls == 1) {
+                            throw new RuntimeException("MCP conflict 409");
+                        }
+                        exchange.getMessage().setBody("unexpected");
+                    });
+                from("direct:kb-custom")
+                    .process(exchange -> fallbackCalls.incrementAndGet())
+                    .setBody(constant("kb-custom-fallback-ok"));
+            }
+        });
+
+        context.start();
+        try {
+            AgentAgUiPreRunTextProcessor processor = new AgentAgUiPreRunTextProcessor();
+            var exchange = new DefaultExchange(context);
+            Map<String, Object> params = new HashMap<>();
+            params.put("text", "please help with a blocked action");
+            params.put("threadId", "thread-resolve");
+            params.put("sessionId", "session-resolve");
+            exchange.setProperty(AgentAgUiExchangeProperties.PARAMS, params);
+
+            processor.process(exchange);
+
+            Map<String, Object> out = exchange.getProperty(AgentAgUiExchangeProperties.PARAMS, Map.class);
+            Assertions.assertNotNull(out);
+            Assertions.assertEquals("resolved-by-agui-llm", out.get("text"));
+            Assertions.assertEquals(2, primaryCalls.get());
+            Assertions.assertEquals(0, fallbackCalls.get());
+        } finally {
+            context.stop();
+        }
+    }
+
+    private static boolean containsTokenInCauseChain(Throwable failure, String token) {
+        if (failure == null || token == null || token.isBlank()) {
+            return false;
+        }
+        String normalized = token.toLowerCase();
+        Throwable cursor = failure;
+        while (cursor != null) {
+            String message = cursor.getMessage();
+            if (message != null && message.toLowerCase().contains(normalized)) {
+                return true;
+            }
+            cursor = cursor.getCause();
+        }
+        return false;
     }
 }

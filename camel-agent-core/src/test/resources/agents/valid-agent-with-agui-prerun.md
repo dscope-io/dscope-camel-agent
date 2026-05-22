@@ -35,4 +35,26 @@ aguiPreRun:
     ticketToolName: case.open
     ticketKeywords: [escalate, urgent]
     errorMarkers: [api key is missing]
+
+exceptionPolicies:
+  - name: agui-business-conflict
+    scope: agui.pre-run
+    category: business
+    httpStatusCodes: [409]
+    action: rethrow
+  - name: agui-transient-upstream
+    scope: agui.pre-run
+    category: technical
+    httpStatusCodes: [429, 500, 502, 503, 504]
+    action: retry
+    retry:
+      maxRetries: 2
+      intervalMs: 10
+      exponentialBackoff: true
+      maxIntervalMs: 50
+  - name: agui-transient-upstream-exhausted
+    scope: agui.pre-run
+    category: technical
+    httpStatusCodes: [429, 500, 502, 503, 504]
+    action: terminate
 ```

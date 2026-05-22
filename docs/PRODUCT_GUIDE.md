@@ -927,6 +927,7 @@ The current `AgentBlueprint` model supports these top-level concepts:
 | `jsonRouteTemplates` | Parsed from YAML blocks |
 | `realtime` | Parsed from YAML blocks |
 | `aguiPreRun` | Parsed from YAML blocks |
+| `exceptionPolicies` | Parsed from YAML blocks and optional external YAML reference |
 | `resources` | Parsed from YAML blocks and resolved into static context payloads |
 
 ### Tool Definitions
@@ -1036,6 +1037,62 @@ Blueprints may define `aguiPreRun` or nested `agui.preRun`.
 | `fallback.ticketUri` | Explicit ticket URI override. |
 | `fallback.ticketKeywords` | Keywords that indicate ticket intent. |
 | `fallback.errorMarkers` | Markers that indicate auth or provider failure. |
+
+### Exception Policies Section
+
+Blueprints may define a top-level `exceptionPolicies` section and optionally load more policies from an external YAML source using `exceptionPoliciesRef` or `exceptionPoliciesUri`.
+
+Policy fields:
+
+| Field | Meaning |
+| --- | --- |
+| `name` | Policy label for diagnostics and logs. |
+| `scope` | Runtime surface selector. Supported values are `agui.pre-run` and `tool.execute`. Empty scope applies broadly. |
+| `category` | Failure class (`technical` or `business`). |
+| `httpStatusCodes` | Explicit status-code list used for matching. |
+| `action` | One of `retry`, `rethrow`, `terminate`, or `resolve`. |
+| `prompt` | Optional additional instruction text used by `resolve`. Runtime always injects the exception message implicitly. |
+| `retry.maxRetries` | Retry attempt limit for `retry` action. |
+| `retry.intervalMs` | Base delay between retries. |
+| `retry.exponentialBackoff` | Enables exponential delay growth. |
+| `retry.multiplier` | Delay multiplier when exponential backoff is enabled. |
+| `retry.maxIntervalMs` | Cap for backoff delay. |
+
+Behavior summary:
+
+- `agui.pre-run` policies are applied by `AgentAgUiPreRunTextProcessor` when primary AGUI invocation fails.
+- `tool.execute` policies are applied by `CamelToolExecutor` for standard tool invocation, including MCP targets.
+- business-style failures (for example `409`) should usually rethrow.
+- transient technical failures (for example `429` and `5xx`) can use bounded retries.
+- policies are evaluated in declaration order; after a retry policy is exhausted, runtime looks for the next matching non-retry policy (for example `terminate`).
+- if no chained non-retry policy matches after retry exhaustion, runtime defaults to `rethrow`.
+- `resolve` uses existing agent execution infrastructure so conversation context remains available, and appends the policy `prompt` when provided.
+
+Example:
+
+```yaml
+exceptionPolicies:
+  - name: agui-business-conflict
+    scope: agui.pre-run
+    category: business
+    httpStatusCodes: [409]
+    action: rethrow
+  - name: tool-transient-upstream
+    scope: tool.execute
+    category: technical
+    httpStatusCodes: [429, 500, 502, 503, 504]
+    action: retry
+    retry:
+      maxRetries: 2
+      intervalMs: 250
+      exponentialBackoff: true
+      maxIntervalMs: 2000
+  - name: tool-transient-upstream-exhausted
+    scope: tool.execute
+    category: technical
+    httpStatusCodes: [429, 500, 502, 503, 504]
+    action: terminate
+```
 
 ### Blueprint Resources Section
 

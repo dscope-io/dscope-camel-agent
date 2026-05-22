@@ -64,6 +64,7 @@ Blueprints remain the unit of agent behavior. A blueprint can define:
 - `jsonRouteTemplates`
 - `realtime`
 - `aguiPreRun`
+- `exceptionPolicies`
 - `resources`
 
 Developer guidance:
@@ -711,6 +712,107 @@ Design rule:
 - use strict execution-target resolution for anything that directly controls route or endpoint invocation
 
 If an execution target still contains `{{...}}` or `${...}` after resolution, runtime should fail immediately with a field-specific `IllegalArgumentException` rather than invoking the wrong route or leaking a partial URI into downstream behavior.
+
+## Exception Policies
+
+Blueprints can define exception handling policies that classify failures as technical or business and map them to one of three actions:
+
+- `retry`
+- `rethrow`
+- `terminate`
+- `resolve` (invoke LLM using existing agent context)
+
+Policy blocks support status-code matching, scope matching, and retry tuning:
+
+- `scope`: where the policy is applied, currently `agui.pre-run` and `tool.execute`
+- `category`: `technical` or `business`
+- `httpStatusCodes`: explicit status-code selector list
+- `retry.maxRetries`
+- `retry.intervalMs`
+- `retry.exponentialBackoff`
+- `retry.multiplier`
+- `retry.maxIntervalMs`
+- `prompt` (optional additional instructions for `resolve`; runtime always injects the error implicitly)
+
+Ordered chaining:
+
+- policies are evaluated in declaration order
+- when a matching `retry` policy exhausts retries, runtime searches subsequent matching policies for a non-retry action
+- this enables chains such as `retry` then `terminate`
+- if no chained non-retry policy matches, retry exhaustion defaults to `rethrow`
+
+Guidance:
+
+1. Prefer explicit `httpStatusCodes` for business exceptions such as `409` conflicts.
+2. Keep technical retries focused on transient statuses such as `429` and `5xx`.
+3. Use `scope` to avoid cross-surface surprises between AGUI pre-run and general tool execution.
+4. Use `terminate` sparingly for explicit stop-the-flow behavior.
+5. Use `resolve` when you want model-driven recovery with existing conversation context; include a short `prompt` for extra policy-specific instructions.
+
+YAML example:
+
+```yaml
+exceptionPolicies:
+  - name: business-conflict
+    scope: tool.execute
+    category: business
+    httpStatusCodes: [409]
+    action: rethrow
+  - name: transient-upstream
+    scope: tool.execute
+    category: technical
+    httpStatusCodes: [429, 500, 502, 503, 504]
+    action: retry
+    retry:
+      maxRetries: 2
+      intervalMs: 250
+      exponentialBackoff: true
+      maxIntervalMs: 2000
+  - name: transient-upstream-exhausted
+    scope: tool.execute
+    category: technical
+    httpStatusCodes: [429, 500, 502, 503, 504]
+    action: terminate
+```
+
+Support-domain retry-to-resolve example:
+
+```yaml
+exceptionPolicies:
+  - name: support-tool-transient-retry
+    scope: tool.execute
+    category: technical
+    httpStatusCodes: [429, 500, 502, 503, 504]
+    action: retry
+    retry:
+      maxRetries: 2
+      intervalMs: 300
+      exponentialBackoff: true
+      maxIntervalMs: 2500
+
+  - name: support-tool-retry-exhausted-resolve
+    scope: tool.execute
+    category: technical
+    httpStatusCodes: [429, 500, 502, 503, 504]
+    action: resolve
+    prompt: |
+      The support backend is temporarily unavailable.
+      Use available conversation and customer context to:
+      1) acknowledge the temporary outage,
+      2) provide a safe interim workaround,
+      3) explain next steps and expected follow-up.
+```
+
+Notes:
+
+- the runtime automatically injects the root exception message into the resolve prompt
+- `prompt` adds policy-specific guidance on top of that implicit error context
+- resolve uses the existing agent execution path, so normal conversation context remains available
+
+Loader notes:
+
+- `exceptionPolicies` can be declared inline in the blueprint YAML.
+- policies can also be loaded from a referenced YAML file using `exceptionPoliciesRef` or `exceptionPoliciesUri`.
 
 ## SIP And Telephony
 
