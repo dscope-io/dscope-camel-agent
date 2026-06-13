@@ -69,6 +69,41 @@
   - `docs/PRODUCT_GUIDE.md`
   - `docs/skills/agent-implementation-planner/SKILL.md`
 
+### AI Runtime Bootstrap
+- Execution owner: explicit bean wiring inside the Spring Boot application, not Camel Main runtime bootstrap
+- `agent.runtime.ai.mode`: not required for the primary path because the application provides its own `AiModelClient` bean
+- Runtime gateway override class (`agent.runtime.spring-ai.gateway-class`): not required for v1 because the app constructs `MultiProviderSpringAiChatGateway` directly
+- Provider choice: `openai` in v1, with the bean path kept compatible with future `gemini` or `claude` / `anthropic` support
+- Provider/model defaults and overrides:
+  - `agent.runtime.spring-ai.provider=openai`
+  - `agent.runtime.spring-ai.model=gpt-5.4`
+  - `agent.runtime.spring-ai.openai.api-mode=chat`
+- OpenAI API mode rationale:
+  - `chat` keeps the first sample simpler
+  - if the sample later switches to `responses-http`, the plan must add explicit strict tool-schema validation against the live model path
+- Real model-path validation strategy:
+  - use a focused controller-to-agent integration test for the embedded app in v1
+  - if the sample evolves toward OpenAI Responses tool calling, add a sample-service-style live model-path verification rather than relying on deterministic fallback flows
+
+### Fault and Exception Policies
+- Policy location: no dedicated `exceptionPolicies` block in v1 because the first sample uses deterministic local routes and intentionally keeps fault handling simple
+- Covered scopes for a follow-on phase:
+  - `tool.execute` if local support tools begin calling flaky upstream systems or need explicit business-conflict handling
+  - `agui.pre-run` only if the sample later adds AGUI/browser entrypoints
+- Technical failure classes and status codes:
+  - v1: rely on normal route exceptions plus terminal provider guidance for missing credentials or transport failures
+  - follow-on: add blueprint `retry` policies for transient upstream statuses such as `429`, `500`, `502`, `503`, and `504`
+- Business failure classes and status codes:
+  - follow-on: model explicit `rethrow` or `terminate` policies for deterministic business conflicts such as `409` or tool-defined non-retryable states
+- Retry exhaustion fallback action:
+  - v1: not needed because the sample remains local-tool-first and low-complexity
+  - follow-on: chain `retry` to `terminate` or `resolve` when the sample needs deterministic post-retry behavior
+- `resolve` prompt strategy if used:
+  - only add in a later phase where the sample demonstrates model-driven recovery using existing conversation context instead of raw exception text
+- Route-level versus blueprint-level ownership split:
+  - keep Spring/Camel exception handling for module bootstrap and transport concerns
+  - prefer blueprint `exceptionPolicies` for agent-visible tool or AGUI pre-run faults once the sample needs deterministic runtime fault semantics
+
 ### Interaction Model
 - Channels: backend-only orchestration with REST entrypoint in v1
 - Primary request-response pattern: synchronous HTTP request -> Spring MVC controller -> Camel `direct:` route -> `agent:` endpoint -> response body returned to caller
@@ -76,6 +111,8 @@
   - if live provider credentials are missing, return a clear terminal guidance response in development mode
   - optional v1.1 enhancement: deterministic local fallback route selection similar to AGUI pre-run behavior
 - MCP admin transport requirements (Streamable HTTP headers, protocol version): not exposed by the v1 Spring sample itself, but planning and smoke coverage should remain compatible with the existing runtime admin MCP conventions if the sample later adds admin endpoints
+- Runtime route-builder toggle (`agent.runtime.agent-routes-enabled`): keep disabled or irrelevant for the Spring sample path so the application owns ingress explicitly instead of relying on the built-in sample route builder
+- Diagnostics trace policy (`agent.diagnostics.trace.enabled`): enable in local development and integration troubleshooting if request/response tracing is needed, but keep it out of the critical-path sample requirements for v1
 
 ### Tooling Design
 - Blueprint `## Tools` section format rule (required): use a fenced YAML block with top-level `tools:`
@@ -118,6 +155,7 @@ No-change note (if applicable):
 - DB/auth approach:
   - local default: in-memory Derby or equivalent JDBC URL in `application.yaml`
   - CI override: Postgres through environment-specific properties if needed
+- Async audit/archive wrapper settings needed: no special override in v1; keep defaults unless test flakiness or shutdown flush behavior proves a need to pin them explicitly
 - Conversation archive persistence enabled by default: false
 - Conversation archive dedicated store required: no in v1
 - Conversation archive config keys:
@@ -133,6 +171,8 @@ No-change note (if applicable):
   - keep compatibility with existing runtime control semantics if a future admin surface is added
 - Archive read method:
   - not exposed in v1
+- AGUI auto-bind decisions: not applicable in v1 because AGUI is out of scope
+- Realtime auto-bind and browser-session decisions: not applicable in v1 because realtime/WebRTC are out of scope
 
 ## 4. Implementation Phases
 
@@ -148,6 +188,7 @@ No-change note (if applicable):
 - Verification:
   - blueprint parses successfully in a unit test or startup test
   - sample module compiles with starter dependency set
+  - exception-policy ownership is explicit: v1 keeps fault handling simple and defers blueprint policies until real upstream semantics exist
 
 ### Phase 2 — Tools and Routes
 - Tasks:
@@ -195,6 +236,7 @@ No-change note (if applicable):
   - add README for the new Spring sample module
   - add run commands and credential guidance
   - add focused tests for bean wiring and route behavior
+  - document when the sample should graduate from plain route exceptions to explicit blueprint `exceptionPolicies`
   - verify dependency tree remains clean and aligned with parent versions
 - Deliverables:
   - sample README
@@ -209,12 +251,14 @@ No-change note (if applicable):
 ### Unit Tests
 - blueprint structure test for `agents/support/agent.md`
 - model configuration test proving `AiModelClient` bean is the explicit Spring AI implementation instead of the starter default
+- if the sample later adds `exceptionPolicies`, add parsing and retry-exhaustion fallback tests for the selected policy chain
 
 ### Integration Tests
 - Spring Boot context test for the sample application
 - controller-to-route-to-agent invocation test using a mock or deterministic gateway
 - conversation continuity test with repeated `agent.conversationId`
 - audit behavior test showing expected events or persistence writes for a handled request
+- if external support tools are added later, add focused verification for `retry` / `rethrow` / `terminate` / `resolve` behavior instead of leaving failure semantics implicit
 
 ### Environment/Smoke Tests
 - Commands:
@@ -252,12 +296,14 @@ No-change note (if applicable):
 | sample accidentally uses starter noop gateway | requests appear to work structurally but never hit a live provider | add explicit bean wiring test and document the override in code and README | platform maintainer |
 | dependency drift between Spring Boot, Camel, and Spring AI | startup or runtime incompatibility | keep versions aligned to the repository parent and verify with dependency tree checks | platform maintainer |
 | sample grows into a second copy of the existing support-service sample | maintenance burden and docs confusion | keep scope narrow: Spring embedding only, no AGUI/realtime in v1 | docs and platform maintainer |
+| future upstream tool failures get handled inconsistently | confusing user-facing error behavior once the sample grows beyond local routes | introduce blueprint `exceptionPolicies` only when the sample has real upstream/business fault semantics to model | platform maintainer |
 
 ## 8. Open Questions
 
 - should the Spring sample stay backend-only in v1, or should it also expose AGUI routes as a second phase?
 - should the sample adopt a Spring Boot parent POM or inherit directly from the repo parent and set starter versions explicitly?
 - do we want a deterministic fallback path in the Spring sample when provider keys are missing, or is explicit terminal guidance sufficient?
+- if the sample later adds non-local support tools, which failures should remain plain route exceptions and which should move into blueprint `exceptionPolicies`?
 
 ---
 

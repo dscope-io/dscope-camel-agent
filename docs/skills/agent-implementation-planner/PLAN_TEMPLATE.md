@@ -32,6 +32,8 @@ Companion examples:
 - Agent name/title:
 - Blueprint path:
 - Versioning approach:
+- Plan catalog mode: single `agent.blueprint` / multi-plan `agent.agents-config`
+- Plan/version folder layout if multi-plan:
 
 ### Spring Application Bootstrap (Required when Spring Boot or application embedding is in scope)
 - Deployment style: Camel Main / Spring Boot / both
@@ -55,11 +57,48 @@ Companion examples:
 - Reference docs:
   - `docs/PRODUCT_GUIDE.md`
 
+### AI Runtime Bootstrap (Required when runtime bootstrap or live model execution is in scope)
+- Execution owner: runtime bootstrap / explicit bean wiring / external relay
+- `agent.runtime.ai.mode`: `spring-ai` / `realtime` / explicit custom binding
+- Runtime gateway override class (`agent.runtime.spring-ai.gateway-class`) if used:
+- Provider choice: `openai` / `gemini` / `claude` / `anthropic`
+- Provider/model defaults and overrides:
+- OpenAI API mode if applicable: `chat` / `responses-http` / `responses-ws`
+- Strict tool-schema compatibility decision if OpenAI Responses is used:
+- Responses WebSocket timeout/backoff expectations if `responses-ws` is used:
+- Real model-path validation strategy:
+
+### Fault and Exception Policies (Required when explicit runtime fault handling is in scope)
+- Policy location: inline `exceptionPolicies` / referenced YAML / route-local only
+- Covered scopes: `tool.execute` / `agui.pre-run` / both
+- Technical failure classes and status codes:
+- Business failure classes and status codes:
+- Retry policy names and thresholds:
+- Retry exhaustion fallback action:
+- `resolve` prompt strategy if used:
+- Route-level versus blueprint-level ownership split:
+
 ### Interaction Model
 - Channels: AGUI / Realtime / Backend-only
 - Primary request-response pattern:
 - Fallback behavior:
 - MCP admin transport requirements (Streamable HTTP headers, protocol version):
+- Runtime route-builder toggle (`agent.runtime.agent-routes-enabled`):
+- Runtime route include pattern (`agent.runtime.routes-include-pattern`):
+- Diagnostics trace policy (`agent.diagnostics.trace.enabled`):
+
+### A2UI Templates (Required when structured UI is in scope)
+- Response contract: legacy `widget` / top-level `a2ui` / both
+- Blueprint `a2ui.surfaces[]` design:
+- Catalog ids and supported-catalog negotiation strategy:
+- Catalog JSON resource paths:
+- Surface JSON resource paths:
+- Locale bundle resource paths:
+- Match-field strategy for selecting surfaces:
+- Legacy widget/template fallback expectation:
+- Client rendering targets: browser / Flutter / other
+- Static UI ownership under `src/main/resources/ui`: yes/no
+- AGUI brand/theme/default-plan settings if app-owned UI is in scope:
 
 ### A2A Exposure and Consumption (Required when peer-agent interoperability is in scope)
 - A2A role: caller / exposed service / both / none
@@ -82,6 +121,22 @@ Companion examples:
 - Instruction debug panel behavior (shown + auto-open in WebRTC mode):
 - WebRTC transcript diagnostics (`WebRTC transcript log` + clear action):
 - Separation rule from relay flow (no relay finalize/commit logic in WebRTC baseline):
+
+### SIP and Realtime Telephony (Required when telephony is in scope)
+- Telephony mode: adapter contract / OpenAI-managed SIP webhook / both
+- Stable conversation-id mapping strategy:
+- Caller identity propagation (`callerId`, `fromNumber`, `agent.session.params.*`):
+- SIP adapter endpoints if used:
+  - `POST /sip/adapter/v1/session/{conversationId}/start`
+  - `POST /sip/adapter/v1/session/{conversationId}/turn`
+  - `POST /sip/adapter/v1/session/{conversationId}/end`
+- OpenAI SIP webhook endpoint if used:
+  - `POST /openai/realtime/sip/webhook`
+- `agent.runtime.sip.bind-processors` decision:
+- SIP processor bean names or overrides:
+- Realtime session/init/transcript mapping rules:
+- Provider onboarding or call-control surface needed: yes/no
+- SIP metadata privacy/compliance handling:
 
 ### Tooling Design
 - Blueprint `## Tools` section format rule (required): use a fenced YAML block with top-level `tools:` (do not use prose bullets for tool definitions).
@@ -124,6 +179,7 @@ No-change note (if applicable):
 - Audit granularity: none / info / debug
 - Split audit store required: yes/no
 - DB/auth approach:
+- Async audit/archive wrapper settings needed: yes/no
 - Conversation archive persistence enabled by default: true/false
 - Conversation archive dedicated store required: yes/no
 - Conversation archive config keys:
@@ -142,6 +198,8 @@ Quick decision hint:
 - Close conversation behavior:
 - Purge preview and purge criteria:
 - A2A endpoint enablement and ownership:
+- AGUI auto-bind decisions:
+- Realtime auto-bind and browser-session decisions:
 - Runtime control methods:
   - `runtime.audit.granularity.get|set`
   - `runtime.conversation.persistence.get|set`
@@ -157,6 +215,9 @@ Quick decision hint:
   - 
 - Verification:
   - 
+  - plan catalog and version defaults are explicit when multi-plan mode is selected
+  - A2UI resource tree and catalog ids are explicit when structured UI is in scope
+  - exception-policy ownership and scope coverage are explicit when fault handling is in scope
 
 ### Phase 2 — Tools and Routes
 - Tasks:
@@ -166,6 +227,9 @@ Quick decision hint:
 - Verification:
   - 
   - A2A caller/service routing verified when applicable
+  - OpenAI Responses schema shape reviewed when provider/api-mode requires strict validation
+  - SIP route contract or webhook route ownership verified when telephony is in scope
+  - business versus technical failure handling is mapped before route/tool implementation when fault policies are in scope
 
 ### Phase 3 — Persistence, Audit, Lifecycle
 - Tasks:
@@ -184,10 +248,13 @@ Quick decision hint:
   - 
 - Verification:
   - 
+  - Runtime bootstrap binds the intended AI client and gateway path when bootstrap-owned model execution is planned
   - Spring context starts with planned beans and configuration overrides
   - Agent route or controller path successfully invokes `agent:` inside the application
   - A2A endpoints respond on the intended host/path set when enabled
   - Generate fresh AGUI/realtime turn and verify non-empty `audit.conversation.sessionData`
+  - Structured UI responses include the intended `widget` and/or `a2ui` contract when applicable
+  - SIP start/turn/end or OpenAI webhook flow reaches the intended realtime processors when telephony is enabled
   - For WebRTC mode, verify configured defaults match HTML controls (`transport=webrtc`, `agui=post`, `duplex=half`, `pause=normal`, `voice=alloy`)
 
 ### Phase 5 — Hardening and Release
@@ -197,20 +264,30 @@ Quick decision hint:
   - 
 - Verification:
   - 
+  - retry exhaustion and fallback behavior are documented and operator-visible when exception policies are in scope
 
 ## 5. Test Plan
 
 ### Unit Tests
 - 
 - 
+- A2UI surface/resource resolution test when structured UI is in scope
+- `agents.yaml` plan selection/default-version parsing test when multi-plan mode is in scope
+- exception-policy parse and ordered retry-fallback test when fault handling is in scope
 
 ### Integration Tests
 - 
 - 
+- Runtime bootstrap AI mode / gateway-class test when bootstrap-owned model execution is in scope
 - Spring Boot context test or equivalent bean wiring verification when Spring is in scope
 - A2A agent-card/RPC verification when interoperability is in scope
 - MCP tools/list includes expected runtime/archive methods
 - MCP tools/call returns expected structuredContent for runtime controls
+- Real model-path test for OpenAI Responses flows when strict tool-schema behavior matters
+- Widget plus A2UI contract verification when frontend rendering depends on structured responses
+- SIP adapter or OpenAI SIP webhook flow verification when telephony is in scope
+- plan/version-specific route and UI default behavior test when one service hosts multiple plans
+- `retry` / `rethrow` / `terminate` / `resolve` behavior test when exception policies are in scope
 
 ### Environment/Smoke Tests
 - Commands:
@@ -218,10 +295,14 @@ Quick decision hint:
   - `bash scripts/postgres-it.sh local`
   - `curl -sS -X POST http://localhost:8082/mcp/admin -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -H 'MCP-Protocol-Version: 2025-06-18' -d '{"jsonrpc":"2.0","id":"tools-list","method":"tools/list","params":{}}'`
   - `curl -sS -X POST http://localhost:8082/mcp/admin -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -H 'MCP-Protocol-Version: 2025-06-18' -d '{"jsonrpc":"2.0","id":"session-read","method":"tools/call","params":{"name":"audit.conversation.sessionData","arguments":{"conversationId":"<id>","limit":20}}}'`
+  - sample-service `POST /sample/agent/session` when validating live OpenAI Responses schema behavior
+  - `bash scripts/sip-adapter-v1-smoke.sh` when validating SIP adapter ingress
 - Expected outcomes:
   - 
   - runtime control methods update live state without restart
   - archived conversation session read returns expected `conversation.*` events after fresh interaction
+  - model-path validation proves schema-compatible tool execution when OpenAI Responses is selected
+  - telephony ingress preserves stable conversation correlation and reaches the intended realtime path when enabled
 
 ## 6. Deployment and Rollback
 
