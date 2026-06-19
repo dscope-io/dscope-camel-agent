@@ -140,12 +140,13 @@
       parameters:
         httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/agui/ui?httpMethodRestrict=GET
       steps:
-        - pollEnrich:
-            id: pollUiIndexResource
-            simple: file:{{agui.ui.static-root:samples/agent-support-service/src/main/resources/frontend}}?fileName=index.html&noop=true&idempotent=false
-        - convertBodyTo:
-            id: convertUiIndexToString
-            type: java.lang.String
+        - setHeader:
+            id: setHeaderUiResourcePath
+            name: AgUiStaticResourcePath
+            constant: index.html
+        - process:
+            id: processUiIndexResource
+            ref: agUiStaticResourceProcessor
         - setHeader:
             id: setHeaderUiContentType
             name: Content-Type
@@ -170,12 +171,13 @@
       parameters:
         httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/agui/ui/{assetPath}?httpMethodRestrict=GET
       steps:
-        - pollEnrich:
-            id: pollAguiUiStaticResource
-            simple: file:{{agui.ui.static-root:samples/agent-support-service/src/main/resources/frontend}}?fileName=${header.assetPath}&noop=true&idempotent=false
-        - convertBodyTo:
-            id: convertAguiUiStaticToString
-            type: java.lang.String
+        - setHeader:
+            id: setHeaderAguiUiStaticResourcePath
+            name: AgUiStaticResourcePath
+            simple: ${header.assetPath}
+        - process:
+            id: processAguiUiStaticResource
+            ref: agUiStaticResourceProcessor
 - route:
     id: realtime-session-event
     from:

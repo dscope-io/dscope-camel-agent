@@ -9,7 +9,3 @@ agent:
       bind-relay: false
       bind-processor: false
       bind-token-processor: false
-
-agui:
-  ui:
-    static-root: src/main/resources/frontend

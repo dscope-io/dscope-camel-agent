@@ -38,6 +38,10 @@ class AgUiStaticUiRouteIntegrationTest {
             HttpResult staticIndex = get(port, "/agui/ui/index.html");
             Assertions.assertEquals(200, staticIndex.statusCode());
             Assertions.assertTrue(staticIndex.body().contains("<title>Multi-Agent Copilot (Relay Primary)</title>"));
+
+            HttpResult webrtcPage = get(port, "/agui/ui/webrtc-test.html");
+            Assertions.assertEquals(200, webrtcPage.statusCode());
+            Assertions.assertTrue(webrtcPage.body().contains("<title>Support Copilot (WebRTC Test)</title>"));
         } finally {
             try {
                 main.stop();

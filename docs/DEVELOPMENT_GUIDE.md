@@ -566,6 +566,43 @@ Current structured UI contract:
 - `AgentBlueprint.a2ui` is the declaration seam for app-owned A2UI surfaces and locale bundles
 - `A2UiPayloadSupport` is the shared core seam for locale normalization, surface matching, resource loading, and supported-catalog negotiation; concrete catalogs/surfaces live in app JSON assets, not core code
 
+### AGUI Static Assets
+
+For browser-facing AGUI pages and assets, use the shared core processor `AgUiStaticResourceProcessor`.
+
+Rules:
+
+- bind-default-beans path in `AgentRuntimeBootstrap` now also binds `agUiStaticResourceProcessor`
+- routes should set header `AgUiStaticResourcePath` and then call `process: ref: agUiStaticResourceProcessor`
+- processor resolution order is:
+  1. optional filesystem override from `agui.ui.static-root`
+  2. packaged classpath assets from `agui.ui.classpath-root`
+  3. default packaged classpath root `frontend/`
+- use this processor for all static asset types we serve from AGUI routes, including html, css, js, json, svg, images, fonts, wasm, pdf, and common media files
+- the processor sanitizes paths and returns `404` for invalid or missing resources
+
+Do not use `pollEnrich` with `file:src/main/resources/...` for deployed AGUI assets. That pattern works in source-tree runs but is not reliable once resources are packaged into a jar/container, and `pollEnrich` can block until the HTTP layer times out if the file consumer never resolves a resource.
+
+Route example:
+
+```yaml
+- setHeader:
+    name: AgUiStaticResourcePath
+    constant: index.html
+- process:
+    ref: agUiStaticResourceProcessor
+```
+
+Dynamic asset example:
+
+```yaml
+- setHeader:
+    name: AgUiStaticResourcePath
+    simple: ${header.assetPath}
+- process:
+    ref: agUiStaticResourceProcessor
+```
+
 ### Browser Realtime
 
 Browser realtime flows depend on runtime-bound processors for:

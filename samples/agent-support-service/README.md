@@ -218,6 +218,8 @@ Notes:
 - `/agui/rpc` is available for AGUI WebSocket transport and is functionally aligned with `/agui/agent`.
 - `/agui/stream/{runId}` remains available for split-transport clients.
 - AGUI frontend behavior in this sample is configured by runtime routes/processors (`application.yaml` + `routes/ag-ui-platform.camel.yaml`), not by a UI section in `agents/support/agent.md`.
+- AGUI static pages are served through the shared core bean `agUiStaticResourceProcessor`, which prefers `agui.ui.static-root` for local overrides and otherwise loads packaged classpath assets from `frontend/`.
+- For new AGUI static routes, set header `AgUiStaticResourcePath` and call `process: ref: agUiStaticResourceProcessor` instead of using `pollEnrich` against `src/main/resources/...` file paths.
 
 ## Connectivity Precheck
 

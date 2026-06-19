@@ -401,12 +401,13 @@
       parameters:
         httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/audit/ui?httpMethodRestrict=GET
       steps:
-        - pollEnrich:
-            id: pollAuditUiPage
-            simple: file:{{agui.ui.static-root:samples/agent-support-service/src/main/resources/frontend}}?fileName=audit.html&noop=true&idempotent=false
-        - convertBodyTo:
-            id: convertAuditUiToString
-            type: java.lang.String
+        - setHeader:
+            id: setHeaderAuditUiResourcePath
+            name: AgUiStaticResourcePath
+            constant: audit.html
+        - process:
+            id: processAuditUiPage
+            ref: agUiStaticResourceProcessor
         - setHeader:
             id: setHeaderAuditUiContentType
             name: Content-Type

@@ -22,12 +22,13 @@
             id: setHeaderUiExpires
             name: Expires
             constant: "0"
-        - pollEnrich:
-            id: pollUiIndexResource
-            simple: file:{{agui.ui.static-root:samples/agent-support-service/src/main/resources/frontend}}?fileName=index.html&noop=true&idempotent=false
-        - convertBodyTo:
-            id: convertUiIndexToString
-            type: java.lang.String
+        - setHeader:
+            id: setHeaderUiResourcePath
+            name: AgUiStaticResourcePath
+            constant: index.html
+        - process:
+            id: processUiIndexResource
+            ref: agUiStaticResourceProcessor
 
 - route:
     id: agui-ui-static-test
@@ -37,9 +38,10 @@
       parameters:
         httpURI: http://0.0.0.0:{{agent.runtime.test-port:18081}}/agui/ui/{assetPath}?httpMethodRestrict=GET
       steps:
-        - pollEnrich:
-            id: pollAguiUiStaticResource
-            simple: file:{{agui.ui.static-root:samples/agent-support-service/src/main/resources/frontend}}?fileName=${header.assetPath}&noop=true&idempotent=false
-        - convertBodyTo:
-            id: convertAguiUiStaticToString
-            type: java.lang.String
+        - setHeader:
+            id: setHeaderAguiUiStaticResourcePath
+            name: AgUiStaticResourcePath
+            simple: ${header.assetPath}
+        - process:
+            id: processAguiUiStaticResource
+            ref: agUiStaticResourceProcessor
