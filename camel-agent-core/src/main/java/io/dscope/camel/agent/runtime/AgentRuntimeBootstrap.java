@@ -2,6 +2,7 @@ package io.dscope.camel.agent.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dscope.camel.agent.a2a.AgentA2AProtocolSupport;
+import io.dscope.camel.agent.agui.AgUiA2uiResponseNormalizationProcessor;
 import io.dscope.camel.agent.agui.AgentAgUiPreRunTextProcessor;
 import io.dscope.camel.agent.agui.AgUiStaticResourceProcessor;
 import io.dscope.camel.agent.audit.AuditAgentBlueprintProcessor;
@@ -509,6 +510,7 @@ public final class AgentRuntimeBootstrap {
             "agent.runtime.agui.bindDefaultBeans"
         )) {
             bindAgUiDefaultsIfAvailable(main);
+            bindIfMissing(main, AgUiA2uiResponseNormalizationProcessor.BEAN_NAME, new AgUiA2uiResponseNormalizationProcessor(objectMapper));
             bindIfMissing(main, AgUiStaticResourceProcessor.BEAN_NAME, new AgUiStaticResourceProcessor());
         }
 
