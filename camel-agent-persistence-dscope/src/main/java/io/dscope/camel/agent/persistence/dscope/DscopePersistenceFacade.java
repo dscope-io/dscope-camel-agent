@@ -40,6 +40,8 @@ public class DscopePersistenceFacade implements PersistenceFacade {
     public static final String FLOW_TASK_LOCK = "agent.task.lock";
     public static final String FLOW_CONVERSATION_INDEX = "agent.conversation.index";
     private static final String CONVERSATION_INDEX_STREAM = "_all";
+    private static final String CONVERSATION_INDEX_IDS_FIELD = "conversationIds";
+    private static final int CONVERSATION_INDEX_SNAPSHOT_INTERVAL = 100;
 
     private final FlowStateStore flowStateStore;
     private final FlowStateStore auditFlowStateStore;
@@ -142,20 +144,12 @@ public class DscopePersistenceFacade implements PersistenceFacade {
         if (limit <= 0) {
             return List.of();
         }
-        int readLimit = Math.max(limit * 20, 500);
-        List<PersistedEvent> events = auditFlowStateStore.readEvents(FLOW_CONVERSATION_INDEX, CONVERSATION_INDEX_STREAM, 0L, readLimit);
-        if (events.isEmpty()) {
+        var rehydrated = auditFlowStateStore.rehydrate(FLOW_CONVERSATION_INDEX, CONVERSATION_INDEX_STREAM);
+        List<String> ids = conversationIndexIds(rehydrated, limit);
+        if (ids.isEmpty()) {
             return List.of();
         }
-        LinkedHashSet<String> ordered = new LinkedHashSet<>();
-        for (int index = events.size() - 1; index >= 0 && ordered.size() < limit; index--) {
-            PersistedEvent event = events.get(index);
-            String conversationId = event.payload().path("conversationId").asText(null);
-            if (conversationId != null && !conversationId.isBlank()) {
-                ordered.add(conversationId);
-            }
-        }
-        return List.copyOf(ordered);
+        return ids;
     }
 
     @Override
@@ -461,9 +455,7 @@ public class DscopePersistenceFacade implements PersistenceFacade {
 
     private long resolveConversationVersion(String conversationId) {
         var rehydrated = auditFlowStateStore.rehydrate(FLOW_CONVERSATION, conversationId);
-        long envelopeVersion = rehydrated.envelope() == null ? 0L : rehydrated.envelope().version();
-        long eventVersion = auditFlowStateStore.readEvents(FLOW_CONVERSATION, conversationId, 0L, 10_000).size();
-        return Math.max(envelopeVersion, eventVersion);
+        return resolvedVersion(rehydrated);
     }
 
     private long resolveConversationVersionCached(String conversationId) {
@@ -499,7 +491,9 @@ public class DscopePersistenceFacade implements PersistenceFacade {
                     List.of(persistedEvent),
                     persistedEvent.idempotencyKey()
                 );
-                conversationIndexVersion.updateAndGet(current -> Math.max(current, expectedVersion + 1));
+                long nextVersion = expectedVersion + 1;
+                conversationIndexVersion.updateAndGet(current -> Math.max(current, nextVersion));
+                refreshConversationIndexSnapshotIfNeeded(nextVersion);
                 return;
             } catch (OptimisticConflictException ex) {
                 conversationIndexVersion.compareAndSet(expectedVersion, -1L);
@@ -512,9 +506,7 @@ public class DscopePersistenceFacade implements PersistenceFacade {
 
     private long resolveConversationIndexVersion() {
         var rehydrated = auditFlowStateStore.rehydrate(FLOW_CONVERSATION_INDEX, CONVERSATION_INDEX_STREAM);
-        long envelopeVersion = rehydrated.envelope() == null ? 0L : rehydrated.envelope().version();
-        long eventVersion = auditFlowStateStore.readEvents(FLOW_CONVERSATION_INDEX, CONVERSATION_INDEX_STREAM, 0L, 10_000).size();
-        return Math.max(envelopeVersion, eventVersion);
+        return resolvedVersion(rehydrated);
     }
 
     private long resolveConversationIndexVersionCached() {
@@ -525,6 +517,91 @@ public class DscopePersistenceFacade implements PersistenceFacade {
         long resolved = resolveConversationIndexVersion();
         conversationIndexVersion.compareAndSet(-1L, resolved);
         return conversationIndexVersion.get();
+    }
+
+    private long resolvedVersion(io.dscope.camel.persistence.core.RehydratedState rehydrated) {
+        if (rehydrated == null) {
+            return 0L;
+        }
+        long envelopeVersion = rehydrated.envelope() == null ? 0L : rehydrated.envelope().version();
+        List<PersistedEvent> tailEvents = rehydrated.tailEvents();
+        if (tailEvents == null || tailEvents.isEmpty()) {
+            return envelopeVersion;
+        }
+        PersistedEvent last = tailEvents.get(tailEvents.size() - 1);
+        return Math.max(envelopeVersion, last.sequence());
+    }
+
+    private List<String> conversationIndexIds(io.dscope.camel.persistence.core.RehydratedState rehydrated, int limit) {
+        LinkedHashSet<String> ordered = new LinkedHashSet<>();
+        List<PersistedEvent> tailEvents = rehydrated == null || rehydrated.tailEvents() == null ? List.of() : rehydrated.tailEvents();
+        for (int index = tailEvents.size() - 1; index >= 0 && ordered.size() < limit; index--) {
+            addConversationIndexId(ordered, tailEvents.get(index).payload().path("conversationId").asText(null), limit);
+        }
+        for (String conversationId : snapshotConversationIndexIds(rehydrated == null || rehydrated.envelope() == null ? null : rehydrated.envelope().snapshot())) {
+            addConversationIndexId(ordered, conversationId, limit);
+            if (ordered.size() >= limit) {
+                break;
+            }
+        }
+        return List.copyOf(ordered);
+    }
+
+    private void addConversationIndexId(LinkedHashSet<String> ordered, String conversationId, int limit) {
+        if (ordered.size() >= limit || conversationId == null || conversationId.isBlank()) {
+            return;
+        }
+        ordered.add(conversationId);
+    }
+
+    private List<String> snapshotConversationIndexIds(JsonNode snapshot) {
+        if (snapshot == null || snapshot.isMissingNode() || snapshot.isNull()) {
+            return List.of();
+        }
+        JsonNode idsNode = snapshot.path(CONVERSATION_INDEX_IDS_FIELD);
+        if (!idsNode.isArray() || idsNode.isEmpty()) {
+            return List.of();
+        }
+        List<String> ids = new ArrayList<>();
+        for (JsonNode item : idsNode) {
+            String conversationId = item == null ? null : item.asText(null);
+            if (conversationId != null && !conversationId.isBlank()) {
+                ids.add(conversationId);
+            }
+        }
+        return List.copyOf(ids);
+    }
+
+    private void refreshConversationIndexSnapshotIfNeeded(long nextVersion) {
+        if (nextVersion <= 0L || (nextVersion % CONVERSATION_INDEX_SNAPSHOT_INTERVAL) != 0L) {
+            return;
+        }
+        try {
+            var rehydrated = auditFlowStateStore.rehydrate(FLOW_CONVERSATION_INDEX, CONVERSATION_INDEX_STREAM);
+            long resolvedVersion = resolvedVersion(rehydrated);
+            List<String> conversationIds = conversationIndexIds(rehydrated, Integer.MAX_VALUE);
+            ObjectNode snapshot = objectMapper.createObjectNode();
+            snapshot.set(CONVERSATION_INDEX_IDS_FIELD, objectMapper.valueToTree(conversationIds));
+            auditFlowStateStore.writeSnapshot(
+                FLOW_CONVERSATION_INDEX,
+                CONVERSATION_INDEX_STREAM,
+                resolvedVersion,
+                snapshot,
+                Map.of(
+                    "conversationCount", conversationIds.size(),
+                    "snapshotInterval", CONVERSATION_INDEX_SNAPSHOT_INTERVAL,
+                    "updatedAt", Instant.now().toString()
+                )
+            );
+        } catch (RuntimeException exception) {
+            LOGGER.warn(
+                "Conversation index snapshot refresh failed: flowType={}, flowId={}, version={}, reason={}",
+                FLOW_CONVERSATION_INDEX,
+                CONVERSATION_INDEX_STREAM,
+                nextVersion,
+                exception.getMessage()
+            );
+        }
     }
 
     private record TaskLockState(String ownerId, Instant leaseUntil) {

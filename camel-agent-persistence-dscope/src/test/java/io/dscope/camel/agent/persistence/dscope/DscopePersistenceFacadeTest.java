@@ -242,6 +242,39 @@ class DscopePersistenceFacadeTest {
         Assertions.assertEquals(List.of("conv-2", "conv-1"), ids);
     }
 
+    @Test
+    void shouldWriteConversationIndexSnapshotAndReuseItForListing() {
+        TestFlowStateStore store = new TestFlowStateStore();
+        DscopePersistenceFacade facade = new DscopePersistenceFacade(store, new ObjectMapper(), AuditGranularity.DEBUG);
+
+        for (int index = 1; index <= 100; index++) {
+            facade.appendEvent(new AgentEvent("conv-" + index, null, "agent.message",
+                new ObjectMapper().createObjectNode().put("text", "message-" + index), Instant.now()), "k-" + index);
+        }
+
+        JsonNode snapshot = store.snapshotFor(DscopePersistenceFacade.FLOW_CONVERSATION_INDEX, "_all");
+        Assertions.assertNotNull(snapshot);
+        Assertions.assertEquals(100, snapshot.path("conversationIds").size());
+        Assertions.assertEquals(100L, store.snapshotVersionFor(DscopePersistenceFacade.FLOW_CONVERSATION_INDEX, "_all"));
+        Assertions.assertEquals(List.of("conv-100", "conv-99", "conv-98"), facade.listConversationIds(3));
+    }
+
+    @Test
+    void shouldMergeSnapshotAndTailWhenListingConversationIds() {
+        TestFlowStateStore store = new TestFlowStateStore();
+        DscopePersistenceFacade facade = new DscopePersistenceFacade(store, new ObjectMapper(), AuditGranularity.DEBUG);
+
+        for (int index = 1; index <= 101; index++) {
+            facade.appendEvent(new AgentEvent("conv-" + index, null, "agent.message",
+                new ObjectMapper().createObjectNode().put("text", "message-" + index), Instant.now()), "k-tail-" + index);
+        }
+
+        Assertions.assertEquals(
+            List.of("conv-101", "conv-100", "conv-99", "conv-98"),
+            facade.listConversationIds(4)
+        );
+    }
+
     private static class TestFlowStateStore implements FlowStateStore {
         private final Map<String, List<PersistedEvent>> events = new HashMap<>();
         private final Map<String, com.fasterxml.jackson.databind.JsonNode> snapshots = new HashMap<>();
@@ -280,11 +313,29 @@ class DscopePersistenceFacadeTest {
 
         @Override
         public List<PersistedEvent> readEvents(String flowType, String flowId, long afterVersion, int limit) {
-            return events.getOrDefault(flowType + ":" + flowId, List.of());
+            List<PersistedEvent> all = events.getOrDefault(flowType + ":" + flowId, List.of());
+            List<PersistedEvent> filtered = new ArrayList<>();
+            for (PersistedEvent event : all) {
+                if (event.sequence() > afterVersion) {
+                    filtered.add(event);
+                }
+                if (filtered.size() >= limit) {
+                    break;
+                }
+            }
+            return filtered;
         }
 
         List<PersistedEvent> eventsFor(String flowType, String flowId) {
             return events.getOrDefault(flowType + ":" + flowId, List.of());
+        }
+
+        JsonNode snapshotFor(String flowType, String flowId) {
+            return snapshots.get(flowType + ":" + flowId);
+        }
+
+        long snapshotVersionFor(String flowType, String flowId) {
+            return snapshotVersions.getOrDefault(flowType + ":" + flowId, 0L);
         }
     }
 

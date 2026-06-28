@@ -18,7 +18,7 @@
     <undertow.version>2.3.21.Final</undertow.version>
     <jackson.version>2.20.0</jackson.version>
     <junit.jupiter.version>5.10.2</junit.jupiter.version>
-    <persistence.version>1.3.0</persistence.version>
+    <persistence.version>1.3.1</persistence.version>
     <a2a.version>1.2.0</a2a.version>
     <spring.ai.version>1.1.4</spring.ai.version>
     <spring.boot.version>4.0.5</spring.boot.version>

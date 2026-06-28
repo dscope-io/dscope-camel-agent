@@ -675,6 +675,7 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
         ObjectNode a2ui = A2UiPayloadSupport.buildPayload(objectMapper, blueprint, parsed, resolvedPlan, locale, supportedCatalogIds);
         if (a2ui != null && !a2ui.isEmpty()) {
             params.put("a2ui", objectMapper.convertValue(a2ui, Map.class));
+            params.put("text", a2ui.toString());
         }
     }
 
@@ -694,8 +695,71 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
         try {
             return objectMapper.readTree(text);
         } catch (RuntimeException | IOException parseFailure) {
+            String repaired = repairJson(text);
+            if (repaired == null || repaired.equals(text)) {
+                return null;
+            }
+            try {
+                return objectMapper.readTree(repaired);
+            } catch (RuntimeException | IOException ignored) {
+                return null;
+            }
+        }
+    }
+
+    private String repairJson(String text) {
+        if (text == null) {
             return null;
         }
+        String candidate = text.trim();
+        if (candidate.isBlank() || !candidate.startsWith("{")) {
+            return null;
+        }
+
+        StringBuilder repaired = new StringBuilder(candidate);
+        boolean inString = false;
+        boolean escaping = false;
+        int openBraces = 0;
+        int openBrackets = 0;
+
+        for (int i = 0; i < candidate.length(); i++) {
+            char ch = candidate.charAt(i);
+            if (escaping) {
+                escaping = false;
+                continue;
+            }
+            if (ch == '\\') {
+                escaping = true;
+                continue;
+            }
+            if (ch == '"') {
+                inString = !inString;
+                continue;
+            }
+            if (inString) {
+                continue;
+            }
+            if (ch == '{') {
+                openBraces++;
+            } else if (ch == '}') {
+                openBraces = Math.max(0, openBraces - 1);
+            } else if (ch == '[') {
+                openBrackets++;
+            } else if (ch == ']') {
+                openBrackets = Math.max(0, openBrackets - 1);
+            }
+        }
+
+        if (inString) {
+            repaired.append('"');
+        }
+        while (openBrackets-- > 0) {
+            repaired.append(']');
+        }
+        while (openBraces-- > 0) {
+            repaired.append('}');
+        }
+        return repaired.toString();
     }
 
     private List<String> csvValues(String csv) {
