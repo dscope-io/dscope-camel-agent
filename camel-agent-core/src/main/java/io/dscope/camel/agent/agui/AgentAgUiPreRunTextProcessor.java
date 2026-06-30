@@ -1,7 +1,9 @@
 package io.dscope.camel.agent.agui;
 
 import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -675,7 +677,6 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
         ObjectNode a2ui = A2UiPayloadSupport.buildPayload(objectMapper, blueprint, parsed, resolvedPlan, locale, supportedCatalogIds);
         if (a2ui != null && !a2ui.isEmpty()) {
             params.put("a2ui", objectMapper.convertValue(a2ui, Map.class));
-            params.put("text", a2ui.toString());
         }
     }
 
@@ -717,10 +718,9 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
         }
 
         StringBuilder repaired = new StringBuilder(candidate);
+        Deque<Character> closingStack = new ArrayDeque<>();
         boolean inString = false;
         boolean escaping = false;
-        int openBraces = 0;
-        int openBrackets = 0;
 
         for (int i = 0; i < candidate.length(); i++) {
             char ch = candidate.charAt(i);
@@ -740,24 +740,25 @@ public class AgentAgUiPreRunTextProcessor implements Processor {
                 continue;
             }
             if (ch == '{') {
-                openBraces++;
+                closingStack.push('}');
             } else if (ch == '}') {
-                openBraces = Math.max(0, openBraces - 1);
+                if (closingStack.isEmpty() || closingStack.pop() != '}') {
+                    return null;
+                }
             } else if (ch == '[') {
-                openBrackets++;
+                closingStack.push(']');
             } else if (ch == ']') {
-                openBrackets = Math.max(0, openBrackets - 1);
+                if (closingStack.isEmpty() || closingStack.pop() != ']') {
+                    return null;
+                }
             }
         }
 
         if (inString) {
             repaired.append('"');
         }
-        while (openBrackets-- > 0) {
-            repaired.append(']');
-        }
-        while (openBraces-- > 0) {
-            repaired.append('}');
+        while (!closingStack.isEmpty()) {
+            repaired.append(closingStack.pop());
         }
         return repaired.toString();
     }
