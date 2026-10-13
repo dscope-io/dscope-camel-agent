@@ -23,11 +23,14 @@ class DscopeChatMemoryRepositoryTest {
         DscopeChatMemoryRepository repository = new DscopeChatMemoryRepository(store, new ObjectMapper());
 
         repository.saveAll("conv-1", List.of(UserMessage.builder().text("hello").build()));
+        repository.saveAll("conv-1", List.of(UserMessage.builder().text("updated").build()));
         var messages = repository.findByConversationId("conv-1");
 
         Assertions.assertEquals(1, messages.size());
-        Assertions.assertEquals("hello", messages.getFirst().getText());
+        Assertions.assertEquals("updated", messages.getFirst().getText());
         Assertions.assertTrue(repository.findConversationIds().contains("conv-1"));
+        Assertions.assertEquals(0L, store.snapshotVersion("agent.chat.memory", "conv-1"));
+        Assertions.assertEquals(0L, store.snapshotVersion("agent.chat.memory.index", "all"));
 
         repository.deleteByConversationId("conv-1");
         Assertions.assertTrue(repository.findByConversationId("conv-1").isEmpty());
@@ -63,8 +66,15 @@ class DscopeChatMemoryRepositoryTest {
         @Override
         public void writeSnapshot(String flowType, String flowId, long version, JsonNode snapshotJson, Map<String, Object> metadata) {
             String key = flowType + ":" + flowId;
+            if (version > 0L || version < versions.getOrDefault(key, 0L)) {
+                throw new IllegalArgumentException("Invalid snapshot version " + version + " for " + key);
+            }
             snapshots.put(key, snapshotJson);
             versions.put(key, version);
+        }
+
+        long snapshotVersion(String flowType, String flowId) {
+            return versions.getOrDefault(flowType + ":" + flowId, 0L);
         }
 
         @Override

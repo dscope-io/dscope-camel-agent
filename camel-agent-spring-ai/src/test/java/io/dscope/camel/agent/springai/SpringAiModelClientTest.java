@@ -93,4 +93,44 @@ class SpringAiModelClientTest {
         Assertions.assertEquals("openai", response.modelUsage().provider());
         Assertions.assertEquals("gpt-5.4", response.modelUsage().model());
     }
+
+    @Test
+    void shouldUseConfiguredToolResultLimit() {
+        ObjectMapper mapper = new ObjectMapper();
+        String toolResult = "x".repeat(12_000);
+        SpringAiChatGateway gateway = (systemPrompt, userContext, tools, model, temperature, maxTokens, callback) -> {
+            Assertions.assertTrue(userContext.contains(toolResult));
+            Assertions.assertFalse(userContext.contains("...(truncated)"));
+            return new SpringAiChatGateway.SpringAiChatResult("done", List.of(), true);
+        };
+        SpringAiModelClient client = new SpringAiModelClient(gateway, mapper, 20_000);
+
+        client.generate(
+            "system",
+            List.of(new AgentEvent("conv-1", null, "tool.result", mapper.valueToTree(toolResult), Instant.now())),
+            List.of(),
+            ModelOptions.defaults(),
+            token -> { }
+        );
+    }
+
+    @Test
+    void shouldUseDefaultToolResultLimitWhenNotConfigured() {
+        ObjectMapper mapper = new ObjectMapper();
+        String toolResult = "x".repeat(SpringAiModelClient.DEFAULT_TOOL_RESULT_MAX_CHARS + 1);
+        SpringAiChatGateway gateway = (systemPrompt, userContext, tools, model, temperature, maxTokens, callback) -> {
+            Assertions.assertFalse(userContext.contains(toolResult));
+            Assertions.assertTrue(userContext.endsWith("...(truncated)]"));
+            return new SpringAiChatGateway.SpringAiChatResult("done", List.of(), true);
+        };
+        SpringAiModelClient client = new SpringAiModelClient(gateway, mapper);
+
+        client.generate(
+            "system",
+            List.of(new AgentEvent("conv-1", null, "tool.result", mapper.valueToTree(toolResult), Instant.now())),
+            List.of(),
+            ModelOptions.defaults(),
+            token -> { }
+        );
+    }
 }

@@ -16,6 +16,11 @@
       - process:
           ref: mcpError
 
+- intercept:
+    steps:
+      - process:
+          ref: agentHttpAccessProcessor
+
 - route:
     id: sample-admin-mcp-api
     from:

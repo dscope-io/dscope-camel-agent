@@ -11,7 +11,8 @@ class AgentSupportApi {
 
   final http.Client _client;
 
-  static const List<String> supportedCatalogIds = A2UiCatalogRegistry.supportedCatalogIds;
+  static const List<String> supportedCatalogIds =
+      A2UiCatalogRegistry.supportedCatalogIds;
 
   String defaultBaseUrl() {
     if (Platform.isAndroid) {
@@ -62,7 +63,8 @@ class AgentSupportApi {
         final parsed = parseAgUiEvents(raw?.toString() ?? '');
         events.addAll(parsed);
         final runFinished = parsed.any((event) =>
-            event.eventType == 'RUN_FINISHED' || event.eventType == 'RUN_ERROR');
+            event.eventType == 'RUN_FINISHED' ||
+            event.eventType == 'RUN_ERROR');
         if (runFinished) {
           finish();
         }
@@ -136,6 +138,20 @@ class AgentSupportApi {
     throw StateError('Realtime token response missing ephemeral key');
   }
 
+  Future<Map<String, dynamic>> connectVoiceSession({
+    required String baseUrl,
+    required String sessionId,
+    required String locale,
+    required String sdp,
+  }) async {
+    final response = await _client.post(
+      _httpUri(baseUrl, '/voice/session/$sessionId/connect'),
+      headers: _jsonHeaders(locale),
+      body: jsonEncode({'sdp': sdp}),
+    );
+    return _decodeJsonResponse(response, 'Voice SDP exchange');
+  }
+
   Future<Map<String, dynamic>> postTranscriptFinal({
     required String baseUrl,
     required String sessionId,
@@ -182,7 +198,8 @@ class AgentSupportApi {
           'voice': voice,
         },
       },
-      'instructions': 'Respond using locale $locale. Keep answers concise and operational.',
+      'instructions':
+          'Respond using locale $locale. Keep answers concise and operational.',
     };
   }
 
@@ -198,7 +215,8 @@ class AgentSupportApi {
     return null;
   }
 
-  A2UiProjection? extractProjectionFromRealtimeResponse(Map<String, dynamic> payload) {
+  A2UiProjection? extractProjectionFromRealtimeResponse(
+      Map<String, dynamic> payload) {
     return _extractProjection(payload['a2ui']) ??
         _extractProjection(payload['payload']?['a2ui']);
   }
@@ -288,7 +306,8 @@ class AgentSupportApi {
   String? extractTranscriptFromRealtimeEvent(Map<String, dynamic> event) {
     final type = (event['type'] ?? '').toString().toLowerCase();
     final item = event['item'];
-    final role = item is Map ? (item['role'] ?? '').toString().toLowerCase() : '';
+    final role =
+        item is Map ? (item['role'] ?? '').toString().toLowerCase() : '';
     final isTranscriptEvent = type.contains('input_audio_transcription') ||
         type.contains('transcription.completed') ||
         (type.contains('conversation.item.created') && role == 'user');
@@ -334,7 +353,8 @@ class AgentSupportApi {
   Uri _wsUri(String baseUrl, String path) {
     final source = Uri.parse(baseUrl);
     final scheme = source.scheme == 'https' ? 'wss' : 'ws';
-    return source.replace(scheme: scheme, path: path, query: null, fragment: null);
+    return source.replace(
+        scheme: scheme, path: path, query: null, fragment: null);
   }
 
   Map<String, String> _jsonHeaders(String locale) => <String, String>{
@@ -342,7 +362,8 @@ class AgentSupportApi {
         'Accept-Language': locale,
       };
 
-  Map<String, dynamic> _decodeJsonResponse(http.Response response, String label) {
+  Map<String, dynamic> _decodeJsonResponse(
+      http.Response response, String label) {
     Map<String, dynamic> decoded = <String, dynamic>{};
     if (response.body.trim().isNotEmpty) {
       final dynamic parsed = jsonDecode(response.body);
@@ -377,12 +398,12 @@ class AgentSupportApi {
       }
       try {
         final decoded = jsonDecode(dataLines.join('\n'));
-        final normalized = _normalizeAgUiEvent(decoded, forcedEventType: eventType);
+        final normalized =
+            _normalizeAgUiEvent(decoded, forcedEventType: eventType);
         if (normalized != null) {
           events.add(normalized);
         }
-      } catch (_) {
-      }
+      } catch (_) {}
     }
     return events;
   }
@@ -392,7 +413,10 @@ class AgentSupportApi {
       return null;
     }
     final rawMap = raw.cast<dynamic, dynamic>();
-    final eventType = (forcedEventType ?? rawMap['eventType'] ?? rawMap['type'] ?? '').toString().trim();
+    final eventType =
+        (forcedEventType ?? rawMap['eventType'] ?? rawMap['type'] ?? '')
+            .toString()
+            .trim();
     if (eventType.isEmpty) {
       return null;
     }
@@ -410,7 +434,9 @@ class AgentSupportApi {
     final payload = raw.cast<String, dynamic>();
     final rootCatalogId = _firstNonBlank([
       payload['catalogId'],
-      payload['catalog'] is Map ? (payload['catalog'] as Map)['catalogId'] : null,
+      payload['catalog'] is Map
+          ? (payload['catalog'] as Map)['catalogId']
+          : null,
       payload['catalog'] is Map ? (payload['catalog'] as Map)['id'] : null,
     ]);
     final template = _firstNonBlank([payload['template']]);
@@ -508,15 +534,18 @@ class A2UiProjection {
 }
 
 class A2UiCatalogRegistry {
-  static const String sampleTicketCardV1 = 'urn:io.dscope.sample.support:a2ui:ticket-card:v1';
-  static const String sampleTicketCardV2 = 'urn:io.dscope.sample.support:a2ui:ticket-card:v2';
+  static const String sampleTicketCardV1 =
+      'urn:io.dscope.sample.support:a2ui:ticket-card:v1';
+  static const String sampleTicketCardV2 =
+      'urn:io.dscope.sample.support:a2ui:ticket-card:v2';
 
   static const List<String> supportedCatalogIds = <String>[
     sampleTicketCardV1,
     sampleTicketCardV2,
   ];
 
-  static const Map<String, A2UiRendererKind> _rendererByCatalogId = <String, A2UiRendererKind>{
+  static const Map<String, A2UiRendererKind> _rendererByCatalogId =
+      <String, A2UiRendererKind>{
     sampleTicketCardV1: A2UiRendererKind.ticketCard,
     sampleTicketCardV2: A2UiRendererKind.ticketCard,
     'legacy.ticket-json': A2UiRendererKind.ticketCard,
@@ -535,7 +564,8 @@ class A2UiCatalogRegistry {
     }
 
     final normalizedTemplate = template.trim().toLowerCase();
-    if (normalizedTemplate == 'status-panel' || normalizedTemplate == 'status_panel') {
+    if (normalizedTemplate == 'status-panel' ||
+        normalizedTemplate == 'status_panel') {
       return A2UiRendererKind.statusPanel;
     }
     if (normalizedTemplate == 'detail-list' ||
@@ -570,7 +600,8 @@ class StructuredSurfaceModel {
   final A2UiRendererKind rendererKind;
   final TicketCardModel? ticketCard;
 
-  bool get isTicketCard => rendererKind == A2UiRendererKind.ticketCard && ticketCard != null;
+  bool get isTicketCard =>
+      rendererKind == A2UiRendererKind.ticketCard && ticketCard != null;
 
   bool get isStatusPanel => rendererKind == A2UiRendererKind.statusPanel;
 
@@ -589,12 +620,20 @@ class StructuredSurfaceModel {
         template: projection.template,
         title: ticketCard.title,
         summary: ticketCard.message,
-        badges: <String>[projection.template, projection.catalogId, projection.locale],
+        badges: <String>[
+          projection.template,
+          projection.catalogId,
+          projection.locale
+        ],
         fields: <StructuredField>[
-          StructuredField(label: ticketCard.idLabel, value: ticketCard.ticketId),
-          StructuredField(label: ticketCard.statusLabel, value: ticketCard.status),
-          StructuredField(label: ticketCard.queueLabel, value: ticketCard.assignedQueue),
-          StructuredField(label: ticketCard.summaryLabel, value: ticketCard.summary),
+          StructuredField(
+              label: ticketCard.idLabel, value: ticketCard.ticketId),
+          StructuredField(
+              label: ticketCard.statusLabel, value: ticketCard.status),
+          StructuredField(
+              label: ticketCard.queueLabel, value: ticketCard.assignedQueue),
+          StructuredField(
+              label: ticketCard.summaryLabel, value: ticketCard.summary),
         ],
         rendererKind: rendererKind,
         ticketCard: ticketCard,
@@ -629,7 +668,8 @@ class StructuredSurfaceModel {
       if (renderedValue.isEmpty) {
         continue;
       }
-      fields.add(StructuredField(label: _labelForKey(entry.key, labels), value: renderedValue));
+      fields.add(StructuredField(
+          label: _labelForKey(entry.key, labels), value: renderedValue));
     }
 
     return StructuredSurfaceModel(
@@ -694,16 +734,24 @@ class TicketCardModel {
     final actionLabel = action.isEmpty
         ? ''
         : '${action[0].toUpperCase()}${action.substring(1).toLowerCase()}';
-    final titleTemplate = labels?['ticketActionTitle'] ?? labels?['ticketTitle'] ?? i18n?['title'];
-    final title = (titleTemplate?.toString() ?? 'Ticket Update').replaceAll(r'${action}', actionLabel);
+    final titleTemplate = labels?['ticketActionTitle'] ??
+        labels?['ticketTitle'] ??
+        i18n?['title'];
+    final title = (titleTemplate?.toString() ?? 'Ticket Update')
+        .replaceAll(r'${action}', actionLabel);
     return TicketCardModel(
       catalogId: projection.catalogId,
       locale: projection.locale,
       title: title,
-      ticketId: (data['ticketId'] ?? data['ticket_id'] ?? data['id'] ?? 'N/A').toString(),
+      ticketId: (data['ticketId'] ?? data['ticket_id'] ?? data['id'] ?? 'N/A')
+          .toString(),
       status: (data['status'] ?? 'OPEN').toString(),
       summary: (data['summary'] ?? data['issueDescription'] ?? '').toString(),
-      assignedQueue: (data['assignedQueue'] ?? data['assigned_queue'] ?? data['queue'] ?? 'L1-SUPPORT').toString(),
+      assignedQueue: (data['assignedQueue'] ??
+              data['assigned_queue'] ??
+              data['queue'] ??
+              'L1-SUPPORT')
+          .toString(),
       message: (data['message'] ?? '').toString(),
       idLabel: (labels?['idLabel'] ?? 'ID').toString(),
       statusLabel: (labels?['statusLabel'] ?? 'Status').toString(),
@@ -759,7 +807,8 @@ String _stringifyFieldValue(dynamic value) {
   }
   if (value is Map) {
     return value.entries
-        .map((entry) => '${_labelForKey(entry.key.toString(), null)}: ${_stringifyFieldValue(entry.value)}')
+        .map((entry) =>
+            '${_labelForKey(entry.key.toString(), null)}: ${_stringifyFieldValue(entry.value)}')
         .where((item) => !item.endsWith(': '))
         .join('\n');
   }

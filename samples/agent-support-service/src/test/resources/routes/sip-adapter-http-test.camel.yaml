@@ -1,3 +1,8 @@
+- intercept:
+    steps:
+      - process:
+          ref: agentHttpAccessProcessor
+
 - route:
     id: sip-session-call-start-test
     from:

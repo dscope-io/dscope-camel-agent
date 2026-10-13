@@ -59,8 +59,7 @@ public final class HttpOpenAiRealtimeCallControlClient implements OpenAiRealtime
         String endpoint = baseUrl + "/" + callId + "/" + action;
         HttpRequest.Builder builder = HttpRequest.newBuilder()
             .uri(URI.create(endpoint))
-            .header("Authorization", "Bearer " + apiKey)
-            .header("OpenAI-Beta", "realtime=v1");
+            .header("Authorization", "Bearer " + apiKey);
 
         if (payload == null) {
             builder.POST(HttpRequest.BodyPublishers.noBody());

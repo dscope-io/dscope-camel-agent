@@ -3,6 +3,8 @@ camel:
     name: agent-support-service
     duration-max-idle-seconds: 0
   component:
+    undertow:
+      mute-exception: true
     twilio:
       account-sid: ${TWILIO_ACCOUNT_SID:}
       username: ${TWILIO_ACCOUNT_SID:}
@@ -24,6 +26,9 @@ openai:
     key: ${OPENAI_API_KEY}
 
 agent:
+  security:
+    # Required for audit, runtime, telephony, session, and realtime-token HTTP APIs.
+    access-token: ${AGENT_SECURITY_ACCESS_TOKEN:}
   agents-config: classpath:agents/agents.yaml
   blueprint: ${AGENT_BLUEPRINT:classpath:agents/support/v1/agent.md}
   tools:
@@ -47,6 +52,16 @@ agent:
       exposed-agents-config: classpath:agents/a2a-exposed-agents.yaml
     ai:
       mode: spring-ai
+    voice:
+      # Select the wire protocol independently from the backend agent: realtime | live.
+      api: ${AGENT_OPENAI_VOICE_API:realtime}
+      connect-timeout-ms: 15000
+    live:
+      model: ${AGENT_OPENAI_LIVE_MODEL:gpt-live-1}
+      endpoint-uri: https://api.openai.com/v1/live/sessions
+      voice: alloy
+      delegation:
+        type: client
     realtime:
       processor-bean-name: supportRealtimeEventProcessorCore
       agent-endpoint-uri: "{{agent.runtime.support-agent-endpoint-uri}}"
@@ -57,7 +72,7 @@ agent:
       prefer-core-token-processor: true
       require-init-session: true
       provider: openai
-      model: gpt-4o-realtime-preview
+      model: gpt-realtime-2.1
       language: en
       voice: alloy
       transport: server-relay

@@ -45,6 +45,9 @@ class TwilioAdapterHttpIntegrationTest {
             AgentRuntimeBootstrap.bootstrap(main, "twilio-adapter-http-test.yaml");
             main.start();
 
+            HttpResult rejected = postJson(port, "/twilio/adapter/v1/call/CA0001/start", "{}", false);
+            Assertions.assertEquals(401, rejected.statusCode());
+
             HttpResult response = postJson(
                 port,
                 "/twilio/adapter/v1/call/CA0001/start",
@@ -153,12 +156,19 @@ class TwilioAdapterHttpIntegrationTest {
     }
 
     private static HttpResult postJson(int port, String path, String body) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder()
+        return postJson(port, path, body, true);
+    }
+
+    private static HttpResult postJson(int port, String path, String body, boolean authenticated) throws IOException, InterruptedException {
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
             .uri(URI.create("http://127.0.0.1:" + port + path))
             .timeout(Duration.ofSeconds(5))
             .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(body))
-            .build();
+            .POST(HttpRequest.BodyPublishers.ofString(body));
+        if (authenticated) {
+            requestBuilder.header("Authorization", "Bearer test-access-token");
+        }
+        HttpRequest request = requestBuilder.build();
 
         HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
         return new HttpResult(response.statusCode(), response.body() == null ? "" : response.body());

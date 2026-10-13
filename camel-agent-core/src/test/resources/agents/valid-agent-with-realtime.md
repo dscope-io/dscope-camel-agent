@@ -22,7 +22,7 @@ tools:
 ```yaml
 realtime:
   provider: openai
-  model: gpt-4o-realtime-preview
+  model: gpt-realtime-2.1
   voice: alloy
   transport: server-relay
   endpointUri: mcp:http://localhost:3001/mcp

@@ -102,6 +102,25 @@ Use this when the agent must participate in browser UI, realtime session init, t
 - UI catalogs, surfaces, and locale bundles are declared by the resolved blueprint, so different agents and versions can expose different structured UI assets without hardcoding templates in core.
 - Browser locale can be passed as top-level `locale` or `Accept-Language`, and core forwards the resolved value as `agent.locale`.
 
+OpenAI Realtime support follows the GA API contract:
+
+- browser credentials are minted with `POST https://api.openai.com/v1/realtime/client_secrets`
+- server relay connections use `wss://api.openai.com/v1/realtime`
+- SIP call control uses `https://api.openai.com/v1/realtime/calls`
+- GA requests do not send the retired `OpenAI-Beta: realtime=v1` header
+- the product default is `gpt-realtime-2.1`
+- session audio settings are nested under `audio.input` and `audio.output`
+- voice responses use `output_modalities: [audio]`; a response cannot request audio and text together
+
+The browser lifecycle is:
+
+1. Call `POST /realtime/session/{conversationId}/init` to resolve the blueprint, instructions, locale, voice, and session context.
+2. Call `POST /realtime/session/{conversationId}/token` to mint a short-lived OpenAI client secret.
+3. Use the returned `value` as the browser WebRTC credential.
+4. Send application and relay events through `POST /realtime/session/{conversationId}/event` when backend routing or audit participation is required.
+
+Camel-only context remains under `session.metadata` in the in-memory registry. The token processor removes that internal metadata from the outbound OpenAI request while preserving it for agent routing, audit, and subsequent token minting.
+
 This is how the sample keeps `/agui/ui` usable without a valid OpenAI key while still exercising the normal conversation and plan-selection model.
 
 Current sample behavior:
@@ -789,13 +808,13 @@ AGUI pre-run precedence is:
 | `agent.runtime.realtime.prefer-core-token-processor` | `false` | Prefers the core token processor path. If true and `require-init-session` is unset, runtime bootstrap forces it to `true`. Camel-case alias supported. |
 | `agent.runtime.realtime.require-init-session` | unset unless forced | If true, token minting expects a prior browser session init call. Camel-case alias supported. |
 | `agent.runtime.realtime.provider` | `openai` | Realtime provider name. Alias `agent.realtime.provider` supported by config resolver. |
-| `agent.runtime.realtime.model` | unset | Realtime model name. Alias `agent.realtime.model` supported. |
+| `agent.runtime.realtime.model` | `gpt-realtime-2.1` in core/sample defaults | Realtime model name. Alias `agent.realtime.model` supported. |
 | `agent.runtime.realtime.language` | unset | Language hint for realtime session init or token responses. |
-| `agent.runtime.realtime.voice` | unset | Voice id for realtime generation. |
+| `agent.runtime.realtime.voice` | unset | Voice id translated to GA `session.audio.output.voice`. |
 | `agent.runtime.realtime.transport` | `server-relay` | Transport mode for realtime config resolution. |
 | `agent.runtime.realtime.endpoint-uri` | unset | Realtime endpoint URI. Camel-case alias supported. |
-| `agent.runtime.realtime.input-audio-format` | unset | Realtime input audio format. Camel-case alias supported. |
-| `agent.runtime.realtime.output-audio-format` | unset | Realtime output audio format. Camel-case alias supported. |
+| `agent.runtime.realtime.input-audio-format` | unset | Legacy resolver option retained for compatibility. It is not emitted as a top-level GA session field; configure input audio through the nested session payload. Camel-case alias supported. |
+| `agent.runtime.realtime.output-audio-format` | unset | Legacy resolver option retained for compatibility. It is not emitted as a top-level GA session field; configure output audio through the nested session payload. Camel-case alias supported. |
 | `agent.runtime.realtime.retention-policy` | `metadata_transcript` | Retention policy string. Camel-case alias supported. |
 | `agent.runtime.realtime.reconnect.max-send-retries` | unset or blueprint value | Send retry limit. Camel-case alias supported. |
 | `agent.runtime.realtime.reconnect.max-reconnects` | unset or blueprint value | Reconnect limit. Camel-case alias supported. |
@@ -1023,6 +1042,8 @@ Blueprints may define a top-level `realtime` YAML section. Current fields are:
 
 If the blueprint omits realtime fields, runtime properties can supply them.
 
+Blueprint fields are configuration inputs, not a literal OpenAI request body. Core normalizes them into the GA session shape. For example, `voice: alloy` becomes `audio.output.voice: alloy` before a client secret or `session.update` request is sent.
+
 ### AGUI Pre-Run Blueprint Section
 
 Blueprints may define `aguiPreRun` or nested `agui.preRun`.
@@ -1115,6 +1136,7 @@ Behavior:
 - PDF resources are resolved through Camel PDF extraction.
 - Chat instruction rendering uses `agent.runtime.chat.resource-context-max-chars`.
 - Realtime session seed rendering uses `agent.runtime.realtime.resource-context-max-chars`.
+- Chat tool-result history uses `agent.runtime.chat.tool-result-max-chars` (default `10000` characters per result).
 - Runtime refresh re-resolves resources and can append plan-aware refresh events to active conversations.
 
 Example:
@@ -1298,13 +1320,13 @@ At minimum, add the Camel Agent starter and your normal Spring Boot and Camel de
   <dependency>
     <groupId>org.apache.camel.springboot</groupId>
     <artifactId>camel-spring-boot-starter</artifactId>
-    <version>4.20.0</version>
+    <version>4.22.0</version>
   </dependency>
 
   <dependency>
     <groupId>io.dscope.camel</groupId>
     <artifactId>camel-agent-starter</artifactId>
-    <version>0.7.0</version>
+    <version>0.8.0</version>
   </dependency>
 </dependencies>
 ```
@@ -1556,7 +1578,7 @@ agent:
 
 ### Realtime Browser Session Setup
 
-Use this when voice or WebRTC-style browser sessions need seeded context and token support.
+Use this when voice or WebRTC-style browser sessions need seeded context and GA client-secret support.
 
 ```yaml
 agent:
@@ -1570,7 +1592,7 @@ agent:
       prefer-core-token-processor: true
       require-init-session: true
       provider: openai
-      model: gpt-4o-realtime-preview
+      model: gpt-realtime-2.1
       language: en
       voice: alloy
       transport: server-relay
@@ -1584,6 +1606,48 @@ agent:
         initial-backoff-ms: 150
         max-backoff-ms: 2000
 ```
+
+Initialize a conversation before requesting its client secret:
+
+```bash
+curl -s -X POST http://localhost:8080/realtime/session/product-demo/init \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "session": {
+      "type": "realtime",
+      "model": "gpt-realtime-2.1",
+      "output_modalities": ["audio"],
+      "audio": {
+        "input": {
+          "transcription": {"model": "gpt-4o-mini-transcribe", "language": "en"},
+          "turn_detection": {"type": "server_vad"}
+        },
+        "output": {"voice": "alloy"}
+      }
+    }
+  }'
+
+curl -s -X POST http://localhost:8080/realtime/session/product-demo/token \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+The token response exposes the short-lived credential as `value`. The backend obtains it from OpenAI `/v1/realtime/client_secrets` using the server API key. Do not expose the server API key to browser or mobile clients.
+
+For a server-managed voice response, emit the GA response shape:
+
+```json
+{
+  "type": "response.create",
+  "response": {
+    "output_modalities": ["audio"]
+  }
+}
+```
+
+Do not use the beta `/v1/realtime/sessions` endpoint, the `OpenAI-Beta` header, top-level `voice`/`turn_detection`/`input_audio_transcription`, or `modalities: ["audio", "text"]` in new integrations.
+
+OpenAI Responses WebSocket mode is a separate product path. `agent.runtime.spring-ai.openai.api-mode=responses-ws` uses `/v1/responses` for text/tool response workflows; it is not the Realtime voice transport and does not mint Realtime client secrets.
 
 ## Validation And Troubleshooting
 
@@ -1613,6 +1677,9 @@ curl https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"
 | Blueprint fails to load | Missing classpath resource or malformed fenced YAML | Verify the blueprint path and YAML blocks. |
 | No tools available | Blueprint did not declare tools | Add at least one valid `tools[]` entry. |
 | Realtime token flow fails unexpectedly | `prefer-core-token-processor=true` but init was skipped | Call the init endpoint first or disable strict init requirement. |
+| OpenAI rejects a Realtime session field | A beta-era flat session payload is still being sent | Move transcription and turn detection under `audio.input`, voice under `audio.output`, and use `output_modalities`. |
+| Browser cannot establish WebRTC after token minting | The browser used the server key or parsed the wrong response field | Use the short-lived token response `value`; never send the server API key to the browser. |
+| Voice response is rejected for incompatible modalities | The response requests both audio and text | Use `output_modalities: ["audio"]`; audio responses include a transcript. |
 | AGUI fallback does not trigger | Error markers or tool metadata do not match your environment | Align `error-markers`, tool names, and fallback URIs. |
 
 ## Recommended Adoption Path

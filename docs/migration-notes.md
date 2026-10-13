@@ -1,5 +1,20 @@
 # Migration Notes
 
+## 0.8.0
+
+Release promotion highlights:
+
+- Project modules, sample service, and standalone AGUI adapter now build as `0.8.0`.
+- Runtime dependencies align with Camel `4.22.0`, Spring Boot `4.0.5`, Spring Framework `7.0.8`, and Spring AI `1.1.4`.
+- The full reactor and standalone AGUI adapter are clean-built, tested, and installed to the local Maven repository.
+
+Dependency import baseline for consumers:
+
+- `io.dscope.camel:camel-agent-starter:0.8.0` (recommended)
+- `io.dscope.camel:camel-agent-core:0.8.0` (runtime/core)
+- `io.dscope.camel:camel-agent-persistence-dscope:0.8.0` (optional persistence adapter)
+- `io.dscope.camel:camel-agent-agui:0.8.0` (optional standalone AGUI adapter)
+
 ## 0.7.0
 
 Release promotion highlights:

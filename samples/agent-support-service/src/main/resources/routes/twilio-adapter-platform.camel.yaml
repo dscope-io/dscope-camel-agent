@@ -1,3 +1,8 @@
+- intercept:
+    steps:
+      - process:
+          ref: agentHttpAccessProcessor
+
 - route:
     id: twilio-adapter-v1-call-start
     from:

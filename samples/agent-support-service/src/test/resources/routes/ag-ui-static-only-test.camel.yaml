@@ -45,3 +45,19 @@
         - process:
             id: processAguiUiStaticResource
             ref: agUiStaticResourceProcessor
+
+- route:
+    id: agui-ui-static-nested-test
+    from:
+      id: fromAguiUiStaticNestedTest
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agent.runtime.test-port:18081}}/agui/ui/{assetDirectory}/{assetPath}?httpMethodRestrict=GET
+      steps:
+        - setHeader:
+            id: setHeaderAguiUiNestedStaticResourcePath
+            name: AgUiStaticResourcePath
+            simple: ${header.assetDirectory}/${header.assetPath}
+        - process:
+            id: processAguiUiNestedStaticResource
+            ref: agUiStaticResourceProcessor

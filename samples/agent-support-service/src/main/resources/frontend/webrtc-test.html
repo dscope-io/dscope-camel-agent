@@ -182,6 +182,10 @@
     const browserTtsEnabled = true;
     let webRtcPeerConnection = null;
     let webRtcDataChannel = null;
+    let voiceApi = 'realtime';
+    let liveInputTranscript = '';
+    let pendingLiveDelegation = null;
+    let liveDelegationTimer = null;
     let webRtcRemoteAudioEl = null;
     let webRtcResponsePending = false;
     let webRtcResponsePendingTimer = null;
@@ -314,21 +318,9 @@
       const voice = getSelectedVoice();
       const fullDuplex = isFullDuplexMode();
       const session = {
-        voice,
-        input_audio_format: 'pcm16',
-        output_audio_format: 'pcm16',
-        input_audio_transcription: {
-          model: 'gpt-4o-mini-transcribe'
-        },
-        turn_detection: fullDuplex
-          ? {
-              type: 'server_vad',
-              threshold: 0.5,
-              prefix_padding_ms: 300,
-              silence_duration_ms: getVadSilenceDurationMs(),
-              create_response: false
-            }
-          : null,
+        type: 'realtime',
+        model: 'gpt-realtime-2.1',
+        output_modalities: ['audio'],
         audio: {
           input: {
             transcription: {
@@ -358,8 +350,9 @@
       const contextualInstructions = buildWebRtcInstructions(existingSession);
       return {
         type: 'realtime',
-        model: 'gpt-realtime',
+        model: 'gpt-realtime-2.1',
         instructions: contextualInstructions,
+        output_modalities: ['audio'],
         audio: {
           input: {
             transcription: {
@@ -623,7 +616,7 @@
           await enqueueRealtimeEvent({
             type: 'response.create',
             response: {
-              modalities: ['audio', 'text']
+              output_modalities: ['audio']
             }
           });
           audioFramesSinceCommit = 0;
@@ -704,14 +697,25 @@
       const message = normalizeDisplayText(String(data.message ?? ''));
       const card = document.createElement('div');
       card.className = 'ticket';
-      card.innerHTML = `
-        <h4>Ticket Created</h4>
-        <div class="ticket-row"><strong>ID:</strong> ${ticketId}</div>
-        <div class="ticket-row"><strong>Status:</strong> ${status}</div>
-        <div class="ticket-row"><strong>Queue:</strong> ${assignedQueue}</div>
-        <div class="ticket-row"><strong>Summary:</strong> ${summary}</div>
-        <div class="ticket-row">${message}</div>
-      `;
+      const heading = document.createElement('h4');
+      heading.textContent = 'Ticket Created';
+      card.appendChild(heading);
+      const addRow = (label, value) => {
+        const row = document.createElement('div');
+        row.className = 'ticket-row';
+        const strong = document.createElement('strong');
+        strong.textContent = `${label}:`;
+        row.append(strong, ` ${value}`);
+        card.appendChild(row);
+      };
+      addRow('ID', ticketId);
+      addRow('Status', status);
+      addRow('Queue', assignedQueue);
+      addRow('Summary', summary);
+      const messageRow = document.createElement('div');
+      messageRow.className = 'ticket-row';
+      messageRow.textContent = message;
+      card.appendChild(messageRow);
       return card;
     }
 
@@ -1176,6 +1180,41 @@
       }
     }
 
+    async function handleLiveDelegation(event) {
+      const delegationId = String(event?.delegation?.id || '');
+      const transcript = normalizeDisplayText(liveInputTranscript).trim();
+      if (!delegationId || !transcript) {
+        pendingLiveDelegation = event;
+        return;
+      }
+      const result = await postRealtimeEvent({
+        type: 'transcript.final',
+        transcript,
+        delegationId,
+        voiceApi: 'live'
+      }, 30000);
+      const summary = normalizeDisplayText(String(result?.assistantMessage || '')).trim();
+      if (!summary) return;
+      sendWebRtcEvent({
+        type: 'session.commentary.append',
+        event_id: crypto.randomUUID(),
+        delegation_id: delegationId,
+        content: summary.slice(0, 2000)
+      });
+      liveInputTranscript = '';
+      pendingLiveDelegation = null;
+    }
+
+    function scheduleLiveDelegation(event = pendingLiveDelegation) {
+      if (event) pendingLiveDelegation = event;
+      clearTimeout(liveDelegationTimer);
+      liveDelegationTimer = setTimeout(() => {
+        handleLiveDelegation(pendingLiveDelegation).catch((error) => {
+          relayLog('Live client delegation failed', { message: error?.message || String(error) });
+        });
+      }, 300);
+    }
+
     function reportObservedRealtimeTranscript(direction, transcript, eventType, eventScope) {
       if (!isWebRtcMode() || !transcript) {
         return;
@@ -1219,9 +1258,7 @@
         const responseRequested = sendWebRtcEvent({
           type: 'response.create',
           response: {
-            modalities: ['audio', 'text'],
-            voice: 'alloy',
-            output_audio_format: 'pcm16',
+            output_modalities: ['audio'],
             instructions: 'Respond in English only. Confirm ticket actions briefly and avoid changing language unless user explicitly requests it.'
           }
         });
@@ -1241,9 +1278,7 @@
       const requestEvent = {
         type: 'response.create',
         response: {
-          modalities: ['audio', 'text'],
-          voice: 'alloy',
-          output_audio_format: 'pcm16',
+          output_modalities: ['audio'],
           instructions: 'Respond in English only. Confirm ticket actions briefly and avoid changing language unless user explicitly requests it.'
         }
       };
@@ -1714,6 +1749,7 @@
         const err = payload?.error || `HTTP ${response.status}`;
         throw new Error(`Realtime init endpoint failed: ${err}`);
       }
+      voiceApi = String(payload?.api || payload?.session?.api || payload?.session?.type || 'realtime').toLowerCase();
       const resolvedVoice = extractVoiceFromSession(payload?.session);
       if (resolvedVoice) {
         setSelectedVoice(resolvedVoice);
@@ -1922,6 +1958,16 @@
         const lowerType = type.toLowerCase();
         logWebRtcEventType(payload);
         relayLog('relay event', { type, lowerType });
+
+        if (voiceApi === 'live' && lowerType === 'session.input_transcript.delta') {
+          liveInputTranscript += String(payload?.delta || '');
+          if (pendingLiveDelegation) scheduleLiveDelegation();
+          continue;
+        }
+        if (voiceApi === 'live' && lowerType === 'session.delegation.created') {
+          scheduleLiveDelegation(payload);
+          continue;
+        }
 
         if (type === 'relay.error') {
           const relayMessage = payload.message || 'unknown';
@@ -2188,9 +2234,10 @@
         handledTranscriptKeys.clear();
         displayedVoiceMessages.clear();
         clearFallbackSpeakTimer();
-        setVoiceStatus('Requesting WebRTC token...');
+        setVoiceStatus('Initializing voice session...');
         await initializeWebRtcSessionContext();
-        const ephemeralKey = await requestWebRtcTokenWithRecovery();
+        liveInputTranscript = '';
+        pendingLiveDelegation = null;
         mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
         const pc = new RTCPeerConnection();
@@ -2225,11 +2272,13 @@
         webRtcDataChannel = dc;
         dc.addEventListener('open', () => {
           console.info('[WebRTC Event] datachannel.open');
-          sendWebRtcEvent({
-            type: 'session.update',
-            session: buildWebRtcSessionConfig(null)
-          });
-          setVoiceStatus(`Voice listening (WebRTC direct, ${getVadPauseDescription()})...`);
+          if (voiceApi === 'realtime') {
+            sendWebRtcEvent({
+              type: 'session.update',
+              session: buildWebRtcSessionConfig(null)
+            });
+          }
+          setVoiceStatus(`Voice listening (${voiceApi}, WebRTC direct)...`);
         });
         dc.addEventListener('close', () => {
           console.info('[WebRTC Event] datachannel.close');
@@ -2249,19 +2298,21 @@
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
-        const sdpResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
+        const sdpResponse = await fetch(`/voice/session/${encodeURIComponent(sessionId)}/connect`, {
           method: 'POST',
-          body: offer.sdp,
+          body: JSON.stringify({ sdp: offer.sdp }),
           headers: {
-            Authorization: `Bearer ${ephemeralKey}`,
-            'Content-Type': 'application/sdp'
+            'Content-Type': 'application/json'
           }
         });
         if (!sdpResponse.ok) {
-          throw new Error(`Realtime SDP exchange failed: HTTP ${sdpResponse.status}`);
+          throw new Error(`Voice SDP exchange failed: ${await sdpResponse.text() || `HTTP ${sdpResponse.status}`}`);
         }
 
-        const answerSdp = await sdpResponse.text();
+        const connection = await sdpResponse.json();
+        voiceApi = String(connection?.api || voiceApi).toLowerCase();
+        const answerSdp = String(connection?.transport?.sdp || '');
+        if (!answerSdp) throw new Error('Voice SDP response missing transport.sdp');
         await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
         voiceActive = true;
         updateVoiceToggleButton();
@@ -2507,7 +2558,7 @@
                   const responseResult = await postRealtimeEventWithTimeout({
                     type: 'response.create',
                     response: {
-                      modalities: ['audio', 'text'],
+                      output_modalities: ['audio'],
                       instructions: 'Respond in English only. Keep responses concise and do not switch languages unless the user explicitly asks for another language.'
                     }
                   }, 2200);

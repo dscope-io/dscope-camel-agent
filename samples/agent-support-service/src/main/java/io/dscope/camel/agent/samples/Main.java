@@ -9,6 +9,7 @@ import io.dscope.camel.agent.realtime.openai.OpenAiRealtimeCallSessionRegistry;
 import io.dscope.camel.agent.realtime.openai.OpenAiRealtimeWebhookVerifier;
 import io.dscope.camel.agent.realtime.openai.StandardOpenAiRealtimeWebhookVerifier;
 import io.dscope.camel.agent.runtime.AgentRuntimeBootstrap;
+import io.dscope.camel.agent.security.AgentHttpAccessProcessor;
 import io.dscope.camel.agent.twilio.TwilioCallStartEnvelopeProcessor;
 import io.dscope.camel.agent.twilio.TwilioTranscriptEnvelopeProcessor;
 
@@ -18,6 +19,7 @@ public final class Main {
     }
 
     public static void main(String[] args) throws Exception {
+        LocalDotenvLoader.loadFromWorkingDirectory();
         org.apache.camel.main.Main main = new org.apache.camel.main.Main();
         ObjectMapper objectMapper = new ObjectMapper();
         SupportCallRegistry supportCallRegistry = new SupportCallRegistry();
@@ -28,6 +30,7 @@ public final class Main {
         OpenAiRealtimeCallControlClient callControlClient = createCallControlClient();
 
         main.bind("ticketLifecycleProcessor", new SupportTicketLifecycleProcessor(objectMapper));
+        main.bind(AgentHttpAccessProcessor.BEAN_NAME, new AgentHttpAccessProcessor());
         main.bind("agUiPlanVersionSelector", new AgUiPlanVersionSelectorProcessor());
         main.bind("supportCallRegistry", supportCallRegistry);
         main.bind("openAiRealtimeCallSessionRegistry", openAiCallSessionRegistry);
@@ -72,6 +75,7 @@ public final class Main {
     private static OpenAiRealtimeCallControlClient createCallControlClient() {
         String apiKey = firstNonBlank(
             System.getenv("OPENAI_API_KEY"),
+            System.getProperty("OPENAI_API_KEY"),
             System.getProperty("openai.api.key")
         );
         return apiKey == null ? null : new HttpOpenAiRealtimeCallControlClient(apiKey);

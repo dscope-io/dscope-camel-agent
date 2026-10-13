@@ -89,7 +89,9 @@ public class DscopePersistenceFacade implements PersistenceFacade {
             try {
                 auditFlowStateStore.appendEvents(FLOW_CONVERSATION, event.conversationId(), expectedVersion, List.of(persistedEvent), idempotencyKey);
                 conversationVersions.put(event.conversationId(), expectedVersion + 1);
-                appendConversationIndex(event);
+                if (shouldIndexConversationEvent(event)) {
+                    appendConversationIndex(event);
+                }
                 return;
             } catch (OptimisticConflictException ex) {
                 conversationVersions.remove(event.conversationId());
@@ -102,9 +104,12 @@ public class DscopePersistenceFacade implements PersistenceFacade {
 
     @Override
     public List<AgentEvent> loadConversation(String conversationId, int limit) {
+        if (conversationId == null || conversationId.isBlank() || limit <= 0) {
+            return List.of();
+        }
         List<PersistedEvent> events;
         try {
-            events = auditFlowStateStore.readEvents(FLOW_CONVERSATION, conversationId, 0L, limit);
+            events = auditFlowStateStore.readEvents(FLOW_CONVERSATION, conversationId, 0L, Math.max(limit, 500));
         } catch (RuntimeException exception) {
             if (isRecoverableConversationReadFailure(exception)) {
                 LOGGER.warn(
@@ -115,8 +120,9 @@ public class DscopePersistenceFacade implements PersistenceFacade {
             }
             throw exception;
         }
-        List<AgentEvent> result = new ArrayList<>();
-        for (PersistedEvent event : events) {
+        int first = Math.max(0, events.size() - limit);
+        List<AgentEvent> result = new ArrayList<>(events.size() - first);
+        for (PersistedEvent event : events.subList(first, events.size())) {
             JsonNode payload = unwrapPayload(event.payload());
             result.add(new AgentEvent(conversationId, null, event.eventType(), payload, Instant.parse(event.occurredAt())));
         }
@@ -155,7 +161,7 @@ public class DscopePersistenceFacade implements PersistenceFacade {
     @Override
     public void saveTask(TaskState taskState) {
         var rehydrated = flowStateStore.rehydrate(FLOW_TASK, taskState.taskId());
-        long nextVersion = rehydrated.envelope() == null ? 1L : rehydrated.envelope().version() + 1L;
+        long snapshotVersion = resolvedVersion(rehydrated);
         JsonNode snapshot = objectMapper.createObjectNode()
             .put("taskId", taskState.taskId())
             .put("conversationId", taskState.conversationId())
@@ -164,7 +170,7 @@ public class DscopePersistenceFacade implements PersistenceFacade {
             .put("nextWakeup", taskState.nextWakeup() == null ? null : taskState.nextWakeup().toString())
             .put("retries", taskState.retries())
             .put("result", taskState.result());
-        flowStateStore.writeSnapshot(FLOW_TASK, taskState.taskId(), nextVersion, snapshot, Map.of("conversationId", taskState.conversationId()));
+        flowStateStore.writeSnapshot(FLOW_TASK, taskState.taskId(), snapshotVersion, snapshot, Map.of("conversationId", taskState.conversationId()));
     }
 
     @Override
@@ -195,7 +201,7 @@ public class DscopePersistenceFacade implements PersistenceFacade {
     @Override
     public void saveDynamicRoute(DynamicRouteState routeState) {
         var rehydrated = flowStateStore.rehydrate(FLOW_DYNAMIC_ROUTE, routeState.routeInstanceId());
-        long nextVersion = rehydrated.envelope() == null ? 1L : rehydrated.envelope().version() + 1L;
+        long snapshotVersion = resolvedVersion(rehydrated);
         JsonNode snapshot = objectMapper.createObjectNode()
             .put("routeInstanceId", routeState.routeInstanceId())
             .put("templateId", routeState.templateId())
@@ -204,7 +210,7 @@ public class DscopePersistenceFacade implements PersistenceFacade {
             .put("conversationId", routeState.conversationId())
             .put("createdAt", routeState.createdAt() == null ? null : routeState.createdAt().toString())
             .put("expiresAt", routeState.expiresAt() == null ? null : routeState.expiresAt().toString());
-        flowStateStore.writeSnapshot(FLOW_DYNAMIC_ROUTE, routeState.routeInstanceId(), nextVersion, snapshot, Map.of("updatedAt", Instant.now().toString()));
+        flowStateStore.writeSnapshot(FLOW_DYNAMIC_ROUTE, routeState.routeInstanceId(), snapshotVersion, snapshot, Map.of("updatedAt", Instant.now().toString()));
     }
 
     @Override
@@ -241,13 +247,13 @@ public class DscopePersistenceFacade implements PersistenceFacade {
     @Override
     public boolean tryClaimTask(String taskId, String ownerId, int leaseSeconds) {
         Instant now = Instant.now();
-        TaskLockState lockState = resolveTaskLock(taskId);
+        var rehydrated = flowStateStore.rehydrate(FLOW_TASK_LOCK, taskId);
+        TaskLockState lockState = resolveTaskLock(rehydrated);
         if (lockState.active(now) && !ownerId.equals(lockState.ownerId())) {
             return false;
         }
 
-        var rehydrated = flowStateStore.rehydrate(FLOW_TASK_LOCK, taskId);
-        long expectedVersion = rehydrated.envelope() == null ? 0L : rehydrated.envelope().version();
+        long expectedVersion = resolvedVersion(rehydrated);
         Instant leaseUntil = now.plusSeconds(Math.max(1, leaseSeconds));
         ObjectNode payload = objectMapper.createObjectNode()
             .put("ownerId", ownerId)
@@ -273,12 +279,12 @@ public class DscopePersistenceFacade implements PersistenceFacade {
 
     @Override
     public void releaseTaskClaim(String taskId, String ownerId) {
-        TaskLockState lockState = resolveTaskLock(taskId);
+        var rehydrated = flowStateStore.rehydrate(FLOW_TASK_LOCK, taskId);
+        TaskLockState lockState = resolveTaskLock(rehydrated);
         if (!ownerId.equals(lockState.ownerId())) {
             return;
         }
-        var rehydrated = flowStateStore.rehydrate(FLOW_TASK_LOCK, taskId);
-        long expectedVersion = rehydrated.envelope() == null ? 0L : rehydrated.envelope().version();
+        long expectedVersion = resolvedVersion(rehydrated);
         ObjectNode payload = objectMapper.createObjectNode()
             .put("ownerId", ownerId)
             .put("releasedAt", Instant.now().toString());
@@ -301,7 +307,7 @@ public class DscopePersistenceFacade implements PersistenceFacade {
 
     @Override
     public boolean isTaskClaimedBy(String taskId, String ownerId) {
-        TaskLockState lockState = resolveTaskLock(taskId);
+        TaskLockState lockState = resolveTaskLock(flowStateStore.rehydrate(FLOW_TASK_LOCK, taskId));
         return ownerId.equals(lockState.ownerId()) && lockState.active(Instant.now());
     }
 
@@ -312,6 +318,11 @@ public class DscopePersistenceFacade implements PersistenceFacade {
             case ERROR -> true;
             case DEBUG -> true;
         };
+    }
+
+    private boolean shouldIndexConversationEvent(AgentEvent event) {
+        String type = event == null || event.type() == null ? "" : event.type();
+        return !"assistant.delta".equals(type) && !"snapshot.written".equals(type);
     }
 
     private boolean isErrorEvent(AgentEvent event) {
@@ -433,8 +444,8 @@ public class DscopePersistenceFacade implements PersistenceFacade {
         return value == null || value.isBlank();
     }
 
-    private TaskLockState resolveTaskLock(String taskId) {
-        List<PersistedEvent> events = flowStateStore.readEvents(FLOW_TASK_LOCK, taskId, 0L, 500);
+    private TaskLockState resolveTaskLock(io.dscope.camel.persistence.core.RehydratedState rehydrated) {
+        List<PersistedEvent> events = rehydrated == null || rehydrated.tailEvents() == null ? List.of() : rehydrated.tailEvents();
         String ownerId = null;
         Instant leaseUntil = null;
         for (PersistedEvent event : events) {

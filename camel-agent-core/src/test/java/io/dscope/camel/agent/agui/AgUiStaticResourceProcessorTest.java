@@ -89,4 +89,26 @@ class AgUiStaticResourceProcessorTest {
             Assertions.assertEquals("console.log('agui');", exchange.getMessage().getBody(String.class));
         }
     }
+
+    @Test
+    void shouldRejectFilesystemOverrideSymlinkOutsideConfiguredRoot(@TempDir Path tempDir) throws Exception {
+        Path outside = Files.createTempFile("agui-static-outside", ".txt");
+        Files.writeString(outside, "secret", StandardCharsets.UTF_8);
+        Path link = tempDir.resolve("outside.txt");
+        Files.createSymbolicLink(link, outside);
+
+        try (DefaultCamelContext context = new DefaultCamelContext()) {
+            Properties properties = new Properties();
+            properties.setProperty("agui.ui.static-root", tempDir.toString());
+            context.getPropertiesComponent().setInitialProperties(properties);
+            Exchange exchange = new DefaultExchange(context);
+            exchange.getMessage().setHeader(AgUiStaticResourceProcessor.RESOURCE_PATH_HEADER, "outside.txt");
+
+            processor.process(exchange);
+
+            Assertions.assertEquals(404, exchange.getMessage().getHeader(Exchange.HTTP_RESPONSE_CODE));
+        } finally {
+            Files.deleteIfExists(outside);
+        }
+    }
 }

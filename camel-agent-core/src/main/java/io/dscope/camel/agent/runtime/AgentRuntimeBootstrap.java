@@ -28,10 +28,12 @@ import io.dscope.camel.agent.kernel.InMemoryPersistenceFacade;
 import io.dscope.camel.agent.kernel.StaticAiModelClient;
 import io.dscope.camel.agent.model.AuditGranularity;
 import io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient;
+import io.dscope.camel.agent.realtime.OpenAiVoiceSessionConnectProcessor;
 import io.dscope.camel.agent.realtime.RealtimeBrowserSessionInitProcessor;
 import io.dscope.camel.agent.realtime.RealtimeBrowserSessionRegistry;
 import io.dscope.camel.agent.realtime.RealtimeBrowserTokenProcessor;
 import io.dscope.camel.agent.realtime.RealtimeEventProcessor;
+import io.dscope.camel.agent.security.AgentHttpAccessProcessor;
 import io.dscope.camel.agent.realtime.sip.SipCallEndProcessor;
 import io.dscope.camel.agent.realtime.sip.SipSessionInitEnvelopeProcessor;
 import io.dscope.camel.agent.realtime.sip.SipTranscriptFinalProcessor;
@@ -361,13 +363,15 @@ public final class AgentRuntimeBootstrap {
         long retryDelayMs = longProperty(properties, "agent.audit.async.retry-delay-ms", 250L);
         long shutdownTimeoutMs = longProperty(properties, "agent.audit.async.shutdown-timeout-ms", 5000L);
         long metricsLogIntervalMs = longProperty(properties, "agent.audit.async.metrics-log-interval-ms", 30000L);
+        int maxRetryAttempts = intProperty(properties, "agent.audit.async.max-retry-attempts", 10);
         AsyncEventPersistenceFacade asyncFacade = new AsyncEventPersistenceFacade(
             persistenceFacade,
             name,
             queueCapacity,
             retryDelayMs,
             shutdownTimeoutMs,
-            metricsLogIntervalMs
+            metricsLogIntervalMs,
+            maxRetryAttempts
         );
         Runtime.getRuntime().addShutdownHook(Thread.ofPlatform().name("agent-audit-async-shutdown-" + name).unstarted(() -> {
             try {
@@ -376,12 +380,13 @@ public final class AgentRuntimeBootstrap {
                 LOGGER.debug("Async audit facade shutdown failed: name={}", name, shutdownFailure);
             }
         }));
-        LOGGER.info("Agent runtime async audit persistence enabled: name={}, queueCapacity={}, retryDelayMs={}, shutdownTimeoutMs={}, metricsLogIntervalMs={}",
+        LOGGER.info("Agent runtime async audit persistence enabled: name={}, queueCapacity={}, retryDelayMs={}, shutdownTimeoutMs={}, metricsLogIntervalMs={}, maxRetryAttempts={}",
             name,
             queueCapacity,
             retryDelayMs,
             shutdownTimeoutMs,
-            metricsLogIntervalMs);
+            metricsLogIntervalMs,
+            maxRetryAttempts);
         return asyncFacade;
     }
 
@@ -395,6 +400,22 @@ public final class AgentRuntimeBootstrap {
         } catch (NumberFormatException ignored) {
             return defaultValue;
         }
+    }
+
+    private static int intPropertyWithAliases(Properties properties, int defaultValue, String... keys) {
+        for (String key : keys) {
+            String value = properties.getProperty(key);
+            if (value == null || value.isBlank()) {
+                continue;
+            }
+            try {
+                int parsed = Integer.parseInt(value.trim());
+                return parsed > 0 ? parsed : defaultValue;
+            } catch (NumberFormatException ignored) {
+                return defaultValue;
+            }
+        }
+        return defaultValue;
     }
 
     private static long longProperty(Properties properties, String key, long defaultValue) {
@@ -489,8 +510,13 @@ public final class AgentRuntimeBootstrap {
                 gateway = instantiateGateway(gatewayType, properties);
             }
             Object aiModelClient = springAiModelClientType
-                .getConstructor(springAiGatewayType, ObjectMapper.class)
-                .newInstance(gateway, objectMapper);
+                .getConstructor(springAiGatewayType, ObjectMapper.class, int.class)
+                .newInstance(gateway, objectMapper, intPropertyWithAliases(properties,
+                    10_000,
+                    "agent.runtime.chat.tool-result-max-chars",
+                    "agent.runtime.chat.toolResultMaxChars",
+                    "agent.chat.tool-result-max-chars",
+                    "agent.chat.toolResultMaxChars"));
             main.bind("aiModelClient", aiModelClient);
             LOGGER.info("Agent runtime AI model client bound: spring-ai mode");
         } catch (Exception e) {
@@ -505,6 +531,7 @@ public final class AgentRuntimeBootstrap {
                                                        PersistenceFacade persistenceFacade,
                                                        AgentPlanSelectionResolver planSelectionResolver,
                                                        ObjectMapper objectMapper) {
+        bindIfMissing(main, AgentHttpAccessProcessor.BEAN_NAME, new AgentHttpAccessProcessor());
         if (booleanPropertyWithAliases(properties, true,
             "agent.runtime.agui.bind-default-beans",
             "agent.runtime.agui.bindDefaultBeans"
@@ -563,6 +590,11 @@ public final class AgentRuntimeBootstrap {
                 properties.getProperty("agent.runtime.realtime.initProcessorBeanName"),
                 "supportRealtimeSessionInitProcessor"
             );
+            String connectBeanName = firstNonBlank(
+                properties.getProperty("agent.runtime.voice.connect-processor-bean-name"),
+                properties.getProperty("agent.runtime.voice.connectProcessorBeanName"),
+                "supportVoiceSessionConnectProcessor"
+            );
             long browserSessionTtlMs = longPropertyWithAliases(properties, 10 * 60 * 1000L,
                 "agent.runtime.realtime.browser-session-ttl-ms",
                 "agent.runtime.realtime.browserSessionTtlMs");
@@ -580,6 +612,7 @@ public final class AgentRuntimeBootstrap {
                 main,
                 initBeanName,
                 tokenBeanName,
+                connectBeanName,
                 browserSessionTtlMs,
                 preferCoreTokenProcessor
             );
@@ -727,6 +760,7 @@ public final class AgentRuntimeBootstrap {
     private static void bindRealtimeBrowserSessionSupportIfMissing(Main main,
                                                                    String initBeanName,
                                                                    String tokenBeanName,
+                                                                   String connectBeanName,
                                                                    long browserSessionTtlMs,
                                                                    boolean preferCoreTokenProcessor) {
         RealtimeBrowserSessionRegistry registry = main.lookup("supportRealtimeSessionRegistry", RealtimeBrowserSessionRegistry.class);
@@ -747,6 +781,14 @@ public final class AgentRuntimeBootstrap {
                         initBeanName,
                         existingInit.getClass().getName());
                 }
+            }
+        }
+
+        if (connectBeanName != null && !connectBeanName.isBlank()) {
+            Object existingConnect = main.lookup(connectBeanName, Object.class);
+            if (existingConnect == null || !(existingConnect instanceof OpenAiVoiceSessionConnectProcessor)) {
+                main.bind(connectBeanName, new OpenAiVoiceSessionConnectProcessor(registry));
+                LOGGER.info("Agent runtime voice WebRTC connect processor bound: beanName={}", connectBeanName);
             }
         }
 

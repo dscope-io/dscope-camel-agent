@@ -21,13 +21,20 @@ public class SpringAiModelClient implements AiModelClient {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SpringAiModelClient.class);
     private static final int MAX_LOG_LENGTH = 8000;
+    public static final int DEFAULT_TOOL_RESULT_MAX_CHARS = 10_000;
 
     private final SpringAiChatGateway chatGateway;
     private final ObjectMapper objectMapper;
+    private final int toolResultMaxChars;
 
     public SpringAiModelClient(SpringAiChatGateway chatGateway, ObjectMapper objectMapper) {
+        this(chatGateway, objectMapper, DEFAULT_TOOL_RESULT_MAX_CHARS);
+    }
+
+    public SpringAiModelClient(SpringAiChatGateway chatGateway, ObjectMapper objectMapper, int toolResultMaxChars) {
         this.chatGateway = chatGateway;
         this.objectMapper = objectMapper;
+        this.toolResultMaxChars = toolResultMaxChars > 0 ? toolResultMaxChars : DEFAULT_TOOL_RESULT_MAX_CHARS;
     }
 
     private static final java.util.Set<String> EXCLUDED_EVENT_TYPES = java.util.Set.of(
@@ -79,8 +86,6 @@ public class SpringAiModelClient implements AiModelClient {
         return new ModelResponse(result.message(), result.toolCalls(), result.terminal(), tokenUsage, modelUsage);
     }
 
-    private static final int MAX_PAYLOAD_LENGTH = 10000;
-
     private String buildContext(List<AgentEvent> history) {
         if (history == null || history.isEmpty()) {
             return "";
@@ -101,10 +106,10 @@ public class SpringAiModelClient implements AiModelClient {
             String payload = payloadText(event);
             switch (type) {
                 case "user.message" -> sb.append("User: ").append(payload);
-                case "agent.message" -> sb.append("Agent: ").append(truncate(payload, MAX_PAYLOAD_LENGTH));
+                case "agent.message" -> sb.append("Agent: ").append(truncate(payload, DEFAULT_TOOL_RESULT_MAX_CHARS));
                 case "tool.start" -> sb.append("[Tool call: ").append(extractToolName(event)).append("]");
-                case "tool.result" -> sb.append("[Tool result: ").append(truncate(payload, MAX_PAYLOAD_LENGTH)).append("]");
-                default -> sb.append(type).append(": ").append(truncate(payload, MAX_PAYLOAD_LENGTH));
+                case "tool.result" -> sb.append("[Tool result: ").append(truncate(payload, toolResultMaxChars)).append("]");
+                default -> sb.append(type).append(": ").append(truncate(payload, DEFAULT_TOOL_RESULT_MAX_CHARS));
             }
         }
         return sb.toString();

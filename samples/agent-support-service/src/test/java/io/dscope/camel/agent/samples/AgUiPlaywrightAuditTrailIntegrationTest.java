@@ -133,6 +133,7 @@ class AgUiPlaywrightAuditTrailIntegrationTest {
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create("http://127.0.0.1:" + port + path))
             .timeout(Duration.ofSeconds(5))
+            .header("Authorization", "Bearer test-access-token")
             .GET()
             .build();
 

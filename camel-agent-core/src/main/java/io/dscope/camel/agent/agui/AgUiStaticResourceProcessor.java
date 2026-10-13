@@ -95,12 +95,13 @@ public final class AgUiStaticResourceProcessor implements Processor {
         }
 
         try {
-            Path root = Path.of(configuredRoot).normalize();
+            Path root = Path.of(configuredRoot).toRealPath();
             Path candidate = root.resolve(normalizedPath).normalize();
-            if (!candidate.startsWith(root) || !Files.isRegularFile(candidate)) {
+            if (!candidate.startsWith(root) || !Files.isRegularFile(candidate) || Files.isSymbolicLink(candidate)) {
                 return null;
             }
-            return Files.readAllBytes(candidate);
+            Path resolvedCandidate = candidate.toRealPath();
+            return resolvedCandidate.startsWith(root) ? Files.readAllBytes(resolvedCandidate) : null;
         } catch (InvalidPathException ignored) {
             return null;
         }

@@ -1,4 +1,6 @@
 agent:
+  security:
+    access-token: test-access-token
   runtime:
     routes-include-pattern: classpath:routes/sip-adapter-http-test.camel.yaml
     agent-routes-enabled: false

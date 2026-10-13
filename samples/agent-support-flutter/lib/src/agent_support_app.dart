@@ -3,7 +3,6 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:http/http.dart' as http;
 
 import 'agent_support_api.dart';
 import 'widgets/structured_surface_view.dart';
@@ -56,12 +55,15 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
   bool _sending = false;
   bool _voiceConnecting = false;
   bool _voiceActive = false;
+  int _voiceSessionGeneration = 0;
   String _status = 'Idle';
 
   RTCPeerConnection? _peerConnection;
   MediaStream? _localStream;
   RTCDataChannel? _dataChannel;
   final Set<String> _handledTranscripts = <String>{};
+  String _voiceApi = 'realtime';
+  String _liveInputTranscript = '';
 
   @override
   void initState() {
@@ -69,13 +71,15 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
     _baseUrlController.text = _api.defaultBaseUrl();
     _messages.add(const ChatEntry(
       role: ChatRole.system,
-      text: 'Connect the sample backend, then use AG-UI over WebSocket for chat or WebRTC for voice.',
+      text:
+          'Connect the sample backend, then use AG-UI over WebSocket for chat or WebRTC for voice.',
       source: 'bootstrap',
     ));
   }
 
   @override
   void dispose() {
+    _voiceSessionGeneration++;
     _promptController.dispose();
     _baseUrlController.dispose();
     _scrollController.dispose();
@@ -104,7 +108,8 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
                   controller: _scrollController,
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                   itemCount: _messages.length,
-                  itemBuilder: (context, index) => _MessageTile(entry: _messages[index]),
+                  itemBuilder: (context, index) =>
+                      _MessageTile(entry: _messages[index]),
                 ),
               ),
               _buildComposer(context),
@@ -137,13 +142,15 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
                     const SizedBox(height: 6),
                     Text(
                       'AG-UI over WebSocket, A2UI-native rendering, direct WebRTC voice.',
-                      style: theme.textTheme.bodyMedium?.copyWith(color: const Color(0xFFA9BCD9)),
+                      style: theme.textTheme.bodyMedium
+                          ?.copyWith(color: const Color(0xFFA9BCD9)),
                     ),
                   ],
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
                   color: const Color(0x1418C6A0),
@@ -179,11 +186,29 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Expanded(child: _DropdownField<String>(label: 'Plan', value: _planName, items: const ['support'], onChanged: (value) => setState(() => _planName = value))),
+                    Expanded(
+                        child: _DropdownField<String>(
+                            label: 'Plan',
+                            value: _planName,
+                            items: const ['support'],
+                            onChanged: (value) =>
+                                setState(() => _planName = value))),
                     const SizedBox(width: 12),
-                    Expanded(child: _DropdownField<String>(label: 'Version', value: _planVersion, items: const ['v1', 'v2'], onChanged: (value) => setState(() => _planVersion = value))),
+                    Expanded(
+                        child: _DropdownField<String>(
+                            label: 'Version',
+                            value: _planVersion,
+                            items: const ['v1', 'v2'],
+                            onChanged: (value) =>
+                                setState(() => _planVersion = value))),
                     const SizedBox(width: 12),
-                    Expanded(child: _DropdownField<String>(label: 'Locale', value: _locale, items: const ['en', 'es', 'fr-CA'], onChanged: (value) => setState(() => _locale = value))),
+                    Expanded(
+                        child: _DropdownField<String>(
+                            label: 'Locale',
+                            value: _locale,
+                            items: const ['en', 'es', 'fr-CA'],
+                            onChanged: (value) =>
+                                setState(() => _locale = value))),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -192,8 +217,12 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
                     Expanded(
                       child: FilledButton.icon(
                         onPressed: _voiceConnecting ? null : _toggleVoice,
-                        icon: Icon(_voiceActive ? Icons.stop_circle_outlined : Icons.mic_none_rounded),
-                        label: Text(_voiceActive ? 'Stop WebRTC Voice' : 'Start WebRTC Voice'),
+                        icon: Icon(_voiceActive
+                            ? Icons.stop_circle_outlined
+                            : Icons.mic_none_rounded),
+                        label: Text(_voiceActive
+                            ? 'Stop WebRTC Voice'
+                            : 'Start WebRTC Voice'),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -220,7 +249,8 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
                     child: SingleChildScrollView(
                       child: Text(
                         _voiceLog.reversed.take(8).join('\n'),
-                        style: theme.textTheme.bodySmall?.copyWith(color: const Color(0xFFA8BCD8), height: 1.4),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                            color: const Color(0xFFA8BCD8), height: 1.4),
                       ),
                     ),
                   ),
@@ -286,7 +316,8 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
     setState(() {
       _sending = true;
       _status = 'Sending AG-UI request';
-      _messages.add(ChatEntry(role: ChatRole.user, text: prompt, source: 'ag-ui.ws'));
+      _messages.add(
+          ChatEntry(role: ChatRole.user, text: prompt, source: 'ag-ui.ws'));
     });
     _scrollToBottom();
 
@@ -319,7 +350,10 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
       _scrollToBottom();
     } catch (error) {
       setState(() {
-        _messages.add(ChatEntry(role: ChatRole.system, text: 'AG-UI request failed: $error', source: 'error'));
+        _messages.add(ChatEntry(
+            role: ChatRole.system,
+            text: 'AG-UI request failed: $error',
+            source: 'error'));
         _status = 'AG-UI failed';
       });
     } finally {
@@ -340,14 +374,16 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
   }
 
   Future<void> _startVoice() async {
+    final generation = ++_voiceSessionGeneration;
     setState(() {
       _voiceConnecting = true;
       _status = 'Preparing WebRTC';
     });
-    _logVoice('Initializing realtime session for $_planName/$_planVersion ($_locale)');
+    _logVoice(
+        'Initializing realtime session for $_planName/$_planVersion ($_locale)');
     try {
       final sessionConfig = _api.buildRealtimeSessionConfig(locale: _locale);
-      await _api.initializeRealtimeSession(
+      final initialized = await _api.initializeRealtimeSession(
         baseUrl: _baseUrlController.text.trim(),
         sessionId: _sessionId,
         locale: _locale,
@@ -355,18 +391,29 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
         planVersion: _planVersion,
         session: sessionConfig,
       );
-      final token = await _api.requestRealtimeToken(
-        baseUrl: _baseUrlController.text.trim(),
-        sessionId: _sessionId,
-        locale: _locale,
-      );
+      _voiceApi =
+          (initialized['api'] ?? initialized['session']?['type'] ?? 'realtime')
+              .toString()
+              .toLowerCase();
+      if (!_voiceSessionIsCurrent(generation)) return;
+      _liveInputTranscript = '';
 
-      final localStream = await navigator.mediaDevices.getUserMedia(<String, dynamic>{
+      final localStream =
+          await navigator.mediaDevices.getUserMedia(<String, dynamic>{
         'audio': true,
         'video': false,
       });
+      if (!_voiceSessionIsCurrent(generation)) {
+        await _disposeStream(localStream);
+        return;
+      }
 
       final peer = await createPeerConnection(<String, dynamic>{});
+      if (!_voiceSessionIsCurrent(generation)) {
+        await peer.close();
+        await _disposeStream(localStream);
+        return;
+      }
       _peerConnection = peer;
       _localStream = localStream;
 
@@ -388,7 +435,8 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
 
       dataChannel.onDataChannelState = (RTCDataChannelState state) {
         _logVoice('Data channel state: $state');
-        if (state == RTCDataChannelState.RTCDataChannelOpen) {
+        if (state == RTCDataChannelState.RTCDataChannelOpen &&
+            _voiceApi == 'realtime') {
           final update = <String, dynamic>{
             'type': 'session.update',
             'session': _api.buildRealtimeSessionConfig(locale: _locale),
@@ -400,31 +448,42 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
         unawaited(_handleRealtimeDataMessage(message.text));
       };
 
-      final offer = await peer.createOffer(<String, dynamic>{'offerToReceiveAudio': true});
+      final offer = await peer
+          .createOffer(<String, dynamic>{'offerToReceiveAudio': true});
       await peer.setLocalDescription(offer);
 
-      final sdpResponse = await http.post(
-        Uri.parse('https://api.openai.com/v1/realtime/calls'),
-        headers: <String, String>{
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/sdp',
-        },
-        body: offer.sdp,
+      final connection = await _api.connectVoiceSession(
+        baseUrl: _baseUrlController.text.trim(),
+        sessionId: _sessionId,
+        locale: _locale,
+        sdp: offer.sdp ?? '',
       );
-      if (sdpResponse.statusCode < 200 || sdpResponse.statusCode >= 300) {
-        throw StateError('Realtime SDP exchange failed: HTTP ${sdpResponse.statusCode}');
+      if (!_voiceSessionIsCurrent(generation)) return;
+      _voiceApi = (connection['api'] ?? _voiceApi).toString().toLowerCase();
+      final transport = connection['transport'];
+      final answerSdp = transport is Map<String, dynamic>
+          ? transport['sdp']?.toString()
+          : null;
+      if (answerSdp == null || answerSdp.trim().isEmpty) {
+        throw StateError('Voice SDP response missing transport.sdp');
       }
 
-      await peer.setRemoteDescription(RTCSessionDescription(sdpResponse.body, 'answer'));
+      await peer
+          .setRemoteDescription(RTCSessionDescription(answerSdp, 'answer'));
+      if (!_voiceSessionIsCurrent(generation)) return;
       setState(() {
         _voiceActive = true;
-        _status = 'WebRTC voice live';
+        _status = 'WebRTC voice live ($_voiceApi)';
       });
       _logVoice('WebRTC connected');
     } catch (error) {
+      if (!_voiceSessionIsCurrent(generation)) return;
       _logVoice('WebRTC start failed: $error');
       setState(() {
-        _messages.add(ChatEntry(role: ChatRole.system, text: 'WebRTC start failed: $error', source: 'webrtc'));
+        _messages.add(ChatEntry(
+            role: ChatRole.system,
+            text: 'WebRTC start failed: $error',
+            source: 'webrtc'));
         _status = 'WebRTC failed';
       });
       await _stopVoice();
@@ -438,14 +497,12 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
   }
 
   Future<void> _stopVoice() async {
+    _voiceSessionGeneration++;
     await _dataChannel?.close();
     _dataChannel = null;
     await _peerConnection?.close();
     _peerConnection = null;
-    for (final track in _localStream?.getTracks() ?? const <MediaStreamTrack>[]) {
-      await track.stop();
-    }
-    await _localStream?.dispose();
+    await _disposeStream(_localStream);
     _localStream = null;
     if (mounted) {
       setState(() {
@@ -455,6 +512,16 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
       });
     }
     _logVoice('WebRTC connection closed');
+  }
+
+  bool _voiceSessionIsCurrent(int generation) =>
+      mounted && generation == _voiceSessionGeneration;
+
+  Future<void> _disposeStream(MediaStream? stream) async {
+    for (final track in stream?.getTracks() ?? const <MediaStreamTrack>[]) {
+      await track.stop();
+    }
+    await stream?.dispose();
   }
 
   Future<void> _handleRealtimeDataMessage(String raw) async {
@@ -478,11 +545,25 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
     }
 
     if (type == 'error') {
-      _logVoice('Realtime error: ${event['error'] ?? event['message'] ?? 'unknown'}');
+      _logVoice(
+          'Realtime error: ${event['error'] ?? event['message'] ?? 'unknown'}');
       return;
     }
 
-    final transcript = _api.extractTranscriptFromRealtimeEvent(event);
+    if (_voiceApi == 'live' && type == 'session.input_transcript.delta') {
+      _liveInputTranscript += (event['delta'] ?? '').toString();
+      return;
+    }
+
+    final delegation = event['delegation'];
+    final delegationId = _voiceApi == 'live' &&
+            type == 'session.delegation.created' &&
+            delegation is Map<String, dynamic>
+        ? delegation['id']?.toString()
+        : null;
+    final transcript = delegationId != null
+        ? _liveInputTranscript.trim()
+        : _api.extractTranscriptFromRealtimeEvent(event);
     if (transcript == null || transcript.trim().isEmpty) {
       return;
     }
@@ -495,7 +576,8 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
 
     _logVoice('Transcript final: $transcript');
     setState(() {
-      _messages.add(ChatEntry(role: ChatRole.user, text: transcript, source: 'webrtc.transcript'));
+      _messages.add(ChatEntry(
+          role: ChatRole.user, text: transcript, source: 'webrtc.transcript'));
       _status = 'Routing transcript';
     });
     _scrollToBottom();
@@ -510,7 +592,21 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
         planVersion: _planVersion,
       );
       final projection = _api.extractProjectionFromRealtimeResponse(routed);
-      final assistantText = (routed['assistantMessage'] ?? '').toString().trim();
+      final assistantText =
+          (routed['assistantMessage'] ?? '').toString().trim();
+      if (delegationId != null &&
+          assistantText.isNotEmpty &&
+          _dataChannel != null) {
+        _dataChannel!.send(RTCDataChannelMessage(jsonEncode({
+          'type': 'session.commentary.append',
+          'event_id': DateTime.now().microsecondsSinceEpoch.toString(),
+          'delegation_id': delegationId,
+          'content': assistantText.length > 2000
+              ? assistantText.substring(0, 2000)
+              : assistantText,
+        })));
+        _liveInputTranscript = '';
+      }
       final surface = _api.surfaceFromProjection(projection) ??
           _api.surfaceFromAssistantText(
             assistantText,
@@ -520,7 +616,8 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
       setState(() {
         _messages.add(ChatEntry(
           role: ChatRole.assistant,
-          text: _displayTextForAssistant(assistantText, surface, emptyFallback: '(no assistant message)'),
+          text: _displayTextForAssistant(assistantText, surface,
+              emptyFallback: '(no assistant message)'),
           surface: surface,
           source: 'realtime.event',
         ));
@@ -529,7 +626,10 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
       _scrollToBottom();
     } catch (error) {
       setState(() {
-        _messages.add(ChatEntry(role: ChatRole.system, text: 'Realtime route failed: $error', source: 'webrtc.error'));
+        _messages.add(ChatEntry(
+            role: ChatRole.system,
+            text: 'Realtime route failed: $error',
+            source: 'webrtc.error'));
         _status = 'Realtime route failed';
       });
     }
@@ -555,7 +655,8 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
       return;
     }
     setState(() {
-      _voiceLog.add('[${DateTime.now().toIso8601String().substring(11, 19)}] $message');
+      _voiceLog.add(
+          '[${DateTime.now().toIso8601String().substring(11, 19)}] $message');
       if (_voiceLog.length > 40) {
         _voiceLog.removeRange(0, _voiceLog.length - 40);
       }
@@ -597,7 +698,8 @@ class _AgentSupportHomePageState extends State<AgentSupportHomePage> {
     return emptyFallback;
   }
 
-  static String _newSessionId() => 'mobile-${DateTime.now().millisecondsSinceEpoch}';
+  static String _newSessionId() =>
+      'mobile-${DateTime.now().millisecondsSinceEpoch}';
 }
 
 class _DropdownField<T> extends StatelessWidget {
@@ -619,7 +721,8 @@ class _DropdownField<T> extends StatelessWidget {
       initialValue: value,
       decoration: InputDecoration(labelText: label),
       items: items
-          .map((item) => DropdownMenuItem<T>(value: item, child: Text(item.toString())))
+          .map((item) =>
+              DropdownMenuItem<T>(value: item, child: Text(item.toString())))
           .toList(growable: false),
       onChanged: (next) {
         if (next != null) {
@@ -677,7 +780,10 @@ class _MessageTile extends StatelessWidget {
                     ),
                   SelectableText(
                     entry.text,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: textColor, height: 1.45),
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodyLarge
+                        ?.copyWith(color: textColor, height: 1.45),
                   ),
                 ],
               ),

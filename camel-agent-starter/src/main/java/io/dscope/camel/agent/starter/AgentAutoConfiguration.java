@@ -35,6 +35,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
 
 @AutoConfiguration
 @EnableConfigurationProperties(AgentStarterProperties.class)
@@ -50,11 +51,9 @@ public class AgentAutoConfiguration {
     @ConditionalOnMissingBean
     @ConditionalOnClass(ChatMemoryRepository.class)
     @ConditionalOnProperty(prefix = "agent", name = "chat-memory-enabled", havingValue = "true", matchIfMissing = true)
-    public ChatMemoryRepository chatMemoryRepository(AgentStarterProperties properties, ObjectMapper objectMapper) {
-        Properties config = new Properties();
+    public ChatMemoryRepository chatMemoryRepository(AgentStarterProperties properties, ObjectMapper objectMapper, Environment environment) {
+        Properties config = persistenceProperties(properties, environment);
         config.setProperty("camel.persistence.enabled", "true");
-        config.setProperty("camel.persistence.backend", normalizePersistenceBackend(properties.getPersistenceMode()));
-        config.setProperty("agent.audit.granularity", properties.getAuditGranularity());
         return DscopeChatMemoryRepositoryFactory.create(config, objectMapper);
     }
 
@@ -77,17 +76,18 @@ public class AgentAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public AiModelClient aiModelClient(ObjectMapper objectMapper) {
-        return new SpringAiModelClient(new NoopSpringAiChatGateway(), objectMapper);
+    public AiModelClient aiModelClient(ObjectMapper objectMapper, Environment environment) {
+        return new SpringAiModelClient(
+            new NoopSpringAiChatGateway(),
+            objectMapper,
+            toolResultMaxChars(environment)
+        );
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public PersistenceFacade persistenceFacade(AgentStarterProperties properties, ObjectMapper objectMapper) {
-        Properties config = new Properties();
-        config.setProperty("camel.persistence.enabled", "true");
-        config.setProperty("camel.persistence.backend", normalizePersistenceBackend(properties.getPersistenceMode()));
-        config.setProperty("agent.audit.granularity", properties.getAuditGranularity());
+    public PersistenceFacade persistenceFacade(AgentStarterProperties properties, ObjectMapper objectMapper, Environment environment) {
+        Properties config = persistenceProperties(properties, environment);
         copyIfPresent(config, "agent.audit.backend", properties.getAuditPersistenceBackend());
         copyIfPresent(config, "agent.audit.jdbc.url", properties.getAuditJdbcUrl());
         copyIfPresent(config, "agent.audit.jdbc.username", properties.getAuditJdbcUsername());
@@ -103,7 +103,8 @@ public class AgentAutoConfiguration {
             properties.getAuditAsyncQueueCapacity(),
             properties.getAuditAsyncRetryDelayMs(),
             properties.getAuditAsyncShutdownTimeoutMs(),
-            properties.getAuditAsyncMetricsLogIntervalMs()
+            properties.getAuditAsyncMetricsLogIntervalMs(),
+            properties.getAuditAsyncMaxRetryAttempts()
         );
     }
 
@@ -113,13 +114,73 @@ public class AgentAutoConfiguration {
         return new AgentPlanSelectionResolver(persistenceFacade, objectMapper);
     }
 
-    private void copyIfPresent(Properties config, String key, String value) {
+    private static void copyIfPresent(Properties config, String key, String value) {
         if (value != null && !value.isBlank()) {
             config.setProperty(key, value);
         }
     }
 
-    private String normalizePersistenceBackend(String backend) {
+    static Properties persistenceProperties(AgentStarterProperties properties, Environment environment) {
+        Properties config = new Properties();
+        String[] keys = {
+            "camel.persistence.enabled", "camel.persistence.backend", "camel.persistence.snapshot-every-events",
+            "camel.persistence.max-replay-events", "camel.persistence.read-batch-size", "camel.persistence.redis.uri",
+            "camel.persistence.redis.key-prefix", "camel.persistence.jdbc.url",
+            "camel.persistence.jdbc.password", "camel.persistence.jdbc.driver-class-name",
+            "camel.persistence.jdbc.schema-ddl-resource", "camel.persistence.jdbc.pool.enabled",
+            "camel.persistence.jdbc.pool.max-size", "camel.persistence.jdbc.pool.min-idle",
+            "camel.persistence.jdbc.pool.connection-timeout-ms", "camel.persistence.jdbc.pool.idle-timeout-ms",
+            "camel.persistence.jdbc.pool.max-lifetime-ms"
+        };
+        for (String key : keys) {
+            String value = environment.getProperty(key);
+            if (value != null && !value.isBlank()) {
+                config.setProperty(key, value);
+            }
+        }
+        copyIfPresent(config, "camel.persistence.jdbc.user", firstNonBlank(
+            environment.getProperty("camel.persistence.jdbc.user"),
+            environment.getProperty("camel.persistence.jdbc.username")
+        ));
+        config.setProperty("camel.persistence.enabled", config.getProperty("camel.persistence.enabled", "true"));
+        config.setProperty("camel.persistence.backend", config.getProperty("camel.persistence.backend",
+            normalizePersistenceBackend(properties.getPersistenceMode())));
+        config.setProperty("agent.audit.granularity", properties.getAuditGranularity());
+        return config;
+    }
+
+    static int toolResultMaxChars(Environment environment) {
+        String[] keys = {
+            "agent.runtime.chat.tool-result-max-chars",
+            "agent.runtime.chat.toolResultMaxChars",
+            "agent.chat.tool-result-max-chars",
+            "agent.chat.toolResultMaxChars"
+        };
+        for (String key : keys) {
+            String value = environment.getProperty(key);
+            if (value == null || value.isBlank()) {
+                continue;
+            }
+            try {
+                int parsed = Integer.parseInt(value.trim());
+                return parsed > 0 ? parsed : SpringAiModelClient.DEFAULT_TOOL_RESULT_MAX_CHARS;
+            } catch (NumberFormatException ignored) {
+                return SpringAiModelClient.DEFAULT_TOOL_RESULT_MAX_CHARS;
+            }
+        }
+        return SpringAiModelClient.DEFAULT_TOOL_RESULT_MAX_CHARS;
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private static String normalizePersistenceBackend(String backend) {
         if (backend == null || backend.isBlank()) {
             return "jdbc";
         }

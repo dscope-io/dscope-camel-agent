@@ -83,7 +83,7 @@ run_capture() {
   local cid
   cid="diag-$(date +%s)"
 
-  post_event "$cid" '{"type":"session.start","session":{"voice":"alloy","input_audio_transcription":{"model":"gpt-4o-mini-transcribe"},"turn_detection":{"type":"server_vad","create_response":false},"audio":{"input":{"transcription":{"model":"gpt-4o-mini-transcribe","language":"en"},"turn_detection":{"type":"server_vad","create_response":false}},"output":{"voice":"alloy"}}}}'
+  post_event "$cid" '{"type":"session.start","session":{"type":"realtime","model":"gpt-realtime-2.1","output_modalities":["audio"],"audio":{"input":{"transcription":{"model":"gpt-4o-mini-transcribe","language":"en"},"turn_detection":{"type":"server_vad","create_response":false}},"output":{"voice":"alloy"}}}}'
   post_event "$cid" '{"type":"transcript.observed","direction":"input","observedEventType":"conversation.item.input_audio_transcription.completed","transcript":"My login is failing, please open a support ticket","text":"My login is failing, please open a support ticket"}'
   post_event "$cid" '{"type":"session.state"}'
   post_event "$cid" '{"type":"transcript.final","text":"My login is failing, please open a support ticket"}'

@@ -54,7 +54,7 @@ class MarkdownBlueprintLoaderTest {
 
         Assertions.assertNotNull(blueprint.realtime());
         Assertions.assertEquals("openai", blueprint.realtime().provider());
-        Assertions.assertEquals("gpt-4o-realtime-preview", blueprint.realtime().model());
+        Assertions.assertEquals("gpt-realtime-2.1", blueprint.realtime().model());
         Assertions.assertEquals("alloy", blueprint.realtime().voice());
         Assertions.assertEquals("server-relay", blueprint.realtime().transport());
         Assertions.assertEquals("mcp:http://localhost:3001/mcp", blueprint.realtime().endpointUri());

@@ -13,12 +13,20 @@ public final class OpenAiRealtimeCallControlRequestFactory {
         request.put("type", "realtime");
         putIfText(request, "model", model);
         putIfText(request, "instructions", instructions);
-        putIfText(request, "voice", voice);
         if (tools != null && !tools.isNull()) {
             request.set("tools", tools.deepCopy());
         }
         if (session != null && !session.isEmpty()) {
             request.setAll(session.deepCopy());
+        }
+        String resolvedVoice = text(request.path("audio").path("output"), "voice");
+        if (resolvedVoice.isBlank()) {
+            resolvedVoice = firstNonBlank(text(request, "voice"), voice);
+        }
+        request.remove("voice");
+        if (!resolvedVoice.isBlank()) {
+            ObjectNode audio = request.withObject("audio");
+            audio.withObject("output").put("voice", resolvedVoice);
         }
         return request;
     }
@@ -45,5 +53,19 @@ public final class OpenAiRealtimeCallControlRequestFactory {
         if (value != null && !value.isBlank()) {
             target.put(field, value);
         }
+    }
+
+    private static String text(JsonNode node, String field) {
+        JsonNode value = node == null ? null : node.get(field);
+        return value == null || value.isNull() ? "" : value.asText("");
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
     }
 }

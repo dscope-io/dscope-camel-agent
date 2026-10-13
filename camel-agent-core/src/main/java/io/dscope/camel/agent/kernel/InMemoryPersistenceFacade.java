@@ -14,14 +14,28 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class InMemoryPersistenceFacade implements PersistenceFacade {
 
+    private static final int DEFAULT_MAX_EVENTS_PER_CONVERSATION = 500;
     private final Map<String, List<AgentEvent>> conversations = new ConcurrentHashMap<>();
     private final Map<String, TaskState> tasks = new ConcurrentHashMap<>();
     private final Map<String, DynamicRouteState> dynamicRoutes = new ConcurrentHashMap<>();
     private final Map<String, TaskLock> taskLocks = new ConcurrentHashMap<>();
+    private final int maxEventsPerConversation;
+
+    public InMemoryPersistenceFacade() {
+        this(DEFAULT_MAX_EVENTS_PER_CONVERSATION);
+    }
+
+    public InMemoryPersistenceFacade(int maxEventsPerConversation) {
+        this.maxEventsPerConversation = Math.max(1, maxEventsPerConversation);
+    }
 
     @Override
     public void appendEvent(AgentEvent event, String idempotencyKey) {
-        conversations.computeIfAbsent(event.conversationId(), key -> new CopyOnWriteArrayList<>()).add(event);
+        List<AgentEvent> events = conversations.computeIfAbsent(event.conversationId(), key -> new CopyOnWriteArrayList<>());
+        events.add(event);
+        while (events.size() > maxEventsPerConversation) {
+            events.removeFirst();
+        }
     }
 
     @Override
@@ -73,20 +87,20 @@ public class InMemoryPersistenceFacade implements PersistenceFacade {
     @Override
     public boolean tryClaimTask(String taskId, String ownerId, int leaseSeconds) {
         Instant now = Instant.now();
-        TaskLock current = taskLocks.get(taskId);
-        if (current != null && current.expiresAt().isAfter(now) && !current.ownerId().equals(ownerId)) {
-            return false;
-        }
-        taskLocks.put(taskId, new TaskLock(ownerId, now.plusSeconds(Math.max(leaseSeconds, 1))));
-        return true;
+        java.util.concurrent.atomic.AtomicBoolean claimed = new java.util.concurrent.atomic.AtomicBoolean();
+        taskLocks.compute(taskId, (ignored, current) -> {
+            if (current != null && current.expiresAt().isAfter(now) && !current.ownerId().equals(ownerId)) {
+                return current;
+            }
+            claimed.set(true);
+            return new TaskLock(ownerId, now.plusSeconds(Math.max(leaseSeconds, 1)));
+        });
+        return claimed.get();
     }
 
     @Override
     public void releaseTaskClaim(String taskId, String ownerId) {
-        TaskLock current = taskLocks.get(taskId);
-        if (current != null && current.ownerId().equals(ownerId)) {
-            taskLocks.remove(taskId);
-        }
+        taskLocks.computeIfPresent(taskId, (ignored, current) -> current.ownerId().equals(ownerId) ? null : current);
     }
 
     @Override

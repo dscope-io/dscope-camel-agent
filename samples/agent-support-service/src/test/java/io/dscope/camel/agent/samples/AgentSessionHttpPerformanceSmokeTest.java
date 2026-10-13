@@ -99,6 +99,7 @@ class AgentSessionHttpPerformanceSmokeTest {
             .uri(URI.create("http://127.0.0.1:" + port + "/sample/agent/session"))
             .timeout(Duration.ofSeconds(10))
             .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer test-access-token")
             .POST(HttpRequest.BodyPublishers.ofString(requestBody))
             .build();
 

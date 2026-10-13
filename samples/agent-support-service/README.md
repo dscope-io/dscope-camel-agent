@@ -23,7 +23,7 @@ For SIP and Twilio realtime ingress, caller identity is promoted into the agent 
 
 ## Version Baseline
 
-- Camel Agent sample version: `0.7.0`
+- Camel Agent sample version: `0.8.0`
 - DScope persistence components: `1.3.0`
 - DScope A2A component: `1.2.0`
 - DScope AGUI component: `1.3.0`
@@ -40,7 +40,16 @@ For local simulation without an API key, use the sample demo gateway:
 
 ## Configure Secrets
 
-Use either environment variable:
+For local development, the sample automatically loads the nearest `.env.local`
+without overriding existing environment variables or JVM properties. The file is
+git-ignored; for example:
+
+```dotenv
+OPENAI_API_KEY=...
+AGENT_OPENAI_VOICE_API=live
+```
+
+Alternatively, use an environment variable:
 
 ```bash
 export OPENAI_API_KEY=...
@@ -248,6 +257,7 @@ Sample budgets:
 
 - `agent.runtime.chat.resource-context-max-chars=64000`
 - `agent.runtime.realtime.resource-context-max-chars=12000`
+- `agent.runtime.chat.tool-result-max-chars=10000` is the default cap for each dynamic tool result included in chat history; it is intentionally not set by this sample.
 
 These are applied automatically when the resolved plan uses `agents/support/v2/agent.md`.
 
@@ -488,7 +498,21 @@ Expected result:
 
 For voice-agent foundation wiring, sample exposes:
 
+- `POST /realtime/session/{conversationId}/init`
+- `POST /realtime/session/{conversationId}/token`
 - `POST /realtime/session/{conversationId}/event`
+
+The sample supports both the GA OpenAI Realtime contract and GPT-Live. Select one with `AGENT_OPENAI_VOICE_API=realtime|live` (default: `realtime`). `/init` stores the normalized session and Camel agent metadata. `/voice/session/{conversationId}/connect` performs server-side WebRTC negotiation and returns a common `transport.sdp` response without exposing the project API key to the browser. The legacy `/token` endpoint remains available for Realtime-only clients.
+
+GA payload rules used by the sample:
+
+- model: `gpt-realtime-2.1`
+- transcription and turn detection: `session.audio.input.*`
+- voice: `session.audio.output.voice`
+- voice response mode: `output_modalities: ["audio"]`
+- no `OpenAI-Beta` header and no `/v1/realtime/sessions` token endpoint
+
+The server API key stays on the backend. Browser and Flutter clients receive only the expiring client secret.
 
 Current behavior:
 
@@ -544,12 +568,27 @@ curl -s -X POST http://localhost:8080/realtime/session/voice-1/event \
    -d '{
       "type":"session.start",
       "session":{
-         "voice":"alloy",
-         "input_audio_format":"pcm16",
-         "output_audio_format":"pcm16"
+         "type":"realtime",
+         "model":"gpt-realtime-2.1",
+         "output_modalities":["audio"],
+         "audio":{"output":{"voice":"alloy"}}
       }
    }'
 ```
+
+Example browser credential lifecycle:
+
+```bash
+curl -s -X POST http://localhost:8080/realtime/session/voice-1/init \
+   -H 'Content-Type: application/json' \
+   -d '{"session":{"type":"realtime","model":"gpt-realtime-2.1","output_modalities":["audio"],"audio":{"input":{"transcription":{"model":"gpt-4o-mini-transcribe","language":"en"},"turn_detection":{"type":"server_vad"}},"output":{"voice":"alloy"}}}}'
+
+curl -s -X POST http://localhost:8080/realtime/session/voice-1/token \
+   -H 'Content-Type: application/json' \
+   -d '{}'
+```
+
+The second response requires a configured `OPENAI_API_KEY` and returns the ephemeral credential in `value`.
 
 Example transcript-to-agent call:
 

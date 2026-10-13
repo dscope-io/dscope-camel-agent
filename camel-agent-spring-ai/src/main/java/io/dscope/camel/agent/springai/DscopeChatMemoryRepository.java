@@ -48,16 +48,16 @@ public class DscopeChatMemoryRepository implements ChatMemoryRepository {
     @Override
     public void saveAll(String conversationId, List<Message> messages) {
         JsonNode snapshot = messageSerde.serialize(messages);
-        long nextVersion = nextVersion(FLOW_CHAT_MEMORY, conversationId);
-        flowStateStore.writeSnapshot(FLOW_CHAT_MEMORY, conversationId, nextVersion, snapshot,
+        long snapshotVersion = currentVersion(FLOW_CHAT_MEMORY, conversationId);
+        flowStateStore.writeSnapshot(FLOW_CHAT_MEMORY, conversationId, snapshotVersion, snapshot,
             Map.of("updatedAt", Instant.now().toString(), "conversationId", conversationId));
         upsertConversationIndex(conversationId);
     }
 
     @Override
     public void deleteByConversationId(String conversationId) {
-        long nextVersion = nextVersion(FLOW_CHAT_MEMORY, conversationId);
-        flowStateStore.writeSnapshot(FLOW_CHAT_MEMORY, conversationId, nextVersion, objectMapper.createArrayNode(),
+        long snapshotVersion = currentVersion(FLOW_CHAT_MEMORY, conversationId);
+        flowStateStore.writeSnapshot(FLOW_CHAT_MEMORY, conversationId, snapshotVersion, objectMapper.createArrayNode(),
             Map.of("updatedAt", Instant.now().toString(), "deleted", true));
         removeConversationIndex(conversationId);
     }
@@ -75,14 +75,22 @@ public class DscopeChatMemoryRepository implements ChatMemoryRepository {
     }
 
     private void writeIndex(Set<String> ids) {
-        long version = nextVersion(FLOW_CHAT_MEMORY_INDEX, INDEX_FLOW_ID);
+        long version = currentVersion(FLOW_CHAT_MEMORY_INDEX, INDEX_FLOW_ID);
         JsonNode snapshot = objectMapper.valueToTree(ids);
         flowStateStore.writeSnapshot(FLOW_CHAT_MEMORY_INDEX, INDEX_FLOW_ID, version, snapshot,
             Map.of("updatedAt", Instant.now().toString()));
     }
 
-    private long nextVersion(String flowType, String flowId) {
+    private long currentVersion(String flowType, String flowId) {
         var rehydrated = flowStateStore.rehydrate(flowType, flowId);
-        return rehydrated.envelope() == null ? 1L : rehydrated.envelope().version() + 1L;
+        if (rehydrated == null) {
+            return 0L;
+        }
+        long envelopeVersion = rehydrated.envelope() == null ? 0L : rehydrated.envelope().version();
+        List<io.dscope.camel.persistence.core.PersistedEvent> events = rehydrated.tailEvents();
+        if (events == null || events.isEmpty()) {
+            return envelopeVersion;
+        }
+        return Math.max(envelopeVersion, events.get(events.size() - 1).sequence());
     }
 }

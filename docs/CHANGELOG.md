@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-09-11
+
+### Release 0.8.0
+
+- Promoted the root reactor, all modules, sample service, and standalone AGUI adapter to `0.8.0`.
+- Updated the active consumer dependency examples to use Camel `4.22.0` and Camel Agent `0.8.0`.
+
+## 2026-08-07
+
+### OpenAI Realtime GA migration
+
+- Migrated browser credential minting from `/v1/realtime/sessions` to `/v1/realtime/client_secrets`.
+- Updated browser, relay, and SIP call-control flows to the GA contract and removed the retired `OpenAI-Beta: realtime=v1` header.
+- Changed the default voice-agent model to `gpt-realtime-2.1`.
+- Normalized session audio settings under `audio.input` and `audio.output` while retaining compatibility normalization for legacy flat init input.
+- Updated voice response creation to use `output_modalities: ["audio"]`.
+- Kept Camel-only session metadata in the internal registry and excluded it from outbound OpenAI client-secret requests.
+- Updated the browser sample, WebRTC diagnostics, smoke scripts, product guide, and sample documentation.
+
+### Validation updates
+
+- Completed the full `0.7.0` reactor clean install successfully and installed rebuilt artifacts to the local Maven repository.
+- Built the sample independently against the locally installed artifacts with 32 tests, 0 failures, 0 errors, and 2 skipped tests.
+- Verified the installed core bytecode contains `/v1/realtime/client_secrets` and `gpt-realtime-2.1`.
+
 ## 2026-05-08
 
 ### Documentation and persistence cleanup notes

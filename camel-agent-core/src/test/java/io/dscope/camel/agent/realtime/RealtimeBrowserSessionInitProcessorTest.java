@@ -24,6 +24,63 @@ class RealtimeBrowserSessionInitProcessorTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Test
+    void shouldCreateLiveSessionShapeFromConfiguration() throws Exception {
+        RealtimeBrowserSessionRegistry registry = new RealtimeBrowserSessionRegistry();
+        RealtimeBrowserSessionInitProcessor processor = new RealtimeBrowserSessionInitProcessor(registry);
+        CamelContext camelContext = createContext(Map.of(
+            "agent.runtime.voice.api", "live",
+            "agent.runtime.live.model", "gpt-live-1",
+            "agent.runtime.live.voice", "marin"));
+        try {
+            Exchange exchange = new DefaultExchange(camelContext);
+            exchange.getMessage().setHeader("conversationId", "live-session");
+            exchange.getMessage().setBody("{\"session\":{\"type\":\"realtime\",\"model\":\"gpt-realtime-2.1\"}}");
+            processor.process(exchange);
+
+            JsonNode response = MAPPER.readTree(exchange.getMessage().getBody(String.class));
+            JsonNode session = response.path("session");
+            Assertions.assertEquals("live", response.path("api").asText());
+            Assertions.assertEquals("live", session.path("type").asText());
+            Assertions.assertEquals("gpt-live-1", session.path("model").asText());
+            Assertions.assertEquals("client", session.path("delegation").path("type").asText());
+            Assertions.assertEquals("marin", session.path("audio").path("output").path("voice").asText());
+            Assertions.assertFalse(session.path("audio").has("input"));
+            Assertions.assertFalse(session.has("output_modalities"));
+        } finally {
+            camelContext.stop();
+        }
+    }
+
+    @Test
+    void shouldNormalizeLegacyAudioSettingsToGaSessionShape() throws Exception {
+        RealtimeBrowserSessionRegistry registry = new RealtimeBrowserSessionRegistry();
+        RealtimeBrowserSessionInitProcessor processor = new RealtimeBrowserSessionInitProcessor(registry);
+
+        CamelContext camelContext = createContext(Map.of("agent.runtime.realtime.voice", "marin"));
+        try {
+            Exchange exchange = new DefaultExchange(camelContext);
+            exchange.getMessage().setHeader("conversationId", "ga-session-shape");
+            exchange.getMessage().setBody("""
+                {"session":{"input_audio_transcription":{"model":"whisper-1"},"turn_detection":{"type":"server_vad"}}}
+                """);
+
+            processor.process(exchange);
+
+            JsonNode session = MAPPER.readTree(exchange.getMessage().getBody(String.class)).path("session");
+            Assertions.assertEquals("gpt-realtime-2.1", session.path("model").asText());
+            Assertions.assertEquals("whisper-1", session.path("audio").path("input").path("transcription").path("model").asText());
+            Assertions.assertEquals("server_vad", session.path("audio").path("input").path("turn_detection").path("type").asText());
+            Assertions.assertEquals("marin", session.path("audio").path("output").path("voice").asText());
+            Assertions.assertEquals("audio", session.path("output_modalities").get(0).asText());
+            Assertions.assertFalse(session.has("input_audio_transcription"));
+            Assertions.assertFalse(session.has("turn_detection"));
+            Assertions.assertFalse(session.has("voice"));
+        } finally {
+            camelContext.stop();
+        }
+    }
+
+    @Test
     void shouldPreserveExistingSessionContextWhenInitCalledWithoutSessionPayload() throws Exception {
         RealtimeBrowserSessionRegistry registry = new RealtimeBrowserSessionRegistry();
         String conversationId = "preserve-init-context";

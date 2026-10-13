@@ -30,6 +30,7 @@ public final class AsyncEventPersistenceFacade implements PersistenceFacade, Aut
     private final AtomicLong sequence;
     private final AtomicBoolean accepting;
     private final long retryDelayMs;
+    private final int maxRetryAttempts;
     private final long shutdownTimeoutMs;
     private final String name;
     private final Thread workerThread;
@@ -46,6 +47,16 @@ public final class AsyncEventPersistenceFacade implements PersistenceFacade, Aut
                                        long retryDelayMs,
                                        long shutdownTimeoutMs,
                                        long metricsLogIntervalMs) {
+        this(delegate, name, queueCapacity, retryDelayMs, shutdownTimeoutMs, metricsLogIntervalMs, 10);
+    }
+
+    public AsyncEventPersistenceFacade(PersistenceFacade delegate,
+                                       String name,
+                                       int queueCapacity,
+                                       long retryDelayMs,
+                                       long shutdownTimeoutMs,
+                                       long metricsLogIntervalMs,
+                                       int maxRetryAttempts) {
         if (delegate == null) {
             throw new IllegalArgumentException("Delegate persistence facade is required");
         }
@@ -55,6 +66,7 @@ public final class AsyncEventPersistenceFacade implements PersistenceFacade, Aut
         this.sequence = new AtomicLong();
         this.accepting = new AtomicBoolean(true);
         this.retryDelayMs = Math.max(10L, retryDelayMs);
+        this.maxRetryAttempts = Math.max(0, maxRetryAttempts);
         this.shutdownTimeoutMs = Math.max(100L, shutdownTimeoutMs);
         this.name = (name == null || name.isBlank()) ? "audit" : name.trim();
         this.droppedEvents = new AtomicLong();
@@ -238,6 +250,14 @@ public final class AsyncEventPersistenceFacade implements PersistenceFacade, Aut
             } catch (RuntimeException failure) {
                 long attempts = queuedEvent.incrementAttempts();
                 retriedAttempts.incrementAndGet();
+                if (attempts > maxRetryAttempts) {
+                    removePending(queuedEvent);
+                    long dropped = droppedEvents.incrementAndGet();
+                    LOGGER.error("Async audit event discarded after retry limit: name={}, conversationId={}, type={}, attempts={}, droppedEvents={}",
+                        name, queuedEvent.event().conversationId(), queuedEvent.event().type(), attempts, dropped);
+                    logMetricsIfDue(false);
+                    return;
+                }
                 if (attempts == 1L || attempts % 10L == 0L) {
                     LOGGER.warn("Async audit persist retry scheduled: name={}, conversationId={}, type={}, attempts={}, error={}",
                         name,
@@ -247,7 +267,18 @@ public final class AsyncEventPersistenceFacade implements PersistenceFacade, Aut
                         failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage());
                 }
                 logMetricsIfDue(false);
-                TimeUnit.MILLISECONDS.sleep(retryDelayMs);
+                try {
+                    TimeUnit.MILLISECONDS.sleep(retryDelayMs);
+                } catch (InterruptedException interruptedException) {
+                    // Shutdown should not leave a dequeued event only in the pending index.
+                    if (!accepting.get()) {
+                        removePending(queuedEvent);
+                        droppedEvents.incrementAndGet();
+                    } else {
+                        queue.offer(queuedEvent);
+                    }
+                    throw interruptedException;
+                }
             }
         }
     }

@@ -77,11 +77,20 @@ final class OpenAiSdkResponsesGateway implements OpenAiResponsesGateway {
             if (systemPrompt != null && !systemPrompt.isBlank()) {
                 request.instructions(systemPrompt.trim());
             }
-            if (temperature != null) {
+            if (temperature != null && supportsTemperature(selectedModel)) {
                 request.temperature(temperature);
             }
             if (maxTokens != null) {
                 request.maxOutputTokens(maxTokens.longValue());
+            }
+            String reasoningEffort = firstNonBlank(
+                property("agent.runtime.spring-ai.openai.reasoning-effort"),
+                property("spring.ai.openai.reasoning-effort"));
+            if (reasoningEffort != null
+                && !reasoningEffort.isBlank()
+                && !reasoningEffort.contains("${")) {
+                request.putAdditionalBodyProperty(
+                    "reasoning", JsonValue.from(Map.of("effort", reasoningEffort.trim().toLowerCase())));
             }
             for (FunctionTool functionTool : definitions.tools()) {
                 request.addTool(functionTool);
@@ -114,6 +123,14 @@ final class OpenAiSdkResponsesGateway implements OpenAiResponsesGateway {
             stream(message, streamingTokenCallback);
             return new SpringAiChatGateway.SpringAiChatResult(message, List.of(), true);
         }
+    }
+
+    private static boolean supportsTemperature(String model) {
+        String normalized = model == null ? "" : model.trim().toLowerCase();
+        if (normalized.startsWith("gpt-5")) {
+            return false;
+        }
+        return !(normalized.startsWith("o1") || normalized.startsWith("o3") || normalized.startsWith("o4"));
     }
 
     private ToolDefinitions buildTools(List<ToolSpec> tools) {

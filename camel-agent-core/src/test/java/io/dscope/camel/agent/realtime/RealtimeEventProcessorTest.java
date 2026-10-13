@@ -56,7 +56,7 @@ class RealtimeEventProcessorTest {
             processor.process(exchange);
 
             Assertions.assertEquals("conv-blueprint-priority", relayClient.lastConversationId);
-            Assertions.assertEquals("gpt-4o-realtime-preview", relayClient.lastModel);
+            Assertions.assertEquals("gpt-realtime-2.1", relayClient.lastModel);
             Assertions.assertEquals("mcp:http://localhost:3001/mcp", relayClient.lastEndpointUri);
             Assertions.assertNotNull(relayClient.lastReconnectPolicy);
             Assertions.assertEquals(3, relayClient.lastReconnectPolicy.maxSendRetries());
@@ -576,6 +576,9 @@ class RealtimeEventProcessorTest {
             Assertions.assertEquals("assistant: check order", recentTurns.get(recentTurns.size() - 1).path("text").asText());
 
             Assertions.assertTrue(relayClient.sentEventTypes(conversationId).contains("response.create"));
+            JsonNode responseCreate = relayClient.firstSentEvent(conversationId, "response.create");
+            Assertions.assertEquals("audio", responseCreate.path("response").path("output_modalities").get(0).asText());
+            Assertions.assertFalse(responseCreate.path("response").has("modalities"));
         } finally {
             context.stop();
         }

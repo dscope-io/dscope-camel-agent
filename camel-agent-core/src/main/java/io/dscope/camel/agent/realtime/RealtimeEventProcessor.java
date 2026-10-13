@@ -39,7 +39,7 @@ public class RealtimeEventProcessor implements Processor {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(RealtimeEventProcessor.class);
 
-    private static final String DEFAULT_MODEL = "gpt-4o-realtime-preview";
+    private static final String DEFAULT_MODEL = "gpt-realtime-2.1";
     private static final String DEFAULT_ENDPOINT = "wss://api.openai.com/v1/realtime";
     private static final String DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
     private static final String SUPPORT_TICKET_ROUTE_URI = "direct:support-ticket-manage?block=false";
@@ -104,6 +104,27 @@ public class RealtimeEventProcessor implements Processor {
         AuditGranularity auditGranularity = resolveAuditGranularity(exchange);
         if (shouldPersistRealtimeIngress(eventType, auditGranularity)) {
             persistRealtimeIngressEvent(exchange, conversationId, eventType, root);
+        }
+
+        OpenAiVoiceApi voiceApi;
+        try {
+            voiceApi = OpenAiVoiceApi.fromConfig(property(exchange, "agent.runtime.voice.api", "realtime"));
+        } catch (IllegalArgumentException invalidConfiguration) {
+            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, 400);
+            response.put("accepted", false);
+            response.put("relayError", invalidConfiguration.getMessage());
+            writeJson(exchange, response);
+            return;
+        }
+        if (voiceApi == OpenAiVoiceApi.LIVE
+            && ("session.start".equals(eventType) || isRelayEvent(eventType))) {
+            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, 409);
+            response.put("accepted", false);
+            response.put("connected", false);
+            response.put("relayError",
+                "GPT-Live server relay is not enabled; negotiate WebRTC through /voice/session/{conversationId}/connect");
+            writeJson(exchange, response);
+            return;
         }
 
         if ("transcript.observed".equals(eventType)) {
@@ -457,10 +478,9 @@ public class RealtimeEventProcessor implements Processor {
         var responseCreate = objectMapper.createObjectNode();
         responseCreate.put("type", "response.create");
         var responseBody = objectMapper.createObjectNode();
-        var modalities = objectMapper.createArrayNode();
-        modalities.add("audio");
-        modalities.add("text");
-        responseBody.set("modalities", modalities);
+        var outputModalities = objectMapper.createArrayNode();
+        outputModalities.add("audio");
+        responseBody.set("output_modalities", outputModalities);
         responseCreate.set("response", responseBody);
         try {
             realtimeRelayClient.sendEvent(conversationId, responseCreate.toString());
@@ -999,34 +1019,6 @@ public class RealtimeEventProcessor implements Processor {
         }
 
         var session = (com.fasterxml.jackson.databind.node.ObjectNode) sessionPayload;
-        if (!session.hasNonNull("voice") && !config.voice().isBlank()) {
-            session.put("voice", config.voice());
-        }
-        if (!session.hasNonNull("input_audio_format") && !config.inputAudioFormat().isBlank()) {
-            session.put("input_audio_format", config.inputAudioFormat());
-        }
-        if (!session.hasNonNull("output_audio_format") && !config.outputAudioFormat().isBlank()) {
-            session.put("output_audio_format", config.outputAudioFormat());
-        }
-
-        ObjectNode inputAudioTranscription = ensureObject(session, "input_audio_transcription");
-        if (!inputAudioTranscription.hasNonNull("model")) {
-            inputAudioTranscription.put("model", DEFAULT_TRANSCRIPTION_MODEL);
-        }
-
-        boolean turnDetectionDisabled = session.has("turn_detection") && session.path("turn_detection").isNull();
-        if (!turnDetectionDisabled) {
-            ObjectNode turnDetection = ensureObject(session, "turn_detection");
-            if (!turnDetection.hasNonNull("type")) {
-                turnDetection.put("type", "server_vad");
-            }
-            if (!turnDetection.hasNonNull("create_response")) {
-                turnDetection.put("create_response", false);
-            }
-        } else {
-            LOGGER.info("Realtime session config keeps turn_detection disabled (top-level)");
-        }
-
         ObjectNode audio = ensureObject(session, "audio");
         ObjectNode audioInput = ensureObject(audio, "input");
         ObjectNode nestedTranscription = ensureObject(audioInput, "transcription");

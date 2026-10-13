@@ -7,6 +7,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.slf4j.Logger;
@@ -16,17 +17,24 @@ public class RealtimeBrowserTokenProcessor implements Processor {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(RealtimeBrowserTokenProcessor.class);
 
-    private static final String OPENAI_SESSIONS_ENDPOINT = "https://api.openai.com/v1/realtime/sessions";
-    private static final String DEFAULT_MODEL = "gpt-realtime";
+    private static final String OPENAI_CLIENT_SECRETS_ENDPOINT = "https://api.openai.com/v1/realtime/client_secrets";
+    private static final String DEFAULT_MODEL = "gpt-realtime-2.1";
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final RealtimeBrowserSessionRegistry sessionRegistry;
+    private final String clientSecretsEndpoint;
 
     public RealtimeBrowserTokenProcessor(RealtimeBrowserSessionRegistry sessionRegistry) {
-        this.httpClient = HttpClient.newHttpClient();
+        this(sessionRegistry, HttpClient.newHttpClient(), OPENAI_CLIENT_SECRETS_ENDPOINT);
+    }
+
+    RealtimeBrowserTokenProcessor(RealtimeBrowserSessionRegistry sessionRegistry, HttpClient httpClient,
+                                  String clientSecretsEndpoint) {
+        this.httpClient = httpClient;
         this.objectMapper = new ObjectMapper();
         this.sessionRegistry = sessionRegistry;
+        this.clientSecretsEndpoint = clientSecretsEndpoint;
     }
 
     RealtimeBrowserSessionRegistry sessionRegistry() {
@@ -55,6 +63,13 @@ public class RealtimeBrowserTokenProcessor implements Processor {
                 writeError(exchange, 410, "Realtime browser session context missing or expired; call /init first");
                 return;
             }
+        }
+
+        if (session != null && "live".equalsIgnoreCase(firstNonBlank(
+            session.path("api").asText(""), session.path("type").asText("")))) {
+            writeError(exchange, 409,
+                "GPT-Live does not use Realtime client secrets; use /voice/session/{conversationId}/connect");
+            return;
         }
 
         String apiKey = firstNonBlank(
@@ -101,27 +116,17 @@ public class RealtimeBrowserTokenProcessor implements Processor {
             ));
         }
 
-        session.remove("metadata");
-        session.remove("type");
-
-        // Flatten voice: /v1/realtime/sessions expects top-level "voice", not "audio.output.voice"
-        String configuredVoice = firstNonBlank(
-            text(session, "voice"),
-            text(session.path("audio").path("output"), "voice"),
-            property(exchange, "agent.runtime.realtime.voice", ""),
-            property(exchange, "agent.realtime.voice", "")
-        );
-        session.remove("audio");
-        if (!configuredVoice.isBlank()) {
-            session.put("voice", configuredVoice);
-        }
-
-        // /v1/realtime/sessions expects flat body, not wrapped in { session: {...} }
-        String payloadJson = objectMapper.writeValueAsString(session);
-        LOGGER.debug("Realtime sessions payload: conversationId={}, body={}", conversationId, payloadJson);
+        ObjectNode outboundSession = session.deepCopy();
+        outboundSession.remove("metadata");
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.set("session", outboundSession);
+        String payloadJson = objectMapper.writeValueAsString(payload);
+        LOGGER.debug("Realtime client secret payload: conversationId={}, body={}", conversationId, payloadJson);
 
         HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(OPENAI_SESSIONS_ENDPOINT))
+            .uri(URI.create(clientSecretsEndpoint))
+            .timeout(Duration.ofMillis(longProperty(exchange, 15_000L,
+                "agent.runtime.realtime.client-secret-timeout-ms", "agent.runtime.realtime.clientSecretTimeoutMs")))
             .header("Authorization", "Bearer " + apiKey)
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(payloadJson))
@@ -183,14 +188,6 @@ public class RealtimeBrowserTokenProcessor implements Processor {
         }
     }
 
-    private String text(JsonNode node, String field) {
-        if (node == null || node.isMissingNode() || node.isNull()) {
-            return "";
-        }
-        JsonNode value = node.path(field);
-        return value.isMissingNode() || value.isNull() ? "" : value.asText("");
-    }
-
     private String firstNonBlank(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) {
@@ -217,6 +214,19 @@ public class RealtimeBrowserTokenProcessor implements Processor {
             String value = property(exchange, key, "");
             if (value != null && !value.isBlank()) {
                 return Boolean.parseBoolean(value.trim());
+            }
+        }
+        return defaultValue;
+    }
+
+    private long longProperty(Exchange exchange, long defaultValue, String... keys) {
+        for (String key : keys) {
+            try {
+                long value = Long.parseLong(property(exchange, key, "").trim());
+                if (value > 0) {
+                    return value;
+                }
+            } catch (NumberFormatException ignored) {
             }
         }
         return defaultValue;

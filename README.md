@@ -35,11 +35,11 @@ Recent additions:
 
 ## Compatibility Matrix
 
-- Camel Agent: `0.7.0`
+- Camel Agent: `0.8.0`
 - Java: `21`
-- Camel: `4.20.0`
+- Camel: `4.22.0`
 - Spring Boot: `4.0.5`
-- Spring Framework: `7.0.7`
+- Spring Framework: `7.0.8`
 - Spring AI: `1.1.4`
 - Jackson: `2.20.0`
 - JUnit: `5.10.2`
@@ -347,6 +347,9 @@ curl -I https://api.openai.com/v1/models
 curl https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"
 ```
 
+The support-service sample also loads the nearest git-ignored `.env.local` for
+local runs. Explicit environment variables and JVM properties take precedence.
+
 ## Troubleshooting (Quick)
 
 - `401` from OpenAI endpoints usually means missing/invalid API key in the current shell.
@@ -365,12 +368,12 @@ Spring Framework dependency remediation was applied for known `spring-core` vuln
 What was changed:
 
 - centralized Spring Framework version management via `spring-framework-bom`
-- aligned the Spring stack with Camel `4.20.0` expectations: Spring Boot `4.0.5`, Spring Framework `7.0.7`, and Spring AI `1.1.4`
+- aligned the Spring stack with Camel `4.22.0` expectations: Spring Boot `4.0.5`, Spring Framework `7.0.8`, and Spring AI `1.1.4`
 - updated `camel-agent-spring-ai` to consume managed Spring version
 
 Current resolved baseline:
 
-- `org.springframework:spring-core:7.0.7`
+- `org.springframework:spring-core:7.0.8`
 
 Verification commands:
 
@@ -523,8 +526,15 @@ For run commands and endpoint examples, see `samples/agent-support-service/READM
 
 Realtime note:
 
+- Set `agent.runtime.voice.api` (or sample env `AGENT_OPENAI_VOICE_API`) to `realtime` or `live`; Realtime remains the default.
+- `POST /voice/session/{conversationId}/connect` is the protocol-neutral, server-authenticated WebRTC negotiation endpoint. It returns `transport.sdp` for both APIs.
 - `POST /realtime/session/{conversationId}/event` supports route-driven session-context updates after `transcript.final` routing.
 - `POST /realtime/session/{conversationId}/init` seeds pre-conversation agent context from blueprint metadata before the first user turn.
+- `POST /realtime/session/{conversationId}/token` mints a GA OpenAI Realtime client secret through `/v1/realtime/client_secrets`; clients read the short-lived credential from response field `value`.
+- Realtime defaults to `gpt-realtime-2.1`, emits nested `audio.input` / `audio.output` session settings, and uses `output_modalities: ["audio"]` for voice responses.
+- Realtime GA support does not send the retired `OpenAI-Beta` header. The separate `responses-ws` mode targets `/v1/responses` and is not the live voice transport.
+- GPT-Live defaults to `gpt-live-1` and `/v1/live/sessions`. It uses client delegation to the existing Camel agent and returns verified backend results through `session.commentary.append`.
+- `gpt-live-1` cannot be configured with the Realtime protocol, and Realtime models cannot be configured with the Live protocol; startup/session initialization rejects mismatches.
 - Agent/tool routes can return a patch via exchange header/property (`realtimeSessionUpdate`, aliases: `realtime.session.update`, `sessionUpdate`) or assistant JSON body (`realtimeSessionUpdate`, `realtimeSession`, `sessionUpdate`).
 - Patch is deep-merged into browser session context for the same `conversationId`; next `/realtime/session/{conversationId}/token` uses merged context.
 

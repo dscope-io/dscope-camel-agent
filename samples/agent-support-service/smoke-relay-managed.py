@@ -63,9 +63,9 @@ def main() -> int:
             {
                 "type": "session.start",
                 "session": {
-                    "voice": "alloy",
-                    "input_audio_transcription": {"model": "gpt-4o-mini-transcribe"},
-                    "turn_detection": None,
+                    "type": "realtime",
+                    "model": "gpt-realtime-2.1",
+                    "output_modalities": ["audio"],
                     "audio": {
                         "input": {
                             "transcription": {

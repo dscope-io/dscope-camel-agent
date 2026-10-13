@@ -56,7 +56,7 @@ class HttpOpenAiRealtimeCallControlClientTest {
 
         assertEquals("/v1/realtime/calls/call_123/accept", lastPath.get());
         assertEquals("Bearer test-key", lastAuth.get());
-        assertEquals("realtime=v1", lastBeta.get());
+        assertEquals(null, lastBeta.get());
         assertEquals("{\"type\":\"realtime\",\"model\":\"gpt-realtime\"}", lastBody.get());
     }
 

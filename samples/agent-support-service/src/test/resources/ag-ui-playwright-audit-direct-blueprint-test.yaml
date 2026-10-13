@@ -6,6 +6,8 @@ camel:
       url: jdbc:derby:memory:agent-playwright-audit-direct;create=true
 
 agent:
+  security:
+    access-token: test-access-token
   blueprint: classpath:agents/test-support/agent-no-mcp-direct.md
   audit:
     granularity: debug

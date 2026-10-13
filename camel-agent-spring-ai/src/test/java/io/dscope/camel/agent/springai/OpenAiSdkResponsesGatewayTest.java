@@ -51,6 +51,81 @@ class OpenAiSdkResponsesGatewayTest {
     }
 
     @Test
+    void shouldOmitUnsupportedTemperatureForReasoningModels() {
+        for (String model : List.of("gpt-5.6-terra", "gpt-5.4", "o4-mini")) {
+            AtomicReference<ResponseCreateParams> captured = new AtomicReference<>();
+            OpenAiSdkResponsesGateway gateway = new OpenAiSdkResponsesGateway(
+                new Properties(),
+                (request, apiKey, baseUrl, organization, project) -> {
+                    captured.set(request);
+                    return responseFixture();
+                });
+
+            gateway.generate(
+                "responses-http",
+                "system rules",
+                "user question",
+                List.of(),
+                model,
+                0.2,
+                250,
+                "test-key",
+                "https://api.openai.com",
+                null);
+
+            Assertions.assertNotNull(captured.get());
+            Assertions.assertTrue(captured.get().temperature().isEmpty(), model);
+        }
+    }
+
+    @Test
+    void shouldRetainTemperatureForSupportedModels() {
+        AtomicReference<ResponseCreateParams> captured = new AtomicReference<>();
+        OpenAiSdkResponsesGateway gateway = new OpenAiSdkResponsesGateway(
+            new Properties(),
+            (request, apiKey, baseUrl, organization, project) -> {
+                captured.set(request);
+                return responseFixture();
+            });
+
+        gateway.generate(
+            "responses-http", "system rules", "user question", List.of(),
+            "gpt-4o-mini", 0.2, 250, "test-key", "https://api.openai.com", null);
+
+        Assertions.assertNotNull(captured.get());
+        Assertions.assertEquals(0.2, captured.get().temperature().orElseThrow());
+    }
+
+    @Test
+    void shouldAddConfiguredReasoningEffort() {
+        Properties properties = new Properties();
+        properties.setProperty("agent.runtime.spring-ai.openai.reasoning-effort", "low");
+        AtomicReference<ResponseCreateParams> captured = new AtomicReference<>();
+        OpenAiSdkResponsesGateway gateway = new OpenAiSdkResponsesGateway(
+            properties,
+            (request, apiKey, baseUrl, organization, project) -> {
+                captured.set(request);
+                return responseFixture();
+            });
+
+        gateway.generate(
+            "responses-http",
+            "system rules",
+            "user question",
+            List.of(),
+            "gpt-5.6-terra",
+            0.2,
+            250,
+            "test-key",
+            "https://api.openai.com",
+            null);
+
+        Assertions.assertNotNull(captured.get());
+        Assertions.assertTrue(
+            String.valueOf(captured.get()._additionalBodyProperties().get("reasoning")).contains("low"));
+    }
+
+    @Test
     void shouldMarkResponseFunctionToolsStrict() throws Exception {
         AtomicReference<ResponseCreateParams> captured = new AtomicReference<>();
         OpenAiSdkResponsesGateway gateway = new OpenAiSdkResponsesGateway(new Properties(), (request, apiKey, baseUrl, organization, project) -> {

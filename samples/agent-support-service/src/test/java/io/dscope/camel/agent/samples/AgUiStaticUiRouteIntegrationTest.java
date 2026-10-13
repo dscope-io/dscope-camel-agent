@@ -42,6 +42,11 @@ class AgUiStaticUiRouteIntegrationTest {
             HttpResult webrtcPage = get(port, "/agui/ui/webrtc-test.html");
             Assertions.assertEquals(200, webrtcPage.statusCode());
             Assertions.assertTrue(webrtcPage.body().contains("<title>Support Copilot (WebRTC Test)</title>"));
+
+            HttpResult catalog = get(port, "/agui/ui/a2ui/catalog-registry.json");
+            Assertions.assertEquals(200, catalog.statusCode());
+            Assertions.assertEquals("application/json; charset=UTF-8", catalog.contentType());
+            Assertions.assertTrue(catalog.body().contains("catalog"));
         } finally {
             try {
                 main.stop();
@@ -63,7 +68,11 @@ class AgUiStaticUiRouteIntegrationTest {
             .build();
 
         HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
-        return new HttpResult(response.statusCode(), response.body() == null ? "" : response.body());
+        return new HttpResult(
+            response.statusCode(),
+            response.headers().firstValue("Content-Type").orElse(""),
+            response.body() == null ? "" : response.body()
+        );
     }
 
     private static int randomPort() throws IOException {
@@ -72,7 +81,7 @@ class AgUiStaticUiRouteIntegrationTest {
         }
     }
 
-    private record HttpResult(int statusCode, String body) {
+    private record HttpResult(int statusCode, String contentType, String body) {
     }
 
     private static final class OkJsonProcessor implements Processor {

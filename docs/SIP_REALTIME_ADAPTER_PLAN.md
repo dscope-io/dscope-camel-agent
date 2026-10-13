@@ -43,7 +43,7 @@ Body example:
 {
   "session": {
     "type": "realtime",
-    "model": "gpt-realtime",
+    "model": "gpt-realtime-2.1",
     "audio": {
       "output": { "voice": "alloy" }
     },

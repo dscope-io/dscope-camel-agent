@@ -1,6 +1,7 @@
 package io.dscope.camel.agent.runtime;
 
 import io.dscope.camel.agent.realtime.OpenAiRealtimeRelayClient;
+import io.dscope.camel.agent.realtime.OpenAiVoiceSessionConnectProcessor;
 import io.dscope.camel.agent.realtime.RealtimeBrowserSessionInitProcessor;
 import io.dscope.camel.agent.realtime.RealtimeBrowserTokenProcessor;
 import io.dscope.camel.agent.realtime.RealtimeEventProcessor;
@@ -18,9 +19,12 @@ class AgentRuntimeBootstrapTest {
 
         OpenAiRealtimeRelayClient relayClient = main.lookup("openAiRealtimeRelayClient", OpenAiRealtimeRelayClient.class);
         RealtimeEventProcessor processor = main.lookup("supportRealtimeEventProcessor", RealtimeEventProcessor.class);
+        OpenAiVoiceSessionConnectProcessor connectProcessor = main.lookup(
+            "supportVoiceSessionConnectProcessor", OpenAiVoiceSessionConnectProcessor.class);
 
         Assertions.assertNotNull(relayClient);
         Assertions.assertNotNull(processor);
+        Assertions.assertNotNull(connectProcessor);
     }
 
     @Test

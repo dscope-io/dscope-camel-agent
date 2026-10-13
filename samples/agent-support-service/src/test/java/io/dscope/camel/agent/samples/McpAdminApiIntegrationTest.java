@@ -27,6 +27,7 @@ import io.dscope.camel.agent.runtime.AgentRuntimeBootstrap;
 class McpAdminApiIntegrationTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final String ACCESS_TOKEN = "test-access-token";
 
     private record HttpResult(int statusCode, String body) {
     }
@@ -36,7 +37,9 @@ class McpAdminApiIntegrationTest {
     void shouldServeMcpAdminToolsAndExecuteAuditRoundtrip() throws Exception {
         int port = randomPort();
         String previousPort = System.getProperty("agent.runtime.test-port");
+        String previousAccessToken = System.getProperty("agent.security.access-token");
         System.setProperty("agent.runtime.test-port", Integer.toString(port));
+        System.setProperty("agent.security.access-token", ACCESS_TOKEN);
 
         Main main = new Main();
         main.bind("ticketLifecycleProcessor", new SupportTicketLifecycleProcessor(MAPPER));
@@ -44,6 +47,9 @@ class McpAdminApiIntegrationTest {
             AgentRuntimeBootstrap.bootstrap(main, "plan-catalog-runtime-test.yaml");
             SampleAdminMcpBindings.bindIfMissing(main, "plan-catalog-runtime-test.yaml");
             main.start();
+
+            HttpResult rejected = post(port, "/mcp/admin", "{}", null);
+            Assertions.assertEquals(401, rejected.statusCode());
 
             JsonNode initialize = mcpCall(port, "initialize", Map.of(
                 "protocolVersion", "2025-06-18",
@@ -102,6 +108,11 @@ class McpAdminApiIntegrationTest {
             } else {
                 System.setProperty("agent.runtime.test-port", previousPort);
             }
+            if (previousAccessToken == null) {
+                System.clearProperty("agent.security.access-token");
+            } else {
+                System.setProperty("agent.security.access-token", previousAccessToken);
+            }
         }
     }
 
@@ -110,7 +121,9 @@ class McpAdminApiIntegrationTest {
     void shouldRefreshRuntimeResourcesForConversationUsingV2Blueprint() throws Exception {
         int port = randomPort();
         String previousPort = System.getProperty("agent.runtime.test-port");
+        String previousAccessToken = System.getProperty("agent.security.access-token");
         System.setProperty("agent.runtime.test-port", Integer.toString(port));
+        System.setProperty("agent.security.access-token", ACCESS_TOKEN);
 
         Main main = new Main();
         main.bind("ticketLifecycleProcessor", new SupportTicketLifecycleProcessor(MAPPER));
@@ -128,7 +141,7 @@ class McpAdminApiIntegrationTest {
             ));
             Assertions.assertTrue(appendResult.path("structuredContent").path("accepted").asBoolean(false));
 
-            HttpResult refreshResult = post(port, "/runtime/refresh/" + conversationId, "{}");
+            HttpResult refreshResult = post(port, "/runtime/refresh/" + conversationId, "{}", ACCESS_TOKEN);
             Assertions.assertEquals(200, refreshResult.statusCode());
 
             JsonNode refreshBody = MAPPER.readTree(refreshResult.body());
@@ -153,6 +166,11 @@ class McpAdminApiIntegrationTest {
             } else {
                 System.setProperty("agent.runtime.test-port", previousPort);
             }
+            if (previousAccessToken == null) {
+                System.clearProperty("agent.security.access-token");
+            } else {
+                System.setProperty("agent.security.access-token", previousAccessToken);
+            }
         }
     }
 
@@ -161,7 +179,9 @@ class McpAdminApiIntegrationTest {
     void shouldServeAuditChainOverHttp() throws Exception {
         int port = randomPort();
         String previousPort = System.getProperty("agent.runtime.test-port");
+        String previousAccessToken = System.getProperty("agent.security.access-token");
         System.setProperty("agent.runtime.test-port", Integer.toString(port));
+        System.setProperty("agent.security.access-token", ACCESS_TOKEN);
 
         Main main = new Main();
         main.bind("ticketLifecycleProcessor", new SupportTicketLifecycleProcessor(MAPPER));
@@ -172,7 +192,7 @@ class McpAdminApiIntegrationTest {
 
             seedAuditChain(main, "root-http-1");
 
-            HttpResult response = get(port, "/audit/conversation/chain?rootConversationId=root-http-1&limit=100");
+            HttpResult response = get(port, "/audit/conversation/chain?rootConversationId=root-http-1&limit=100", ACCESS_TOKEN);
             Assertions.assertEquals(200, response.statusCode(), response.body());
 
             JsonNode body = MAPPER.readTree(response.body());
@@ -192,6 +212,11 @@ class McpAdminApiIntegrationTest {
                 System.clearProperty("agent.runtime.test-port");
             } else {
                 System.setProperty("agent.runtime.test-port", previousPort);
+            }
+            if (previousAccessToken == null) {
+                System.clearProperty("agent.security.access-token");
+            } else {
+                System.setProperty("agent.security.access-token", previousAccessToken);
             }
         }
     }
@@ -297,6 +322,7 @@ class McpAdminApiIntegrationTest {
             .header("Content-Type", "application/json")
             .header("Accept", "application/json, text/event-stream")
             .header("MCP-Protocol-Version", "2025-06-18")
+            .header("Authorization", "Bearer " + ACCESS_TOKEN)
             .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(request)))
             .build();
 
@@ -310,22 +336,26 @@ class McpAdminApiIntegrationTest {
         return envelope.path("result");
     }
 
-    private static HttpResult post(int port, String path, String body) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder()
+    private static HttpResult post(int port, String path, String body, String accessToken) throws IOException, InterruptedException {
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
             .uri(URI.create("http://127.0.0.1:" + port + path))
             .timeout(Duration.ofSeconds(10))
             .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(body == null ? "" : body))
-            .build();
+            .POST(HttpRequest.BodyPublishers.ofString(body == null ? "" : body));
+        if (accessToken != null) {
+            requestBuilder.header("Authorization", "Bearer " + accessToken);
+        }
+        HttpRequest request = requestBuilder.build();
 
         HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
         return new HttpResult(response.statusCode(), response.body() == null ? "" : response.body());
     }
 
-    private static HttpResult get(int port, String path) throws IOException, InterruptedException {
+    private static HttpResult get(int port, String path, String accessToken) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create("http://127.0.0.1:" + port + path))
             .timeout(Duration.ofSeconds(10))
+            .header("Authorization", "Bearer " + accessToken)
             .GET()
             .build();
 

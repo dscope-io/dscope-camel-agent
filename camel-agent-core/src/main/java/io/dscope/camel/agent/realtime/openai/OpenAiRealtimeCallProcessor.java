@@ -2,7 +2,6 @@ package io.dscope.camel.agent.realtime.openai;
 
 import java.io.IOException;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -10,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
@@ -37,7 +37,7 @@ public final class OpenAiRealtimeCallProcessor implements Processor {
             ? "https://api.openai.com/v1/realtime/calls"
             : callsEndpoint.trim());
         this.apiKey = apiKey == null ? "" : apiKey.trim();
-        this.defaultModel = defaultModel == null || defaultModel.isBlank() ? "gpt-realtime-2" : defaultModel.trim();
+        this.defaultModel = defaultModel == null || defaultModel.isBlank() ? "gpt-realtime-2.1" : defaultModel.trim();
     }
 
     @Override
@@ -54,15 +54,16 @@ public final class OpenAiRealtimeCallProcessor implements Processor {
             return;
         }
 
-        String model = resolveModel(request);
-        URI endpointWithModel = endpointWithModel(callsEndpoint, model);
+        Map<String, Object> session = resolveSession(request);
+        String boundary = "openai-realtime-" + UUID.randomUUID();
+        String multipartBody = createMultipartBody(boundary, sdp, objectMapper.writeValueAsString(session));
 
-        HttpRequest openAiRequest = HttpRequest.newBuilder(endpointWithModel)
+        HttpRequest openAiRequest = HttpRequest.newBuilder(callsEndpoint)
             .timeout(Duration.ofSeconds(45))
             .header("Authorization", "Bearer " + apiKey)
             .header("Accept", "application/sdp")
-            .header("Content-Type", "application/sdp")
-            .POST(HttpRequest.BodyPublishers.ofString(sdp, StandardCharsets.UTF_8))
+            .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+            .POST(HttpRequest.BodyPublishers.ofString(multipartBody, StandardCharsets.UTF_8))
             .build();
 
         HttpResponse<String> response;
@@ -104,29 +105,28 @@ public final class OpenAiRealtimeCallProcessor implements Processor {
         return copy;
     }
 
-    private String resolveModel(Map<String, Object> request) {
-        String model = stringValue(request.get("model")).trim();
-        if (!model.isBlank()) {
-            return model;
-        }
+    private Map<String, Object> resolveSession(Map<String, Object> request) {
+        Map<String, Object> resolved = new LinkedHashMap<>();
         Object sessionObject = request.get("session");
         if (sessionObject instanceof Map<?, ?> sessionMap) {
-            model = stringValue(sessionMap.get("model")).trim();
-            if (!model.isBlank()) {
-                return model;
-            }
+            resolved.putAll(copyMap(sessionMap));
         }
-        return defaultModel;
+        resolved.putIfAbsent("type", "realtime");
+        String model = stringValue(resolved.get("model")).trim();
+        resolved.put("model", model.isBlank() ? defaultModel : model);
+        return resolved;
     }
 
-    private URI endpointWithModel(URI baseEndpoint, String model) {
-        String endpoint = baseEndpoint.toString();
-        if (endpoint.contains("model=")) {
-            return baseEndpoint;
-        }
-        String separator = endpoint.contains("?") ? "&" : "?";
-        String encodedModel = URLEncoder.encode(model, StandardCharsets.UTF_8);
-        return URI.create(endpoint + separator + "model=" + encodedModel);
+    private String createMultipartBody(String boundary, String sdp, String sessionJson) {
+        return "--" + boundary + "\r\n"
+            + "Content-Disposition: form-data; name=\"sdp\"\r\n"
+            + "Content-Type: application/sdp\r\n\r\n"
+            + sdp + "\r\n"
+            + "--" + boundary + "\r\n"
+            + "Content-Disposition: form-data; name=\"session\"\r\n"
+            + "Content-Type: application/json\r\n\r\n"
+            + sessionJson + "\r\n"
+            + "--" + boundary + "--\r\n";
     }
 
     private void writeError(Exchange exchange, int statusCode, String message) {

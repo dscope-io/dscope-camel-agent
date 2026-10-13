@@ -1,4 +1,5 @@
 **/.agent-secrets.properties
+.env.local
 camel-agent-starter/target/camel-agent-starter-0.1.0-SNAPSHOT.jar
 camel-agent-agui/target/camel-agent-agui-0.1.0-SNAPSHOT.jar
 **/target/

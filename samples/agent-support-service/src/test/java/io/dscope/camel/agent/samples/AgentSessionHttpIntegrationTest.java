@@ -28,7 +28,9 @@ class AgentSessionHttpIntegrationTest {
     void shouldInvokeAgentThroughDirectRouteFromRestPost() throws Exception {
         int port = randomPort();
         String previousPort = System.getProperty("agent.runtime.test-port");
+        String previousAccessToken = System.getProperty("agent.security.access-token");
         System.setProperty("agent.runtime.test-port", Integer.toString(port));
+        System.setProperty("agent.security.access-token", "test-access-token");
 
         Main main = new Main();
         String sessionId = "rest-agent-session-" + System.currentTimeMillis();
@@ -47,7 +49,7 @@ class AgentSessionHttpIntegrationTest {
                 "params", Map.of("channel", "rest")
             ));
 
-            HttpResponse<String> response = post(port, "/sample/agent/session", requestBody);
+            HttpResponse<String> response = post(port, "/sample/agent/session", requestBody, "test-access-token");
             Assertions.assertEquals(200, response.statusCode(), response.body());
 
             JsonNode json = MAPPER.readTree(response.body());
@@ -71,6 +73,11 @@ class AgentSessionHttpIntegrationTest {
             } else {
                 System.setProperty("agent.runtime.test-port", previousPort);
             }
+            if (previousAccessToken == null) {
+                System.clearProperty("agent.security.access-token");
+            } else {
+                System.setProperty("agent.security.access-token", previousAccessToken);
+            }
         }
     }
 
@@ -86,11 +93,12 @@ class AgentSessionHttpIntegrationTest {
         return false;
     }
 
-    private static HttpResponse<String> post(int port, String path, String body) throws IOException, InterruptedException {
+    private static HttpResponse<String> post(int port, String path, String body, String accessToken) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create("http://127.0.0.1:" + port + path))
             .timeout(Duration.ofSeconds(10))
             .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer " + accessToken)
             .POST(HttpRequest.BodyPublishers.ofString(body))
             .build();
         return HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());

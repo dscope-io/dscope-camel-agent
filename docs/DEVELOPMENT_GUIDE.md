@@ -25,6 +25,12 @@ The development surface spans:
 4. Prefer provider-neutral contracts in core and provider-specific integrations in adapter modules.
 5. Reuse existing AGUI, realtime, persistence, and A2A seams instead of introducing duplicate state models.
 
+## HTTP Security
+
+The runtime binds `agentHttpAccessProcessor` by default. It protects audit, runtime administration, MCP administration, telephony onboarding, structured session, realtime-token, and custom SIP/Twilio adapter paths. Set `AGENT_SECURITY_ACCESS_TOKEN` in every deployed environment and send it as `Authorization: Bearer <token>` from a trusted gateway. A protected request fails closed with `503` when the token is unset and `401` when it does not match. Keep the browser-facing static UI public and place browser administration behind an identity-aware reverse proxy that injects or exchanges credentials; do not embed the deployment token in frontend code. Provider-native webhook integrations should additionally validate the provider's signed request rather than rely only on this shared service credential.
+
+Camel Undertow is configured with `mute-exception: true`, and the build uses Camel `4.22.0` and Spring Framework `7.0.8` for the reviewed security advisories.
+
 ## Module Responsibilities
 
 - `camel-agent-core`: `agent:` Camel component, blueprint loader, kernel, tool registry, runtime processors, A2A integration layer, session façade, resource resolution, and telephony contracts.
@@ -603,15 +609,40 @@ Dynamic asset example:
     ref: agUiStaticResourceProcessor
 ```
 
-### Browser Realtime
+### Browser Voice: Realtime And GPT-Live
 
-Browser realtime flows depend on runtime-bound processors for:
+Browser voice flows support two distinct OpenAI protocols behind one application-facing connection route:
+
+```yaml
+agent:
+  runtime:
+    voice:
+      api: realtime # realtime | live
+    realtime:
+      model: gpt-realtime-2.1
+    live:
+      model: gpt-live-1
+      delegation:
+        type: client
+```
+
+`agent.runtime.voice.api` is authoritative. Do not treat `gpt-live-1` as a model replacement on the Realtime endpoint: Realtime uses `/v1/realtime`, while GPT-Live uses `/v1/live/sessions` and a different event contract. `OpenAiVoiceApi` validates protocol/model pairs so invalid combinations fail before an upstream call.
+
+Browser voice flows depend on runtime-bound processors for:
 
 - session init
 - transcript and control events
 - relay integration
-- token minting
+- Realtime-only token minting
+- protocol-neutral WebRTC negotiation through `OpenAiVoiceSessionConnectProcessor`
 - session context patching
+
+The recommended browser route is `POST /voice/session/{conversationId}/connect` with `{"sdp":"..."}` after `/realtime/session/{conversationId}/init`. The processor keeps the project API key on the server and dispatches to:
+
+- Realtime: `POST /v1/realtime/calls` with `application/sdp`
+- GPT-Live: `POST /v1/live/sessions` with `session` and `transport: {type: webrtc, sdp: ...}`
+
+For GPT-Live WebRTC, create the `oai-events` data channel before the offer, apply `transport.sdp` from the response, and wait for `session.started`. Do not send Realtime `session.update` or `response.create` events. In client-delegation mode, retain `session.delegation.created`, assemble input from transcript deltas and verified state, run the existing Camel agent once, then return a concise result with `session.commentary.append` and the unchanged `delegation_id`.
 
 Developer guidance:
 
@@ -620,6 +651,7 @@ Developer guidance:
 - validate session refresh behavior after blueprint or resource changes
 - keep realtime and AGUI locale handling aligned: selected browser locale should drive transcription language, runtime `agent.locale`, and any generated structured UI payload metadata
 - when testing browser-facing structured responses, verify both the legacy widget path and the top-level `a2ui` contract remain usable
+- test Realtime and Live as separate protocol fixtures; a passing Realtime event test does not establish GPT-Live compatibility
 
 ## MCP Discovery And JSON Route Templates
 
@@ -705,6 +737,10 @@ Relevant budgets:
 
 - `agent.runtime.chat.resource-context-max-chars`
 - `agent.runtime.realtime.resource-context-max-chars`
+- `agent.runtime.chat.tool-result-max-chars` (defaults to `10000` per `tool.result` event forwarded to the chat model)
+
+`resource-context-max-chars` only bounds static blueprint resource text added to system instructions. Set
+`tool-result-max-chars` when a tool must return more than the default `10000` characters of dynamic result data to the model. Larger values increase context and token consumption.
 
 Guidelines:
 

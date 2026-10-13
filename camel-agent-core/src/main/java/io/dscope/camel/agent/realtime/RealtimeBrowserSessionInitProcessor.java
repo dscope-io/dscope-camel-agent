@@ -19,7 +19,7 @@ import org.apache.camel.Processor;
 
 public class RealtimeBrowserSessionInitProcessor implements Processor {
 
-    private static final String DEFAULT_MODEL = "gpt-realtime";
+    private static final String DEFAULT_MODEL = "gpt-realtime-2.1";
     private static final int DEFAULT_AGENT_PURPOSE_MAX_CHARS = 240;
 
     private final ObjectMapper objectMapper;
@@ -134,16 +134,23 @@ public class RealtimeBrowserSessionInitProcessor implements Processor {
             mergeObject(session, requestSession);
         }
 
-        if (!session.hasNonNull("type")) {
-            session.put("type", "realtime");
+        OpenAiVoiceApi voiceApi;
+        String model;
+        try {
+            voiceApi = OpenAiVoiceApi.fromConfig(property(exchange, "agent.runtime.voice.api", "realtime"));
+            model = voiceApi.validateModel(voiceApi == OpenAiVoiceApi.LIVE
+                ? firstNonBlank(property(exchange, "agent.runtime.live.model", ""), voiceApi.defaultModel())
+                : firstNonBlank(
+                    property(exchange, "agent.runtime.realtime.model", ""),
+                    property(exchange, "agent.realtime.model", ""),
+                    DEFAULT_MODEL));
+        } catch (IllegalArgumentException invalidConfiguration) {
+            writeError(exchange, 400, invalidConfiguration.getMessage());
+            return;
         }
-        if (!session.hasNonNull("model")) {
-            session.put("model", firstNonBlank(
-                property(exchange, "agent.runtime.realtime.model", ""),
-                property(exchange, "agent.realtime.model", ""),
-                DEFAULT_MODEL
-            ));
-        }
+        session.put("api", voiceApi.configValue());
+        session.put("type", voiceApi.configValue());
+        session.put("model", model);
 
         ObjectNode metadata = session.path("metadata").isObject()
             ? (ObjectNode) session.path("metadata")
@@ -172,32 +179,63 @@ public class RealtimeBrowserSessionInitProcessor implements Processor {
             session.put("instructions", session.get("instructions").asText() + voiceRules);
         }
 
-        // Set input_audio_transcription if not already configured
-        if (!session.hasNonNull("input_audio_transcription")) {
-            ObjectNode transcription = objectMapper.createObjectNode();
-            transcription.put("model", "gpt-4o-mini-transcribe");
-            transcription.put("language", "sk".equalsIgnoreCase(language) ? "sk" : "en");
-            session.set("input_audio_transcription", transcription);
-        }
-
-        // Set turn_detection if not already configured
-        if (!session.hasNonNull("turn_detection")) {
-            ObjectNode turnDetection = objectMapper.createObjectNode();
-            turnDetection.put("type", "server_vad");
-            turnDetection.put("threshold", 0.5);
-            turnDetection.put("prefix_padding_ms", 300);
-            turnDetection.put("silence_duration_ms", 1200);
-            session.set("turn_detection", turnDetection);
-        }
+        ObjectNode audio = ensureObject(session, "audio");
+        ObjectNode audioOutput = ensureObject(audio, "output");
 
         String configuredVoice = firstNonBlank(
+            text(audioOutput, "voice"),
             text(session, "voice"),
-            text(session.path("audio").path("output"), "voice"),
-            property(exchange, "agent.runtime.realtime.voice", ""),
+            voiceApi == OpenAiVoiceApi.LIVE
+                ? property(exchange, "agent.runtime.live.voice", "")
+                : property(exchange, "agent.runtime.realtime.voice", ""),
             property(exchange, "agent.realtime.voice", "")
         );
-        if (!configuredVoice.isBlank() && !session.hasNonNull("voice")) {
-            session.put("voice", configuredVoice);
+        session.remove("voice");
+        if (!configuredVoice.isBlank() && !audioOutput.hasNonNull("voice")) {
+            audioOutput.put("voice", configuredVoice);
+        }
+
+        if (voiceApi == OpenAiVoiceApi.LIVE) {
+            audio.remove("input");
+            session.remove("input_audio_transcription");
+            session.remove("turn_detection");
+            session.remove("output_modalities");
+            if (!session.path("delegation").isObject()) {
+                session.set("delegation", objectMapper.createObjectNode().put("type",
+                    firstNonBlank(property(exchange, "agent.runtime.live.delegation.type", ""), "client")));
+            }
+        } else {
+            ObjectNode audioInput = ensureObject(audio, "input");
+
+            JsonNode legacyTranscription = session.remove("input_audio_transcription");
+            if (!audioInput.path("transcription").isObject() && legacyTranscription != null && legacyTranscription.isObject()) {
+                audioInput.set("transcription", legacyTranscription);
+            }
+            if (!audioInput.path("transcription").isObject()) {
+                ObjectNode transcription = objectMapper.createObjectNode();
+                transcription.put("model", "gpt-4o-mini-transcribe");
+                transcription.put("language", "sk".equalsIgnoreCase(language) ? "sk" : "en");
+                audioInput.set("transcription", transcription);
+            }
+
+            JsonNode legacyTurnDetection = session.remove("turn_detection");
+            if (!audioInput.path("turn_detection").isObject() && legacyTurnDetection != null && legacyTurnDetection.isObject()) {
+                audioInput.set("turn_detection", legacyTurnDetection);
+            }
+            if (!audioInput.path("turn_detection").isObject()) {
+                ObjectNode turnDetection = objectMapper.createObjectNode();
+                turnDetection.put("type", "server_vad");
+                turnDetection.put("threshold", 0.5);
+                turnDetection.put("prefix_padding_ms", 300);
+                turnDetection.put("silence_duration_ms", 1200);
+                audioInput.set("turn_detection", turnDetection);
+            }
+
+            if (!session.path("output_modalities").isArray()) {
+                ArrayNode outputModalities = objectMapper.createArrayNode();
+                outputModalities.add("audio");
+                session.set("output_modalities", outputModalities);
+            }
         }
 
         sessionRegistry.putSession(conversationId, session);
@@ -205,6 +243,7 @@ public class RealtimeBrowserSessionInitProcessor implements Processor {
         ObjectNode response = objectMapper.createObjectNode();
         response.put("conversationId", conversationId);
         response.put("initialized", true);
+        response.put("api", voiceApi.configValue());
         response.set("session", session);
 
         exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, 200);

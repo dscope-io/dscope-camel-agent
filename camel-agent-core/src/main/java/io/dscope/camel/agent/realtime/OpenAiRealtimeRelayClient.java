@@ -7,13 +7,15 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
@@ -31,7 +33,7 @@ public class OpenAiRealtimeRelayClient implements RealtimeRelayClient {
     private final Map<String, RealtimeSession> sessions;
 
     public OpenAiRealtimeRelayClient() {
-        this.httpClient = HttpClient.newHttpClient();
+        this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
         this.objectMapper = new ObjectMapper();
         this.sessions = new ConcurrentHashMap<>();
     }
@@ -49,7 +51,7 @@ public class OpenAiRealtimeRelayClient implements RealtimeRelayClient {
 
     @Override
     public void connect(String conversationId, String endpointUri, String model, String apiKey, RealtimeReconnectPolicy reconnectPolicy) throws Exception {
-        String modelName = (model == null || model.isBlank()) ? "gpt-4o-realtime-preview" : model;
+        String modelName = (model == null || model.isBlank()) ? "gpt-realtime-2.1" : model;
         connectInternal(conversationId, buildEndpoint(endpointUri, modelName), modelName, apiKey, reconnectPolicy);
     }
 
@@ -100,7 +102,7 @@ public class OpenAiRealtimeRelayClient implements RealtimeRelayClient {
         while (true) {
             synchronized (session.listener().sendLock()) {
                 try {
-                    session.socket().sendText(eventJson, true).join();
+                    session.socket().sendText(eventJson, true).orTimeout(15, TimeUnit.SECONDS).join();
                     session.listener().clearError();
                     LOGGER.debug("Realtime relay event sent: conversationId={}, bytes={}, attempt={}",
                         conversationId,
@@ -166,7 +168,7 @@ public class OpenAiRealtimeRelayClient implements RealtimeRelayClient {
             return;
         }
         try {
-            session.socket().sendClose(WebSocket.NORMAL_CLOSURE, "session.close").join();
+            session.socket().sendClose(WebSocket.NORMAL_CLOSURE, "session.close").orTimeout(5, TimeUnit.SECONDS).join();
         } catch (Exception ignored) {
         }
         session.listener().markClosed(WebSocket.NORMAL_CLOSURE, "session.close");
@@ -218,7 +220,7 @@ public class OpenAiRealtimeRelayClient implements RealtimeRelayClient {
         WebSocket oldSocket = session.socket();
         if (oldSocket != null) {
             try {
-                oldSocket.sendClose(WebSocket.NORMAL_CLOSURE, "reconnect").join();
+                oldSocket.sendClose(WebSocket.NORMAL_CLOSURE, "reconnect").orTimeout(5, TimeUnit.SECONDS).join();
             } catch (RuntimeException ignored) {
             }
         }
@@ -260,8 +262,8 @@ public class OpenAiRealtimeRelayClient implements RealtimeRelayClient {
     private WebSocket createSocket(String endpoint, String apiKey, RealtimeWebSocketListener listener) {
         return httpClient.newWebSocketBuilder()
             .header("Authorization", "Bearer " + apiKey)
-            .header("OpenAI-Beta", "realtime=v1")
             .buildAsync(URI.create(endpoint), listener)
+            .orTimeout(15, TimeUnit.SECONDS)
             .join();
     }
 
@@ -332,7 +334,7 @@ public class OpenAiRealtimeRelayClient implements RealtimeRelayClient {
 
     private static final class RealtimeWebSocketListener implements WebSocket.Listener {
 
-        private final CopyOnWriteArrayList<String> messages = new CopyOnWriteArrayList<>();
+        private final ConcurrentLinkedQueue<String> messages = new ConcurrentLinkedQueue<>();
         private final StringBuilder current = new StringBuilder();
         private final AtomicReference<String> lastError = new AtomicReference<>("");
         private final AtomicInteger lastCloseCode = new AtomicInteger(0);
@@ -429,9 +431,12 @@ public class OpenAiRealtimeRelayClient implements RealtimeRelayClient {
         }
 
         List<String> drain() {
-            List<String> copy = List.copyOf(messages);
-            messages.clear();
-            return copy;
+            List<String> drained = new java.util.ArrayList<>();
+            String message;
+            while ((message = messages.poll()) != null) {
+                drained.add(message);
+            }
+            return List.copyOf(drained);
         }
 
         private String sanitize(String value) {

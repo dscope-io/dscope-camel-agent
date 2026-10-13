@@ -32,7 +32,7 @@ class DscopePersistenceFacadeTest {
     @Test
     void shouldAppendAndReadConversationEvents() {
         TestFlowStateStore store = new TestFlowStateStore();
-        DscopePersistenceFacade facade = new DscopePersistenceFacade(store, new ObjectMapper());
+        DscopePersistenceFacade facade = new DscopePersistenceFacade(store, new ObjectMapper(), AuditGranularity.DEBUG);
         AgentEvent event = new AgentEvent("c1", null, "user.message", new ObjectMapper().createObjectNode().put("text", "hello"), Instant.now());
 
         facade.appendEvent(event, "k1");
@@ -40,6 +40,19 @@ class DscopePersistenceFacadeTest {
         List<AgentEvent> events = facade.loadConversation("c1", 10);
         Assertions.assertEquals(1, events.size());
         Assertions.assertEquals("user.message", events.getFirst().type());
+    }
+
+    @Test
+    void shouldReturnMostRecentConversationEvents() {
+        TestFlowStateStore store = new TestFlowStateStore();
+        DscopePersistenceFacade facade = new DscopePersistenceFacade(store, new ObjectMapper(), AuditGranularity.DEBUG);
+        for (int index = 1; index <= 30; index++) {
+            facade.appendEvent(new AgentEvent("recent", null, "user.message",
+                new ObjectMapper().createObjectNode().put("index", index), Instant.now()), "recent-" + index);
+        }
+
+        Assertions.assertEquals(List.of(26, 27, 28, 29, 30), facade.loadConversation("recent", 5).stream()
+            .map(event -> event.payload().path("index").asInt()).toList());
     }
 
     @Test
@@ -132,9 +145,11 @@ class DscopePersistenceFacadeTest {
         TaskState state = new TaskState("t1", "c1", TaskStatus.STARTED, "cp", null, 0, null);
 
         facade.saveTask(state);
+        facade.saveTask(new TaskState("t1", "c1", TaskStatus.WAITING, "cp-2", null, 0, null));
 
         Assertions.assertTrue(facade.loadTask("t1").isPresent());
-        Assertions.assertEquals(TaskStatus.STARTED, facade.loadTask("t1").orElseThrow().status());
+        Assertions.assertEquals(TaskStatus.WAITING, facade.loadTask("t1").orElseThrow().status());
+        Assertions.assertEquals(0L, store.snapshotVersionFor(DscopePersistenceFacade.FLOW_TASK, "t1"));
     }
 
     @Test
@@ -145,10 +160,13 @@ class DscopePersistenceFacadeTest {
             Instant.now(), Instant.now().plusSeconds(60));
 
         facade.saveDynamicRoute(route);
+        facade.saveDynamicRoute(new DynamicRouteState("r1", "http.request", "agent.route.r1", "STARTED", "c1",
+            route.createdAt(), route.expiresAt()));
         var loaded = facade.loadDynamicRoute("r1");
 
         Assertions.assertTrue(loaded.isPresent());
         Assertions.assertEquals("http.request", loaded.orElseThrow().templateId());
+        Assertions.assertEquals(0L, store.snapshotVersionFor(DscopePersistenceFacade.FLOW_DYNAMIC_ROUTE, "r1"));
     }
 
     @Test
@@ -307,6 +325,11 @@ class DscopePersistenceFacadeTest {
         public void writeSnapshot(String flowType, String flowId, long version, com.fasterxml.jackson.databind.JsonNode snapshotJson,
                                   Map<String, Object> metadata) {
             String key = flowType + ":" + flowId;
+            long currentVersion = events.getOrDefault(key, List.of()).size();
+            long currentSnapshotVersion = snapshotVersions.getOrDefault(key, 0L);
+            if (version > currentVersion || version < currentSnapshotVersion) {
+                throw new OptimisticConflictException("Invalid snapshot version " + version + " for " + key);
+            }
             snapshots.put(key, snapshotJson);
             snapshotVersions.put(key, version);
         }

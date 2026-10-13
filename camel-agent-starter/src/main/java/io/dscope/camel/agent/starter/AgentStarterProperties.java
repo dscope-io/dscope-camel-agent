@@ -32,6 +32,8 @@ public class AgentStarterProperties {
     private long auditAsyncShutdownTimeoutMs = 5000L;
     @Min(1000)
     private long auditAsyncMetricsLogIntervalMs = 30000L;
+    @Min(0)
+    private int auditAsyncMaxRetryAttempts = 10;
     private boolean chatMemoryEnabled = true;
     @Min(1)
     private int chatMemoryWindow = 100;
@@ -174,6 +176,14 @@ public class AgentStarterProperties {
 
     public void setAuditAsyncMetricsLogIntervalMs(long auditAsyncMetricsLogIntervalMs) {
         this.auditAsyncMetricsLogIntervalMs = auditAsyncMetricsLogIntervalMs;
+    }
+
+    public int getAuditAsyncMaxRetryAttempts() {
+        return auditAsyncMaxRetryAttempts;
+    }
+
+    public void setAuditAsyncMaxRetryAttempts(int auditAsyncMaxRetryAttempts) {
+        this.auditAsyncMaxRetryAttempts = auditAsyncMaxRetryAttempts;
     }
 
     public boolean isChatMemoryEnabled() {

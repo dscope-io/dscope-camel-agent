@@ -3,6 +3,11 @@ package io.dscope.camel.agent.realtime;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.sun.net.httpserver.HttpServer;
+import java.net.InetSocketAddress;
+import java.net.http.HttpClient;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.Map;
 import java.util.Properties;
 import java.util.function.Consumer;
@@ -19,6 +24,78 @@ import org.junit.jupiter.params.provider.MethodSource;
 class RealtimeBrowserTokenProcessorTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    @Test
+    void shouldRejectRealtimeTokenForLiveSession() throws Exception {
+        RealtimeBrowserSessionRegistry registry = new RealtimeBrowserSessionRegistry();
+        registry.putSession("live-token", MAPPER.createObjectNode()
+            .put("api", "live")
+            .put("type", "live")
+            .put("model", "gpt-live-1"));
+        RealtimeBrowserTokenProcessor processor = new RealtimeBrowserTokenProcessor(registry);
+        CamelContext context = createContext(Map.of());
+        try {
+            Exchange exchange = new DefaultExchange(context);
+            exchange.getMessage().setHeader("conversationId", "live-token");
+            exchange.getMessage().setBody("{}");
+            processor.process(exchange);
+
+            Assertions.assertEquals(409, exchange.getMessage().getHeader(Exchange.HTTP_RESPONSE_CODE));
+            Assertions.assertTrue(exchange.getMessage().getBody(String.class).contains("does not use Realtime client secrets"));
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Test
+    void shouldMintGaClientSecretWithNestedSessionPayload() throws Exception {
+        AtomicReference<String> requestPath = new AtomicReference<>();
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/realtime/client_secrets", httpExchange -> {
+            requestPath.set(httpExchange.getRequestURI().getPath());
+            requestBody.set(new String(httpExchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] response = "{\"value\":\"ek_test\",\"expires_at\":1234}".getBytes(StandardCharsets.UTF_8);
+            httpExchange.sendResponseHeaders(200, response.length);
+            httpExchange.getResponseBody().write(response);
+            httpExchange.close();
+        });
+        server.start();
+
+        RealtimeBrowserSessionRegistry registry = new RealtimeBrowserSessionRegistry();
+        ObjectNode session = MAPPER.createObjectNode();
+        session.put("type", "realtime");
+        session.put("model", "gpt-realtime-2.1");
+        session.putObject("audio").putObject("output").put("voice", "marin");
+        session.putObject("metadata").put("conversationId", "ga-secret");
+        registry.putSession("ga-secret", session);
+        RealtimeBrowserTokenProcessor processor = new RealtimeBrowserTokenProcessor(
+            registry,
+            HttpClient.newHttpClient(),
+            "http://localhost:" + server.getAddress().getPort() + "/v1/realtime/client_secrets"
+        );
+
+        CamelContext context = createContext(Map.of("openai.api.key", "test-key"));
+        try {
+            Exchange exchange = new DefaultExchange(context);
+            exchange.getMessage().setHeader("conversationId", "ga-secret");
+            exchange.getMessage().setBody("{}");
+
+            processor.process(exchange);
+
+            Assertions.assertEquals(200, exchange.getMessage().getHeader(Exchange.HTTP_RESPONSE_CODE));
+            Assertions.assertEquals("/v1/realtime/client_secrets", requestPath.get());
+            JsonNode payload = MAPPER.readTree(requestBody.get());
+            Assertions.assertEquals("realtime", payload.path("session").path("type").asText());
+            Assertions.assertEquals("gpt-realtime-2.1", payload.path("session").path("model").asText());
+            Assertions.assertEquals("marin", payload.path("session").path("audio").path("output").path("voice").asText());
+            Assertions.assertFalse(payload.path("session").has("metadata"));
+            Assertions.assertEquals("ga-secret", registry.getSession("ga-secret").path("metadata").path("conversationId").asText());
+        } finally {
+            context.stop();
+            server.stop(0);
+        }
+    }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("tokenTtlScenarios")

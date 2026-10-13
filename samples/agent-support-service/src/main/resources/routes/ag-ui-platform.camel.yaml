@@ -1,3 +1,8 @@
+- intercept:
+    steps:
+      - process:
+          ref: agentHttpAccessProcessor
+
 - route:
     from:
       id: fromd461
@@ -179,6 +184,21 @@
             id: processAguiUiStaticResource
             ref: agUiStaticResourceProcessor
 - route:
+    id: agui-ui-static-nested
+    from:
+      id: fromAguiUiStaticNested
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/agui/ui/{assetDirectory}/{assetPath}?httpMethodRestrict=GET
+      steps:
+        - setHeader:
+            id: setHeaderAguiUiNestedStaticResourcePath
+            name: AgUiStaticResourcePath
+            simple: ${header.assetDirectory}/${header.assetPath}
+        - process:
+            id: processAguiUiNestedStaticResource
+            ref: agUiStaticResourceProcessor
+- route:
     id: realtime-session-event
     from:
       id: from9f01
@@ -201,6 +221,18 @@
         - process:
             id: processRealtimeToken
             ref: supportRealtimeTokenProcessor
+
+- route:
+    id: voice-session-connect
+    from:
+      id: fromVoiceSessionConnect
+      uri: undertow
+      parameters:
+        httpURI: http://0.0.0.0:{{agui.rpc.port:8080}}/voice/session/{conversationId}/connect?httpMethodRestrict=POST
+      steps:
+        - process:
+            id: processVoiceSessionConnect
+            ref: supportVoiceSessionConnectProcessor
 
 - route:
     id: realtime-session-init

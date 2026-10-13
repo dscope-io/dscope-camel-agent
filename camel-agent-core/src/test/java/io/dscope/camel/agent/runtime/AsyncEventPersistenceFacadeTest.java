@@ -56,6 +56,25 @@ class AsyncEventPersistenceFacadeTest {
         }
     }
 
+    @Test
+    void shouldDiscardPoisonEventAfterRetryLimitAndContinueWithFollowingEvents() throws Exception {
+        FailingFirstPersistenceFacade delegate = new FailingFirstPersistenceFacade();
+        AsyncEventPersistenceFacade facade = new AsyncEventPersistenceFacade(delegate, "retry", 16, 10L, 1000L, 1000L, 1);
+        try {
+            facade.appendEvent(event("poison"), "poison");
+            facade.appendEvent(event("healthy"), "healthy");
+
+            awaitPersisted(delegate, "healthy", 10);
+            Assertions.assertTrue(delegate.loadConversation("poison", 10).isEmpty());
+        } finally {
+            facade.close();
+        }
+    }
+
+    private static AgentEvent event(String conversationId) {
+        return new AgentEvent(conversationId, null, "user.message", JsonNodeFactory.instance.textNode(conversationId), Instant.now());
+    }
+
     private static void awaitPersisted(InMemoryPersistenceFacade delegate, String conversationId, int limit) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
         while (System.nanoTime() < deadline) {
@@ -87,6 +106,16 @@ class AsyncEventPersistenceFacadeTest {
 
         private void release() {
             gate.countDown();
+        }
+    }
+
+    private static final class FailingFirstPersistenceFacade extends InMemoryPersistenceFacade {
+        @Override
+        public void appendEvent(AgentEvent event, String idempotencyKey) {
+            if ("poison".equals(event.conversationId())) {
+                throw new IllegalStateException("Permanent write failure");
+            }
+            super.appendEvent(event, idempotencyKey);
         }
     }
 }
